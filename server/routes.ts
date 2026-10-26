@@ -1457,8 +1457,7 @@ async function handleRawLoaderRequest(req: Request, res: Response) {
   const isBrowser = req.headers.accept?.includes('text/html');
   if (isBrowser && !req.query.raw) {
     const host = req.get('host') || 'localhost:3000';
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-    const loadstringUrl = `${protocol}://${host}/api/loader/raw/${id}`;
+    const loadstringUrl = `https://roniguardreal.wasmer.app/api/loader/raw/${id}`;
     return res.send(renderScriptPortalHtml(filename, id, loadstringUrl, Buffer.byteLength(content, 'utf8')));
   }
 
@@ -1486,9 +1485,7 @@ router.get('/loader/details/:id', requireOwnerAuth, (req, res) => {
   const scriptId = script?.id || build?.id || id;
   const filename = script?.filename || build?.filename || 'script.lua';
 
-  const host = req.get('host') || 'localhost:3000';
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const baseUrl = `${protocol}://${host}`;
+  const baseUrl = 'https://roniguardreal.wasmer.app';
 
   const publicRawUrl = `${baseUrl}/api/loader/raw/${scriptId}`;
   const loadstringSnippet = `loadstring(game:HttpGet("${publicRawUrl}"))()`;

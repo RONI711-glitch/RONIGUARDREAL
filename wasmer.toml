@@ -1,0 +1,13 @@
+[package]
+name = "roniguardreal"
+version = "3.0.0"
+description = "RONIGUARD Lua and Luau Script Protection & Licensing System"
+license = "MIT"
+
+[[commands]]
+name = "server"
+module = "server"
+runner = "https://webc.org/runner/node"
+
+[fs]
+"/app" = "."

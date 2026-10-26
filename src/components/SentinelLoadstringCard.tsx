@@ -39,10 +39,10 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
   } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const baseUrl = 'https://roniguardreal.wasmer.app';
   const token = getStoredToken() || '';
 
-  const publicRawUrl = `${origin}/api/loader/raw/${scriptId}`;
+  const publicRawUrl = `${baseUrl}/api/loader/raw/${scriptId}`;
   const loadstringCode = `loadstring(game:HttpGet("${publicRawUrl}"))()`;
   const executorCodeWithKey = `loadstring(game:HttpGet("${publicRawUrl}?key=YOUR_LICENSE_KEY"))()`;
 
