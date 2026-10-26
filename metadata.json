@@ -1,0 +1,6 @@
+{
+  "name": "RONIGUARD - Lua & Luau Script Protection",
+  "description": "Private, owner-only Lua/Luau script protection and management dashboard with Discord bot integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
