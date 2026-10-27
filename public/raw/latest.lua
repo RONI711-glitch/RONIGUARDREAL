@@ -1,10 +1,13 @@
 --[[
   =============================================================
-  AIDENFUSCATORS v1.5 × RONIGUARD ADVANCED REGISTER VM
-  Target: latest.lua (Universal Build)
-  Engine: 54-Opcode Register Virtual Machine (Base-85 Bytecode)
-  Security Walls: Metatable Integrity Seals · Anti-Debug Probes · Env Guard
-  Host Domain: https://roniguardreal.wasmer.app
+  🛑 UNAUTHORIZED ACCESS 🛑
+  Content is not visible here.
+  Please visit the official dashboard: https://roniguardreal.wasmer.app
+  =============================================================
+  RONIGUARD × AIDENFUSCATORS REGISTER VM v1.5 UNIVERSAL LOADER
+  Compatible Executors: Synapse X, Wave, Delta, Fluxus, Codex, Arceus X, Hydrogen
+  Roblox Execution Syntax:
+  loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua"))()
   =============================================================
 --]]
 do
@@ -38,29 +41,54 @@ do
   end
 end
 
--- [AIDENFUSCATORS REGISTER VM v1.5 RUNTIME]
-local function _AidenFuscatorVM_Run()
+-- [AIDENFUSCATORS REGISTER VM v1.5 DISPATCHER]
+local function _AidenFuscators_Init()
   local _R = {}
   local _K = {
-    [1] = "[RONIGUARD × AIDENFUSCATORS] Universal Script Loaded Successfully!",
+    [1] = "[RONIGUARD] Executing Protected Script Payload...",
     [2] = "Protected by AidenFuscators Register VM v1.5",
     [3] = "https://roniguardreal.wasmer.app"
   }
   
+  -- Register setup
   _R[1] = print
   _R[2] = _K[1]
   _R[3] = _K[2]
   pcall(_R[1], _R[2])
   pcall(_R[1], _R[3])
-  
-  if game and game.GetService then
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    if LocalPlayer then
-      pcall(print, "[RONIGUARD] Authenticated Roblox Player: " .. tostring(LocalPlayer.Name))
+
+  -- Dynamic Fetch: Attempt to load latest updated script from server endpoint
+  local loadedSuccessfully = false
+  if game and game.HttpGet then
+    local endpoints = {
+      "https://roniguardreal.wasmer.app/raw/latest.lua",
+      "https://roniguardreal.wasmer.app/api/loader/raw/latest?raw=true"
+    }
+    for _, url in ipairs(endpoints) do
+      local ok, payload = pcall(function()
+        return game:HttpGet(url, true)
+      end)
+      if ok and type(payload) == "string" and #payload > 20 and not payload:find("UNAUTHORIZED") then
+        local runOk, compiledFn = pcall(loadstring, payload)
+        if runOk and type(compiledFn) == "function" then
+          pcall(compiledFn)
+          loadedSuccessfully = true
+          break
+        end
+      end
     end
   end
-  return true
+
+  if not loadedSuccessfully then
+    -- Local register execution fallback
+    if game and game.GetService then
+      local Players = game:GetService("Players")
+      local LocalPlayer = Players and Players.LocalPlayer
+      if LocalPlayer then
+        pcall(print, "[RONIGUARD] Active Roblox Player: " .. tostring(LocalPlayer.Name))
+      end
+    end
+  end
 end
 
-return _AidenFuscatorVM_Run()
+_AidenFuscators_Init()

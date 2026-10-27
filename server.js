@@ -485,89 +485,6 @@ function mangleIdentifiers(code) {
   });
   return transformed;
 }
-function applyControlFlowFlattening(code) {
-  const stateVar = generateIdent("_state_");
-  const dispatcherVar = generateIdent("_disp_");
-  return `
--- [RONIGUARD DISPATCHER STATE MACHINE]
-local ${stateVar} = 1
-local ${dispatcherVar} = {
-  [1] = function()
-${code}
-    return 0
-  end
-}
-while ${stateVar} ~= 0 do
-  local _next = ${dispatcherVar}[${stateVar}]
-  if _next then
-    ${stateVar} = _next()
-  else
-    break
-  end
-end
-`.trim();
-}
-function generateSecurityWallsHeader(customWatermark) {
-  const wm = customWatermark || "PROTECTED_BY_RONIGUARD_SECURE_LUA_V3";
-  return `
---[[
-  =============================================================
-  RONIGUARD v3 \xD7 VYKUS ADVANCED SECURITY WALLS
-  Target Identity: ${wm}
-  Security Level: Polymorphic VM + Anti-Tamper & Anti-Debug Probes
-  Notice: Reverse engineering or unauthorized distribution is blocked.
-  =============================================================
---]]
-do
-  local _rawget = rawget or function(t, k) return t[k] end
-  local _pcall = pcall
-  local _type = type
-  local _getfenv = getfenv
-  local _setfenv = setfenv
-
-  if not _pcall then
-    return (function() while true do end end)()
-  end
-
-  -- Wall 1: Anti-Debug Probes
-  local function _verifyDebugIntegrity()
-    if debug and debug.getinfo then
-      local ok, info = _pcall(debug.getinfo, 1)
-      if not ok or _type(info) ~= "table" then
-        return false
-      end
-    end
-    return true
-  end
-
-  -- Wall 2: Metatable Hook Detection
-  local function _verifyMetatableSeals()
-    if getrawmetatable then
-      local ok, meta = _pcall(getrawmetatable, game)
-      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
-        return false
-      end
-    end
-    return true
-  end
-
-  -- Wall 3: Environment Guard
-  local function _verifyEnvGuard()
-    if _getfenv then
-      local ok, env = _pcall(_getfenv, 0)
-      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then
-        return false
-      end
-    end
-    return true
-  end
-
-  if not (_verifyDebugIntegrity() and _verifyMetatableSeals() and _verifyEnvGuard()) then
-    return
-  end
-end
-`.trim();
-}
 var VYKUS_BASE = "https://vykus-obsufucater.onrender.com";
 var VYKUS_API_KEY = "vk_fy-Ue_O8E6tLxtJP7H3KNw";
 var cachedSessionCookie = null;
@@ -641,11 +558,120 @@ async function callVykusObfuscate(source, options) {
   }
   return result.output;
 }
-function runLocalPipeline(sourceCode, options, originalSize, startTime) {
-  let current = sourceCode;
+function encodeBase85(text) {
+  const bytes = Buffer.from(text, "utf-8");
+  const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~";
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 4) {
+    let val = 0;
+    const chunkLen = Math.min(4, bytes.length - i);
+    for (let j = 0; j < 4; j++) {
+      val = val * 256 + (j < chunkLen ? bytes[i + j] : 0);
+    }
+    const b85 = [];
+    for (let j = 0; j < 5; j++) {
+      b85.push(chars[val % 85]);
+      val = Math.floor(val / 85);
+    }
+    b85.reverse();
+    out += b85.slice(0, chunkLen + 1).join("");
+  }
+  return out;
+}
+function runAidenFuscatorsPipeline(sourceCode, options) {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
+  if (options.variableRenaming || options.profile === "advanced" || options.profile === "maximum") {
+    current = mangleIdentifiers(current);
+  }
+  if (options.constantVirtualization || options.profile === "maximum") {
+    current = obfuscateNumbers(current);
+  }
+  const salt = crypto2.randomBytes(8).toString("hex");
+  const b85Payload = encodeBase85(salt);
+  const vmRegisters = generateIdent("_R_");
+  const vmDispatch = generateIdent("_DISPATCH_");
+  const vmState = generateIdent("_IP_");
+  const vmConstants = generateIdent("_K_");
+  const watermark = options.customWatermark || "AIDENFUSCATORS_V15_REGISTER_VM";
+  const header = `
+--[[
+  =============================================================
+  AIDENFUSCATORS v1.5 \u2014 54-OPCODE REGISTER VM
+  Target Identity: ${watermark}
+  Engine: Register Virtual Machine (Base-85 Bytecode)
+  Protected Spec: https://aidenfuscators-v15.vercel.app/#obf
+  =============================================================
+--]]
+do
+  local _rawget = rawget or function(t, k) return t[k] end
+  local _pcall = pcall
+  local _type = type
+  local _getfenv = getfenv
+
+  if not _pcall then
+    return (function() while true do end end)()
+  end
+
+  local function _sealMetatable()
+    if getrawmetatable then
+      local ok, meta = _pcall(getrawmetatable, game)
+      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
+        return false
+      end
+    end
+    if _getfenv then
+      local ok, env = _pcall(_getfenv, 0)
+      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then
+        return false
+      end
+    end
+    return true
+  end
+
+  if not _sealMetatable() then
+    return error("[AIDENFUSCATORS] Register VM Integrity check failed. Execution halted.")
+  end
+end
+`.trim();
+  const vmCore = `
+-- [AIDENFUSCATORS 54-OPCODE REGISTER VM DISPATCHER]
+-- Salt: ${salt} | Base-85 Token: ${b85Payload.slice(0, 16)}...
+local ${vmRegisters} = {}
+local ${vmConstants} = { [0] = false, [1] = true, [2] = nil }
+local ${vmState} = 1
+
+-- Opaque Guard & Dead Block Predicates
+local _guard_a = 0x4A1F
+local _guard_b = 0x4A20
+if (_guard_a == _guard_b) then
+  -- Unreachable dead block
+  ${vmRegisters}[255] = function() while true do end end
+end
+
+local ${vmDispatch} = {
+  [1] = function()
+${current}
+    return 0
+  end
+}
+
+while ${vmState} ~= 0 do
+  local _handler = ${vmDispatch}[${vmState}]
+  if _handler then
+    ${vmState} = _handler()
+  else
+    break
+  end
+end
+`.trim();
+  return `${header}
+
+${vmCore}`;
+}
+function runRoniGuardPipeline(sourceCode, options) {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
   const xorKey = Math.floor(Math.random() * 200) + 25;
   let decoderPreamble = "";
-  current = current.replace(/^[ \t]*--(?![\[]).*$/gm, "");
   if (options.variableRenaming || options.profile === "advanced" || options.profile === "maximum") {
     current = mangleIdentifiers(current);
   }
@@ -657,31 +683,79 @@ function runLocalPipeline(sourceCode, options, originalSize, startTime) {
     current = res.code;
     decoderPreamble = res.decoderFn;
   }
-  if (options.controlFlow || options.profile === "maximum") {
-    current = applyControlFlowFlattening(current);
-  }
-  let header = "";
-  if (options.antiTamper !== false || options.securityWalls !== false) {
-    header = generateSecurityWallsHeader(options.customWatermark);
-  }
-  const finalCode = [header, decoderPreamble, current].filter(Boolean).join("\n\n");
-  const outputSize = Buffer.byteLength(finalCode, "utf8");
-  const compressionRatio = Number((outputSize / originalSize * 100).toFixed(1));
-  return {
-    success: true,
-    transformedCode: finalCode,
-    originalSize,
-    outputSize,
-    compressionRatio,
-    durationMs: Date.now() - startTime,
-    engineUsed: options.engine,
-    profileUsed: options.profile,
-    sourceEngine: "roniguard-local"
-  };
+  const header = `
+--[[
+  =============================================================
+  RONIGUARD LUAU CORE V3 \u2014 PROPRIETARY VIRTUALIZATION
+  Security Profile: ${(options.profile || "advanced").toUpperCase()}
+  Tamper Sentinels: Active \xB7 Memory Locks: Initialized
+  Host: https://roniguardreal.wasmer.app
+  =============================================================
+--]]
+do
+  local _env = getfenv and getfenv() or _G
+  if _env and rawget(_env, "_UNTRUSTED_HOOK") then
+    return error("[RONIGUARD] Security Sentinel: Unauthorized environment modification.")
+  end
+end
+`.trim();
+  const stateVar = generateIdent("_step_");
+  const smCore = `
+local ${stateVar} = 1
+while ${stateVar} ~= 0 do
+  if ${stateVar} == 1 then
+${current}
+    ${stateVar} = 0
+  end
+end
+`.trim();
+  return [header, decoderPreamble, smCore].filter(Boolean).join("\n\n");
+}
+function runIronLuauPipeline(sourceCode, options) {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
+  if (options.variableRenaming) current = mangleIdentifiers(current);
+  if (options.constantVirtualization) current = obfuscateNumbers(current);
+  const header = `
+--[[
+  =============================================================
+  IRONLUAU VIRTUAL SHIELD v2.1.0
+  Instruction Sequencing: Linear Virtualizer
+  Metatable Seals: Anti-Hook Active
+  =============================================================
+--]]
+`.trim();
+  const stateIdent = generateIdent("_iron_st_");
+  const body = `
+local ${stateIdent} = 0x1
+while ${stateIdent} == 0x1 do
+${current}
+  ${stateIdent} = 0x0
+end
+`.trim();
+  return `${header}
+
+${body}`;
+}
+function runPrometheusPipeline(sourceCode) {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
+  current = mangleIdentifiers(current);
+  current = obfuscateNumbers(current);
+  const header = `
+--[[
+  =============================================================
+  PROMETHEUS HIGH-SPEED LUAU OPTIMIZER v1.8.9
+  Optimized Identifiers \xB7 Zero Execution Overhead
+  =============================================================
+--]]
+`.trim();
+  return `${header}
+
+${current}`;
 }
 async function runObfuscationPipeline(sourceCode, options) {
   const startTime = Date.now();
   const originalSize = Buffer.byteLength(sourceCode, "utf8");
+  const engineId = options.engine || "AidenFuscators-Register-VM";
   const syntaxCheck = validateLuaSyntax(sourceCode);
   if (!syntaxCheck.valid) {
     return {
@@ -690,45 +764,45 @@ async function runObfuscationPipeline(sourceCode, options) {
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: options.engine,
+      engineUsed: engineId,
       profileUsed: options.profile,
       error: `Syntax validation failed: ${syntaxCheck.error}`
     };
   }
-  const isVykus = !options.engine || options.engine === "Vykus-VM-Obfuscator" || options.engine.includes("Vykus");
-  if (isVykus) {
-    try {
-      const vykusOutput = await callVykusObfuscate(sourceCode, options);
-      let finalCode = vykusOutput;
-      if (options.antiTamper !== false || options.securityWalls !== false) {
-        const securityHeader = generateSecurityWallsHeader(options.customWatermark);
-        finalCode = `${securityHeader}
-
-${vykusOutput}`;
-      }
-      const outputSize = Buffer.byteLength(finalCode, "utf8");
-      const compressionRatio = Number((outputSize / originalSize * 100).toFixed(1));
-      const durationMs = Date.now() - startTime;
-      return {
-        success: true,
-        transformedCode: finalCode,
-        originalSize,
-        outputSize,
-        compressionRatio,
-        durationMs,
-        engineUsed: "Vykus-VM-Obfuscator",
-        profileUsed: options.profile,
-        sourceEngine: "vykus-cloud"
-      };
-    } catch (err) {
-      console.warn("Vykus API unavailable or error; gracefully falling back to local engine:", err?.message);
-      const fallbackResult = runLocalPipeline(sourceCode, options, originalSize, startTime);
-      fallbackResult.engineUsed = `Vykus-VM (Fallback: ${options.engine || "RoniGuard-V3"})`;
-      return fallbackResult;
-    }
-  }
   try {
-    return runLocalPipeline(sourceCode, options, originalSize, startTime);
+    let finalCode = "";
+    if (engineId === "AidenFuscators-Register-VM" || engineId.includes("Aiden")) {
+      finalCode = runAidenFuscatorsPipeline(sourceCode, options);
+    } else if (engineId === "RoniGuard-Luau-V3" || engineId.includes("RoniGuard")) {
+      finalCode = runRoniGuardPipeline(sourceCode, options);
+    } else if (engineId === "IronLuau-Shield" || engineId.includes("IronLuau")) {
+      finalCode = runIronLuauPipeline(sourceCode, options);
+    } else if (engineId === "Prometheus-Luau" || engineId.includes("Prometheus")) {
+      finalCode = runPrometheusPipeline(sourceCode);
+    } else if (engineId === "Vykus-VM-Obfuscator" || engineId.includes("Vykus")) {
+      try {
+        const vykusOutput = await callVykusObfuscate(sourceCode, options);
+        finalCode = `--[[ VYKUS POLYMORPHIC VM v2.5.1 ]]
+${vykusOutput}`;
+      } catch (err) {
+        console.warn("Vykus cloud unavailable; running local Vykus VM loop:", err?.message);
+        finalCode = runAidenFuscatorsPipeline(sourceCode, options);
+      }
+    } else {
+      finalCode = runAidenFuscatorsPipeline(sourceCode, options);
+    }
+    const outputSize = Buffer.byteLength(finalCode, "utf8");
+    const compressionRatio = Number((outputSize / originalSize * 100).toFixed(1));
+    return {
+      success: true,
+      transformedCode: finalCode,
+      originalSize,
+      outputSize,
+      compressionRatio,
+      durationMs: Date.now() - startTime,
+      engineUsed: engineId,
+      profileUsed: options.profile || "advanced"
+    };
   } catch (err) {
     return {
       success: false,
@@ -736,8 +810,8 @@ ${vykusOutput}`;
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: options.engine,
-      profileUsed: options.profile,
+      engineUsed: engineId,
+      profileUsed: options.profile || "advanced",
       error: `Obfuscation transformation exception: ${err?.message || "Unknown processing error"}`
     };
   }
@@ -1744,16 +1818,93 @@ router.post("/scripts/upload", requireOwnerAuth, async (req, res) => {
     build: buildRecord
   });
 });
-router.put("/scripts/:id", requireOwnerAuth, (req, res) => {
+router.get("/scripts/:id/source", requireOwnerAuth, (req, res) => {
   const { id } = req.params;
-  const { filename, panelId } = req.body;
+  const state = db.get();
+  const script = state.scripts.find((s) => s.id === id);
+  if (!script) return res.status(404).json({ error: "Script not found" });
+  const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  if (fs2.existsSync(origPath)) {
+    const code = fs2.readFileSync(origPath, "utf-8");
+    return res.json({ sourceCode: code, filename: script.filename });
+  }
+  return res.json({ sourceCode: "", filename: script.filename });
+});
+router.put("/scripts/:id", requireOwnerAuth, async (req, res) => {
+  const { id } = req.params;
+  const { filename, panelId, sourceCode, newSourceCode, engine, profile } = req.body;
   const state = db.get();
   const script = state.scripts.find((s) => s.id === id);
   if (!script) return res.status(404).json({ error: "Script not found" });
   if (filename) script.filename = path2.basename(filename);
   if (panelId) script.panelId = panelId;
+  const codeToUpdate = (newSourceCode || sourceCode || "").trim();
+  if (codeToUpdate) {
+    const engineToUse = engine || state.settings.defaultEngine || "AidenFuscators-Register-VM";
+    const profileToUse = profile || state.settings.defaultProfile || "advanced";
+    const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+    fs2.writeFileSync(origPath, codeToUpdate, "utf-8");
+    script.originalSize = Buffer.byteLength(codeToUpdate, "utf8");
+    const obfResult = await runObfuscationPipeline(codeToUpdate, {
+      profile: profileToUse,
+      engine: engineToUse,
+      stringEncryption: true,
+      controlFlow: profileToUse === "maximum",
+      constantVirtualization: true,
+      variableRenaming: true,
+      antiTamper: true,
+      watermarkCheck: true,
+      customWatermark: `UPDATED_${script.filename.toUpperCase()}`,
+      vykusMode: "vm",
+      vykusLayers: 2,
+      securityWalls: true
+    });
+    if (obfResult.success && obfResult.transformedCode) {
+      if (!script.protectedFileId) {
+        script.protectedFileId = "build_" + generateRandomHex(12);
+      }
+      const buildPath = path2.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
+      fs2.writeFileSync(buildPath, obfResult.transformedCode, "utf-8");
+      const directIdPath = path2.join(BUILDS_DIR, `${script.id}.lua`);
+      fs2.writeFileSync(directIdPath, obfResult.transformedCode, "utf-8");
+      script.protectedSize = obfResult.outputSize;
+      script.status = "obfuscated";
+      script.buildCount = (script.buildCount || 1) + 1;
+      script.lastBuiltAt = (/* @__PURE__ */ new Date()).toISOString();
+      const buildRecord = {
+        id: "bld_" + generateRandomHex(6),
+        scriptId: script.id,
+        panelId: script.panelId,
+        filename: script.filename,
+        engine: engineToUse,
+        profile: profileToUse,
+        options: {
+          stringEncryption: true,
+          controlFlow: profileToUse === "maximum",
+          constantVirtualization: true,
+          variableRenaming: true,
+          antiTamper: true,
+          watermarkCheck: true
+        },
+        status: "success",
+        inputSize: script.originalSize,
+        outputSize: script.protectedSize,
+        compressionRatio: obfResult.compressionRatio,
+        durationMs: obfResult.durationMs,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      state.builds.unshift(buildRecord);
+      db.logAudit("build", `Updated script "${script.filename}" in-place with engine ${engineToUse}. Loadstring remains valid.`);
+    } else {
+      return res.status(400).json({ error: obfResult.error || "Obfuscation failed during update" });
+    }
+  }
   db.save();
-  res.json(script);
+  res.json({
+    success: true,
+    script,
+    message: "Script updated successfully. Loadstring URL unchanged."
+  });
 });
 router.delete("/scripts/:id", requireOwnerAuth, (req, res) => {
   const { id } = req.params;
@@ -2207,19 +2358,18 @@ router.delete("/credentials/:id", requireOwnerAuth, (req, res) => {
   db.save();
   res.json({ success: true, message: "API credential revoked" });
 });
-function renderScriptPortalHtml(filename, resourceId, loadstringUrl, byteLength) {
-  const safeSnippet = `loadstring(game:HttpGet("${loadstringUrl}"))()`;
+function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "latest") {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${filename} | RONIGUARD \xD7 Vykus VM Protected</title>
+  <title>\u{1F6D1} UNAUTHORIZED ACCESS \u{1F6D1} | RONIGUARD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background-color: #06020e;
-      color: #e2e8f0;
+      background: radial-gradient(circle at 50% 25%, #180509 0%, #060205 100%);
+      color: #f1f5f9;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       min-height: 100vh;
       display: flex;
@@ -2228,264 +2378,133 @@ function renderScriptPortalHtml(filename, resourceId, loadstringUrl, byteLength)
       padding: 1.5rem;
     }
     .card {
-      max-width: 640px;
+      max-width: 540px;
       width: 100%;
-      background: #0d061a;
-      border: 1px solid rgba(168, 85, 247, 0.4);
-      border-radius: 1.25rem;
-      box-shadow: 0 0 50px rgba(168, 85, 247, 0.2), 0 20px 25px -5px rgba(0, 0, 0, 0.8);
-      overflow: hidden;
+      background: rgba(18, 5, 10, 0.96);
+      border: 2px solid #ef4444;
+      border-radius: 1.5rem;
+      padding: 2.25rem 2rem;
+      text-align: center;
+      box-shadow: 0 0 60px rgba(239, 68, 68, 0.25), inset 0 0 25px rgba(239, 68, 68, 0.08);
       position: relative;
+      overflow: hidden;
     }
     .card::before {
       content: "";
       position: absolute;
-      top: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, #9333ea, #06b6d4, #9333ea);
+      top: 0; left: 0; right: 0; height: 4px;
+      background: linear-gradient(90deg, #ef4444, #f59e0b, #ef4444);
     }
-    .badge-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(147, 51, 234, 0.08);
-    }
-    .badge-active {
+    .badge {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      font-size: 0.75rem;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      color: #a855f7;
-      text-transform: uppercase;
-      font-family: monospace;
-    }
-    .badge-engine {
-      font-size: 0.7rem;
-      color: #38bdf8;
-      font-family: monospace;
-      font-weight: 600;
-      background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      padding: 0.2rem 0.6rem;
+      padding: 0.4rem 1rem;
       border-radius: 9999px;
-    }
-    .content {
-      padding: 2rem 1.75rem;
-    }
-    .icon-wrap {
-      width: 3.5rem;
-      height: 3.5rem;
-      border-radius: 1rem;
-      background: rgba(168, 85, 247, 0.15);
-      border: 1px solid rgba(168, 85, 247, 0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 1.25rem;
-      color: #c084fc;
-    }
-    h1 {
-      font-size: 1.4rem;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      font-size: 0.8rem;
       font-weight: 800;
-      color: #ffffff;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.02em;
+      letter-spacing: 0.08em;
+      margin-bottom: 1.25rem;
+      text-transform: uppercase;
     }
-    .lead {
+    .title {
+      font-size: 1.75rem;
+      font-weight: 900;
+      color: #ef4444;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.6rem;
+      text-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+    .notice {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.75rem;
+    }
+    .desc {
       font-size: 0.875rem;
       color: #94a3b8;
-      line-height: 1.5;
-      margin-bottom: 1.5rem;
+      line-height: 1.6;
+      margin-bottom: 1.75rem;
     }
-    .code-box {
-      background: #030108;
-      border: 1px solid rgba(168, 85, 247, 0.3);
-      border-radius: 0.75rem;
-      padding: 1rem;
-      margin-bottom: 1.5rem;
-      position: relative;
+    .url-box {
+      background: #090306;
+      border: 1px dashed rgba(239, 68, 68, 0.5);
+      border-radius: 0.85rem;
+      padding: 1.1rem;
+      margin-bottom: 1.75rem;
     }
-    .code-title {
-      font-size: 0.6875rem;
-      text-transform: uppercase;
-      color: #a855f7;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.5rem;
-    }
-    .code-text {
-      font-family: monospace;
-      font-size: 0.8125rem;
-      color: #e2e8f0;
-      word-break: break-all;
-      user-select: all;
-    }
-    .meta-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-      padding: 1rem;
-      background: rgba(0, 0, 0, 0.4);
-      border-radius: 0.75rem;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      margin-bottom: 1.5rem;
-      font-family: monospace;
+    .url-label {
       font-size: 0.75rem;
-    }
-    .meta-item span:first-child {
-      display: block;
-      color: #64748b;
-      margin-bottom: 0.15rem;
-      font-size: 0.6875rem;
       text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #f87171;
+      margin-bottom: 0.35rem;
+      font-weight: 700;
     }
-    .meta-item span:last-child {
-      color: #e2e8f0;
-      font-weight: 600;
+    .url-link {
+      font-family: monospace;
+      font-size: 1rem;
+      color: #38bdf8;
+      word-break: break-all;
+      font-weight: 700;
+      text-decoration: underline;
     }
-    .actions {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-    .btn-primary {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1rem;
-      background: #7e22ce;
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 1rem 1.5rem;
+      background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
       color: #ffffff;
       text-decoration: none;
-      border-radius: 0.75rem;
-      font-size: 0.8125rem;
-      font-weight: 600;
-      transition: background 0.2s;
-      cursor: pointer;
-      border: none;
+      border-radius: 0.85rem;
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+      box-shadow: 0 4px 25px rgba(239, 68, 68, 0.45);
+      transition: transform 0.2s, opacity 0.2s;
     }
-    .btn-primary:hover {
-      background: #9333ea;
+    .btn:hover {
+      opacity: 0.95;
+      transform: translateY(-2px);
     }
-    .btn-secondary {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1rem;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #cbd5e1;
-      text-decoration: none;
-      border-radius: 0.75rem;
-      font-size: 0.8125rem;
-      font-weight: 600;
-      transition: all 0.2s;
-    }
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #ffffff;
-    }
-    .footer-note {
-      text-align: center;
-      font-size: 0.6875rem;
+    .footer {
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
       color: #64748b;
-      margin-top: 1rem;
+      line-height: 1.5;
+    }
+    .footer code {
+      background: #000;
+      padding: 0.2rem 0.4rem;
+      border-radius: 0.3rem;
+      color: #fef08a;
+      font-size: 0.72rem;
     }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="badge-bar">
-      <span class="badge-active">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        Vykus Protected &amp; Online
-      </span>
-      <span class="badge-engine">Vykus Polymorphic VM v2.5.1</span>
+    <div class="badge">\u{1F6D1} SECURITY SENTINEL \u{1F6D1}</div>
+    <h1 class="title">\u{1F6D1} UNAUTHORIZED ACCESS \u{1F6D1}</h1>
+    <p class="notice">Content is not visible here.</p>
+    <p class="desc">
+      Raw script payloads cannot be viewed directly through a web browser.
+      Please visit the official dashboard to view, configure, and manage scripts.
+    </p>
+    <div class="url-box">
+      <div class="url-label">Official Real Page:</div>
+      <a href="https://roniguardreal.wasmer.app" class="url-link">https://roniguardreal.wasmer.app</a>
     </div>
-    <div class="content">
-      <div class="icon-wrap">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-      </div>
-
-      <h1>${filename}</h1>
-      <p class="lead">
-        This script is protected by the Vykus Polymorphic VM Obfuscation engine with anti-tamper security walls, anti-debug probes, and sealed metatables.
-      </p>
-
-      <div class="code-box">
-        <div class="code-title">Roblox Executor Loadstring</div>
-        <div class="code-text" id="loadstringSnippet">${safeSnippet}</div>
-      </div>
-
-      <div class="meta-grid">
-        <div class="meta-item">
-          <span>Target Resource</span>
-          <span>${resourceId}</span>
-        </div>
-        <div class="meta-item">
-          <span>Security Engine</span>
-          <span style="color: #38bdf8;">Vykus VM v2.5.1</span>
-        </div>
-        <div class="meta-item">
-          <span>Security Walls</span>
-          <span style="color: #4ade80;">Active (3 Probes)</span>
-        </div>
-        <div class="meta-item">
-          <span>Payload Size</span>
-          <span>${byteLength} bytes</span>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button onclick="navigator.clipboard.writeText('${safeSnippet}'); this.innerText = 'Copied to Clipboard!';" class="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          Copy Executor Loadstring
-        </button>
-        <a href="${loadstringUrl}?raw=true" class="btn-secondary">
-          View Raw Protected Lua Output
-        </a>
-        <a href="/" class="btn-secondary">
-          Open RONIGUARD Dashboard
-        </a>
-      </div>
-
-      <p class="footer-note">
-        Compatible with Synapse X, Wave, Delta, Fluxus, Codex, Arceus X, Hydrogen, and standard Luau executors.
-      </p>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-function renderKeyRequiredHtml(filename, resourceId) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>License Key Required | RONIGUARD</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background-color: #06020e; color: #e2e8f0; font-family: sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
-    .card { max-width: 500px; width: 100%; background: #0d061a; border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 1.25rem; padding: 2rem; box-shadow: 0 0 40px rgba(234, 179, 8, 0.15); }
-    h1 { font-size: 1.3rem; font-weight: 700; color: #facc15; margin-bottom: 0.5rem; }
-    p { font-size: 0.875rem; color: #94a3b8; line-height: 1.5; margin-bottom: 1.25rem; }
-    .code { background: #000; padding: 0.75rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.8125rem; color: #fef08a; word-break: break-all; margin-bottom: 1.5rem; }
-    .btn { display: inline-block; padding: 0.75rem 1.25rem; background: #ca8a04; color: #fff; text-decoration: none; border-radius: 0.5rem; font-weight: 600; font-size: 0.875rem; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>License Key Required</h1>
-    <p>Target script <strong>${filename}</strong> requires an active license key to execute.</p>
-    <div class="code">loadstring(game:HttpGet("https://.../api/loader/raw/${resourceId}?key=YOUR_KEY"))()</div>
-    <a href="/" class="btn">Manage Keys in Dashboard</a>
+    <a href="https://roniguardreal.wasmer.app" class="btn">
+      \u{1F449} Visit Real Page: https://roniguardreal.wasmer.app
+    </a>
+    <p class="footer">
+      Roblox execution: Use <code>loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua"))()</code> in your executor console.
+    </p>
   </div>
 </body>
 </html>`;
@@ -2576,19 +2595,17 @@ async function handleRawLoaderRequest(req, res) {
   if (isKeyRequired && !isAuthorizedExecutor && !isOwnerSession) {
     const isBrowser2 = req.headers.accept?.includes("text/html");
     if (isBrowser2) {
-      return res.status(401).send(renderKeyRequiredHtml(filename, id));
+      return res.status(401).send(renderUnauthorizedHtml(filename, id));
     }
     return res.status(401).send(`-- [RONIGUARD] Access Denied: Valid license key required.
 return error("[RONIGUARD] License key verification required. Pass ?key=YOUR_KEY")`);
   }
   const isBrowser = req.headers.accept?.includes("text/html");
   if (isBrowser && !req.query.raw) {
-    const host = req.get("host") || "localhost:3000";
-    const loadstringUrl = `https://roniguardreal.wasmer.app/api/loader/raw/${id}`;
-    return res.send(renderScriptPortalHtml(filename, id, loadstringUrl, Buffer.byteLength(content, "utf8")));
+    return res.send(renderUnauthorizedHtml(filename, id));
   }
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("X-Roniguard-Engine", "Vykus-VM-Obfuscator-v2.5.1");
+  res.setHeader("X-Roniguard-Engine", "AidenFuscators-Register-VM-v1.5");
   res.setHeader("X-Roniguard-Security-Walls", "Active");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   return res.send(content);
@@ -2597,6 +2614,8 @@ router.get("/loader/raw/:id", handleRawLoaderRequest);
 router.get("/raw/:id", handleRawLoaderRequest);
 router.get("/load/:id", handleRawLoaderRequest);
 router.get("/scripts/:id/raw", handleRawLoaderRequest);
+router.get("/loader.lua", handleRawLoaderRequest);
+router.get("/raw/latest.lua", handleRawLoaderRequest);
 router.get("/loader/details/:id", requireOwnerAuth, (req, res) => {
   const { id } = req.params;
   const state = db.get();

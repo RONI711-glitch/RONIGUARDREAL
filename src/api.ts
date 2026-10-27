@@ -569,19 +569,93 @@ export const api = {
     }
   },
 
-  async updateScript(id: string, data: { filename?: string; panelId?: string }) {
+  async getScriptSource(id: string): Promise<string> {
     try {
-      return await fetchWithAuth(`/api/scripts/${id}`, {
+      const res = await fetchWithAuth(`/api/scripts/${id}/source`);
+      return res.sourceCode || '';
+    } catch {
+      const store = loadLocalStore();
+      const s = store.scripts.find((item) => item.id === id);
+      return (s as any)?.originalCode || (s as any)?.protectedCode || '';
+    }
+  },
+
+  async updateScript(
+    id: string,
+    data: {
+      filename?: string;
+      panelId?: string;
+      sourceCode?: string;
+      newSourceCode?: string;
+      engine?: string;
+      profile?: 'basic' | 'advanced' | 'maximum';
+    }
+  ) {
+    try {
+      const res = await fetchWithAuth(`/api/scripts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       });
+      return res.script || res;
     } catch {
       const store = loadLocalStore();
       const idx = store.scripts.findIndex((s) => s.id === id);
       if (idx !== -1) {
-        store.scripts[idx] = { ...store.scripts[idx], ...data };
+        const script = store.scripts[idx];
+        if (data.filename) script.filename = data.filename;
+        if (data.panelId) script.panelId = data.panelId;
+
+        const code = (data.newSourceCode || data.sourceCode || '').trim();
+        if (code) {
+          const engine = data.engine || 'AidenFuscators-Register-VM';
+          const profile = data.profile || 'advanced';
+          const obfRes = runClientObfuscation(code, {
+            engine,
+            profile,
+            stringEncryption: true,
+            controlFlow: profile === 'maximum',
+            constantVirtualization: true,
+            variableRenaming: true,
+            antiTamper: true,
+            customWatermark: `UPDATED_${script.filename.toUpperCase()}`,
+          });
+
+          (script as any).originalCode = code;
+          script.originalSize = obfRes.originalSize;
+          if (obfRes.success && obfRes.transformedCode) {
+            script.protectedCode = obfRes.transformedCode;
+            script.protectedSize = obfRes.outputSize;
+            script.status = 'obfuscated';
+            script.lastBuiltAt = new Date().toISOString();
+            script.buildCount = (script.buildCount || 1) + 1;
+
+            store.builds.unshift({
+              id: 'bld_' + generateLocalId(),
+              scriptId: script.id,
+              panelId: script.panelId,
+              filename: script.filename,
+              engine,
+              profile,
+              options: {
+                stringEncryption: true,
+                controlFlow: profile === 'maximum',
+                constantVirtualization: true,
+                variableRenaming: true,
+                antiTamper: true,
+                watermarkCheck: true,
+              },
+              status: 'success',
+              inputSize: obfRes.originalSize,
+              outputSize: obfRes.outputSize,
+              compressionRatio: obfRes.compressionRatio,
+              durationMs: obfRes.durationMs,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+
         saveLocalStore(store);
-        return store.scripts[idx];
+        return script;
       }
       throw new Error('Script not found');
     }

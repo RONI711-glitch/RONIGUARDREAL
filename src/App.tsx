@@ -19,8 +19,22 @@ import { DiscordBotView } from './views/DiscordBotView.tsx';
 import { ApiManagementView } from './views/ApiManagementView.tsx';
 import { AnalyticsView } from './views/AnalyticsView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
+import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
 
 export default function App() {
+  const isLoadstringRoute = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/api/loader/raw') ||
+    window.location.pathname.startsWith('/raw/') ||
+    window.location.pathname === '/loader.lua' ||
+    window.location.pathname === '/raw/latest.lua' ||
+    window.location.pathname.startsWith('/load/') ||
+    window.location.pathname.endsWith('.lua')
+  );
+
+  if (isLoadstringRoute) {
+    return <UnauthorizedLandingView />;
+  }
+
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [ownerEmail, setOwnerEmail] = useState('ronizz.edit@gmail.com');
   const [activeSection, setActiveSection] = useState<SectionId>('overview');

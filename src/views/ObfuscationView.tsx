@@ -65,7 +65,7 @@ export const ObfuscationView: React.FC<ObfuscationViewProps> = ({
   const [selectedPanelId, setSelectedPanelId] = useState<string>('');
 
   // Engine & Profile options
-  const [selectedEngine, setSelectedEngine] = useState('Vykus-VM-Obfuscator');
+  const [selectedEngine, setSelectedEngine] = useState('AidenFuscators-Register-VM');
   const [selectedProfile, setSelectedProfile] = useState<'basic' | 'advanced' | 'maximum'>('advanced');
   const [stringEncryption, setStringEncryption] = useState(true);
   const [controlFlow, setControlFlow] = useState(false);
@@ -745,13 +745,18 @@ export const ObfuscationView: React.FC<ObfuscationViewProps> = ({
 
             {/* Engine Selection */}
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
-                Installed Protection Engine
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-neutral-300">
+                  Installed Protection Engine
+                </label>
+                <span className="text-[10px] text-amber-400 font-medium">
+                  ⚡ Single Engine Only
+                </span>
+              </div>
               <select
                 value={selectedEngine}
                 onChange={(e) => setSelectedEngine(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-xs text-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-xs text-white focus:outline-none focus:border-purple-500 font-semibold"
               >
                 {engines.map((eng) => (
                   <option key={eng.id} value={eng.id}>

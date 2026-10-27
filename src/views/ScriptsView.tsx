@@ -14,12 +14,17 @@ import {
   X,
   Play,
   Terminal,
+  RefreshCw,
+  FileUp,
+  Code2,
+  Lock,
 } from 'lucide-react';
-import { api } from '../api.ts';
+import { api, WASMER_APP_URL } from '../api.ts';
 import { ScriptItem, Panel } from '../types.ts';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
 import { SentinelLoadstringCard } from '../components/SentinelLoadstringCard.tsx';
 import { SectionId } from '../components/Sidebar.tsx';
+import { CLIENT_ENGINES } from '../utils/clientObfuscator.ts';
 
 interface ScriptsViewProps {
   onShowToast: (type: 'success' | 'error' | 'warning' | 'info', title: string, desc?: string) => void;
@@ -44,14 +49,19 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
   const [uploadNotes, setUploadNotes] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  // Edit / Delete states
+  // Edit & Update Script states
   const [scriptToEdit, setScriptToEdit] = useState<ScriptItem | null>(null);
   const [editFilename, setEditFilename] = useState('');
   const [editPanelId, setEditPanelId] = useState('');
+  const [editSourceCode, setEditSourceCode] = useState('');
+  const [editEngine, setEditEngine] = useState('AidenFuscators-Register-VM');
+  const [editProfile, setEditProfile] = useState<'basic' | 'advanced' | 'maximum'>('advanced');
+  const [isUpdatingScript, setIsUpdatingScript] = useState(false);
   const [scriptToDelete, setScriptToDelete] = useState<ScriptItem | null>(null);
   const [selectedScriptForLoader, setSelectedScriptForLoader] = useState<ScriptItem | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -120,20 +130,66 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
     }
   };
 
+  const handleOpenUpdateModal = async (script: ScriptItem) => {
+    setScriptToEdit(script);
+    setEditFilename(script.filename);
+    setEditPanelId(script.panelId);
+    setEditEngine('AidenFuscators-Register-VM');
+    setEditProfile('advanced');
+    setEditSourceCode('');
+
+    try {
+      const src = await api.getScriptSource(script.id);
+      if (src) setEditSourceCode(src);
+    } catch {
+      // Ignore source pre-fill errors
+    }
+  };
+
+  const handleEditFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.lua') && !file.name.endsWith('.luau') && !file.name.endsWith('.txt')) {
+      onShowToast('error', 'Invalid file type', 'Only .lua, .luau, and .txt files are allowed.');
+      return;
+    }
+
+    setEditFilename(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setEditSourceCode(event.target?.result as string);
+      onShowToast('info', 'New file loaded', `Loaded "${file.name}" into editor. Click Save to re-obfuscate.`);
+    };
+    reader.readAsText(file);
+  };
+
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scriptToEdit || !editFilename.trim()) return;
 
+    setIsUpdatingScript(true);
     try {
       const updated = await api.updateScript(scriptToEdit.id, {
         filename: editFilename.trim(),
         panelId: editPanelId,
+        newSourceCode: editSourceCode.trim() || undefined,
+        engine: editEngine,
+        profile: editProfile,
       });
+
       setScripts(scripts.map((s) => (s.id === updated.id ? updated : s)));
       setScriptToEdit(null);
-      onShowToast('success', 'Script updated', `Saved changes to "${updated.filename}".`);
+      setEditSourceCode('');
+      onShowToast(
+        'success',
+        'Script Updated & Re-Obfuscated!',
+        `Saved changes to "${updated.filename}". Existing loadstrings now deliver the updated script without changing URLs.`
+      );
     } catch (err: any) {
       onShowToast('error', 'Update failed', err.message);
+    } finally {
+      setIsUpdatingScript(false);
     }
   };
 
@@ -346,15 +402,12 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
                           )}
 
                           <button
-                            onClick={() => {
-                              setScriptToEdit(script);
-                              setEditFilename(script.filename);
-                              setEditPanelId(script.panelId);
-                            }}
-                            className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-purple-950/40 transition-colors"
-                            title="Rename or reassign"
+                            onClick={() => handleOpenUpdateModal(script)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-purple-300 hover:text-white rounded-lg bg-purple-950/60 hover:bg-purple-900/60 border border-purple-800/40 transition-colors"
+                            title="Update Script & Replace Code (Loadstring unchanged)"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <RefreshCw className="w-3 h-3 text-purple-400" />
+                            <span>Update</span>
                           </button>
 
                           <button
@@ -460,55 +513,208 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* Update Script & Code Modal (Loadstring Remains Valid) */}
       {scriptToEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0f0a1c] border border-purple-900/40 rounded-2xl p-6 shadow-2xl relative">
-            <h3 className="text-lg font-bold text-white mb-3">Edit Script Metadata</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="w-full max-w-2xl bg-[#0e081c] border border-purple-800/50 rounded-2xl p-6 shadow-2xl relative my-8 space-y-5">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-purple-900/30 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Update Script &amp; Code
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">
+                    Loadstring Unchanged
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Replace or modify this script's code without breaking existing loadstrings. All executors and users using your loadstring will immediately receive this updated code on their next execution.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScriptToEdit(null)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Loadstring URL Unchanged Notification */}
+            <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-800/40 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-bold text-purple-300">
+                <span className="flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Existing Permanent Loadstring:</span>
+                </span>
+                <span className="text-emerald-400 text-[10px] font-mono">Zero 404 Guaranteed</span>
+              </div>
+              <div className="p-2 rounded-lg bg-black/70 border border-purple-900/40 text-[11px] font-mono text-cyan-300 break-all select-all">
+                loadstring(game:HttpGet("{WASMER_APP_URL}/loader.lua"))()
+              </div>
+            </div>
+
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Filename
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editFilename}
-                  onChange={(e) => setEditFilename(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs font-mono"
-                />
+              {/* File Info Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Script Filename
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFilename}
+                    onChange={(e) => setEditFilename(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs font-mono focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                    Assigned Panel
+                  </label>
+                  <select
+                    value={editPanelId}
+                    onChange={(e) => setEditPanelId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs focus:border-purple-500 focus:outline-none"
+                  >
+                    {panels.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
+              {/* Single Obfuscation Engine Picker */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-neutral-300">
+                    Obfuscation Engine
+                  </label>
+                  <span className="text-[10px] font-medium text-amber-400">
+                    ⚡ Strict Single-Engine Execution (No Stacking)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {CLIENT_ENGINES.map((eng) => {
+                    const isSelected = editEngine === eng.id;
+                    return (
+                      <button
+                        key={eng.id}
+                        type="button"
+                        onClick={() => setEditEngine(eng.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'bg-purple-900/40 border-purple-500 shadow-md shadow-purple-950 text-white'
+                            : 'bg-[#080410] border-purple-900/20 text-neutral-400 hover:text-neutral-200 hover:border-purple-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold truncate">{eng.name}</span>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                        </div>
+                        <span className="text-[10px] text-neutral-400 line-clamp-1 block">
+                          v{eng.version}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Security Profile */}
               <div>
                 <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Assigned Panel
+                  Protection Profile
                 </label>
-                <select
-                  value={editPanelId}
-                  onChange={(e) => setEditPanelId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs"
-                >
-                  {panels.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['basic', 'advanced', 'maximum'] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setEditProfile(p)}
+                      className={`py-1.5 px-3 rounded-xl border text-xs font-bold uppercase transition-all ${
+                        editProfile === p
+                          ? 'bg-purple-600 border-purple-400 text-white'
+                          : 'bg-[#080410] border-purple-900/30 text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      {p}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              {/* Code Editor & File Replacement Area */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-neutral-300">
+                    Script Source Code (Edit or Upload New File)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      ref={editFileInputRef}
+                      onChange={handleEditFileSelect}
+                      accept=".lua,.luau,.txt"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editFileInputRef.current?.click()}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-purple-700/50 bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 text-[11px] font-semibold transition-colors"
+                    >
+                      <FileUp className="w-3 h-3 text-purple-400" />
+                      <span>Upload New File</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <textarea
+                    rows={8}
+                    value={editSourceCode}
+                    onChange={(e) => setEditSourceCode(e.target.value)}
+                    placeholder="-- Paste or edit your updated Lua / Luau source code here...&#10;print('Hello World - Updated Script')"
+                    className="w-full p-3 rounded-xl bg-[#06030c] border border-purple-900/40 text-neutral-200 font-mono text-xs focus:border-purple-500 focus:outline-none leading-relaxed resize-y"
+                  />
+                  <div className="text-[10px] text-neutral-500 text-right mt-0.5 font-mono">
+                    {editSourceCode.length} characters · {editSourceCode.split('\n').length} lines
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-purple-900/30">
                 <button
                   type="button"
+                  disabled={isUpdatingScript}
                   onClick={() => setScriptToEdit(null)}
-                  className="px-4 py-2 rounded-xl border border-neutral-700 text-neutral-300 text-xs"
+                  className="px-4 py-2 rounded-xl border border-neutral-700 text-neutral-300 text-xs hover:bg-neutral-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold"
+                  disabled={isUpdatingScript || !editFilename.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-900/40 transition-all"
                 >
-                  Save
+                  {isUpdatingScript ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      <span>Updating &amp; Re-Obfuscating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Save Changes &amp; Update Script</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

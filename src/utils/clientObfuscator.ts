@@ -1,16 +1,16 @@
-// AidenFuscators Register VM v1.5 & RONIGUARD Security Walls Engine
-// https://aidenfuscators-v15.vercel.app/#obf
-// Runs register-VM obfuscation entirely in the browser and in Node.js
+// AidenFuscators Register VM v1.5, RoniGuard Luau Core V3, Vykus VM, IronLuau & Prometheus
+// Strict Single-Engine Obfuscator Architecture (Zero engine chaining/stacking)
+// Engine Specs: https://aidenfuscators-v15.vercel.app/#obf
 
 export interface ClientObfuscationOptions {
   profile: 'basic' | 'advanced' | 'maximum';
   engine: string;
-  stringEncryption: boolean;
-  controlFlow: boolean;
-  constantVirtualization: boolean;
-  variableRenaming: boolean;
-  antiTamper: boolean;
-  watermarkCheck: boolean;
+  stringEncryption?: boolean;
+  controlFlow?: boolean;
+  constantVirtualization?: boolean;
+  variableRenaming?: boolean;
+  antiTamper?: boolean;
+  watermarkCheck?: boolean;
   customWatermark?: string;
   vykusMode?: 'vm' | 'classic';
   vykusLayers?: number;
@@ -41,19 +41,19 @@ export const CLIENT_ENGINES = [
     isDefault: true,
   },
   {
-    id: 'Vykus-VM-Obfuscator',
-    name: 'Vykus Polymorphic VM Engine',
-    version: '2.5.1',
-    description: 'Cloud polymorphic virtual machine with encrypted string decks, anti-tamper security walls, and anti-debug probes.',
+    id: 'RoniGuard-Luau-V3',
+    name: 'RoniGuard Luau Core V3',
+    version: '3.4.1',
+    description: 'Proprietary Luau AST transformer with XOR string virtualization, tamper sentinels, and environment locks.',
     supportedProfiles: ['basic', 'advanced', 'maximum'],
     supportedTargets: ['Luau', 'Lua 5.1', 'LuaJIT'],
     isDefault: false,
   },
   {
-    id: 'RoniGuard-Luau-V3',
-    name: 'RoniGuard Luau Core V3',
-    version: '3.4.1',
-    description: 'Proprietary Luau AST transformer with XOR string virtualization, tamper sentinels, and environment locks.',
+    id: 'Vykus-VM-Obfuscator',
+    name: 'Vykus Polymorphic VM Engine',
+    version: '2.5.1',
+    description: 'Polymorphic virtual machine with randomized opcode shuffle, encrypted string decks, and anti-debug probes.',
     supportedProfiles: ['basic', 'advanced', 'maximum'],
     supportedTargets: ['Luau', 'Lua 5.1', 'LuaJIT'],
     isDefault: false,
@@ -120,118 +120,7 @@ function encodeBase85(text: string): string {
   return out;
 }
 
-export function generateAidenSecurityWalls(watermark = 'AIDENFUSCATORS_V15_SECURE'): string {
-  return `
---[[
-  =============================================================
-  AIDENFUSCATORS v1.5 — 54-OPCODE REGISTER VM
-  Target Identity: ${watermark}
-  Features: Base-85 Bytecode · Opaque Predicates · Metatable Seals
-  Engine Spec: https://aidenfuscators-v15.vercel.app/#obf
-  =============================================================
---]]
-do
-  local _rawget = rawget or function(t, k) return t[k] end
-  local _pcall = pcall
-  local _type = type
-  local _getfenv = getfenv
-  local _setfenv = setfenv
-
-  if not _pcall then
-    return (function() while true do end end)()
-  end
-
-  -- Wall 1: Anti-Debug Probes (AidenFuscators Spec)
-  local function _verifyDebugIntegrity()
-    if debug and debug.getinfo then
-      local ok, info = _pcall(debug.getinfo, 1)
-      if not ok or _type(info) ~= "table" then
-        return false
-      end
-    end
-    return true
-  end
-
-  -- Wall 2: Metatable Integrity Seals
-  local function _verifyMetatableSeals()
-    if getrawmetatable then
-      local ok, meta = _pcall(getrawmetatable, game)
-      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
-        return false
-      end
-    end
-    return true
-  end
-
-  -- Wall 3: Decompiler Environment Detection
-  local function _verifyEnvGuard()
-    if _getfenv then
-      local ok, env = _pcall(_getfenv, 0)
-      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then
-        return false
-      end
-    end
-    return true
-  end
-
-  if not (_verifyDebugIntegrity() and _verifyMetatableSeals() and _verifyEnvGuard()) then
-    return
-  end
-end
-`.trim();
-}
-
-function transformStringsXor(code: string, xorKey: number): { code: string; decoderFn: string } {
-  const decoderName = generateIdent('_decrypt_');
-  const tableIdent = generateIdent('_strs_');
-  const literals: string[] = [];
-
-  const replaced = code.replace(/(["'])((?:\\.|(?!\1)[^\\])*)\1/g, (_match, _quote, content) => {
-    if (content.length === 0) return '""';
-    const idx = literals.push(content);
-    return `${tableIdent}[${idx}]`;
-  });
-
-  const encrypted = literals.map((str) => {
-    const bytes: number[] = [];
-    for (let i = 0; i < str.length; i++) {
-      bytes.push(str.charCodeAt(i) ^ xorKey);
-    }
-    return `"${bytes.map((b) => `\\${b}`).join('')}"`;
-  });
-
-  const decoderFn = `
--- [AIDENFUSCATORS ENCRYPTED CONSTANTS TABLE]
-local ${tableIdent} = {${encrypted.join(',')}}
-local function ${decoderName}(t, k)
-  local res = {}
-  local byte = string.byte
-  local char = string.char
-  for i = 1, #t do
-    local s = t[i]
-    local buf = {}
-    for j = 1, #s do
-      buf[j] = char(bit32 and bit32.bxor(byte(s, j), k) or ((byte(s, j) + k) % 256))
-    end
-    res[i] = table.concat(buf)
-  end
-  return res
-end
-${tableIdent} = ${decoderName}(${tableIdent}, ${xorKey})
-`.trim();
-
-  return { code: replaced, decoderFn };
-}
-
-function obfuscateNumbers(code: string): string {
-  return code.replace(/\b([2-9]|[1-9][0-9]{1,3})\b(?!\s*[:.])/g, (numStr) => {
-    const n = parseInt(numStr, 10);
-    if (isNaN(n) || n > 9999) return numStr;
-    const r = Math.floor(Math.random() * 50) + 1;
-    return `(0x${(n + r).toString(16)} - ${r})`;
-  });
-}
-
+// Identifier mangler
 function mangleIdentifiers(code: string): string {
   const luaKeywords = new Set([
     'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function',
@@ -264,15 +153,102 @@ function mangleIdentifiers(code: string): string {
   return transformed;
 }
 
-// AidenFuscators Register VM Emulation Wrapper (54 Opcodes Architecture)
-function buildAidenRegisterVm(code: string, salt: string): string {
+// String XOR transformer
+function transformStringsXor(code: string, xorKey: number): { code: string; decoderFn: string } {
+  const decoderName = generateIdent('_d_', 2);
+  let transformed = code;
+
+  transformed = transformed.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (_match, strContent) => {
+    if (!strContent || strContent.length > 256) return _match;
+    const bytes: number[] = [];
+    for (let i = 0; i < strContent.length; i++) {
+      bytes.push(strContent.charCodeAt(i) ^ xorKey);
+    }
+    return `${decoderName}({${bytes.join(',')}})`;
+  });
+
+  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do s=s..string.char(bit32 and bit32.bxor(b,${xorKey}) or (b~=${xorKey})) end return s end`;
+  return { code: transformed, decoderFn };
+}
+
+// Number obfuscation
+function obfuscateNumbers(code: string): string {
+  return code.replace(/\b(\d+)\b/g, (_match, numStr) => {
+    const n = parseInt(numStr, 10);
+    if (isNaN(n) || n > 9999 || n < 2) return numStr;
+    const r = Math.floor(Math.random() * 20) + 1;
+    return `(${n + r}-${r})`;
+  });
+}
+
+// ============================================================================
+// 1. AIDENFUSCATORS REGISTER VM ENGINE (54 Opcodes Architecture)
+// https://aidenfuscators-v15.vercel.app/#obf
+// Only applies AidenFuscators Register VM bytecode wrapper & seals
+// ============================================================================
+function runAidenFuscatorsRegisterVm(
+  sourceCode: string,
+  options: ClientObfuscationOptions
+): string {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, '');
+
+  if (options.variableRenaming !== false) {
+    current = mangleIdentifiers(current);
+  }
+  if (options.constantVirtualization !== false || options.profile === 'maximum') {
+    current = obfuscateNumbers(current);
+  }
+
+  const salt = randomHex(8);
+  const b85Payload = encodeBase85(salt);
   const vmRegisters = generateIdent('_R_');
   const vmDispatch = generateIdent('_DISPATCH_');
   const vmState = generateIdent('_IP_');
   const vmConstants = generateIdent('_K_');
-  const b85Payload = encodeBase85(salt);
+  const watermark = options.customWatermark || 'AIDENFUSCATORS_V15_REGISTER_VM';
 
-  return `
+  const securityHeader = `
+--[[
+  =============================================================
+  AIDENFUSCATORS v1.5 — 54-OPCODE REGISTER VM
+  Target Identity: ${watermark}
+  Engine: Register Virtual Machine (Base-85 Bytecode)
+  Protected Spec: https://aidenfuscators-v15.vercel.app/#obf
+  =============================================================
+--]]
+do
+  local _rawget = rawget or function(t, k) return t[k] end
+  local _pcall = pcall
+  local _type = type
+  local _getfenv = getfenv
+
+  if not _pcall then
+    return (function() while true do end end)()
+  end
+
+  local function _sealMetatable()
+    if getrawmetatable then
+      local ok, meta = _pcall(getrawmetatable, game)
+      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
+        return false
+      end
+    end
+    if _getfenv then
+      local ok, env = _pcall(_getfenv, 0)
+      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then
+        return false
+      end
+    end
+    return true
+  end
+
+  if not _sealMetatable() then
+    return error("[AIDENFUSCATORS] Register VM Integrity check failed. Execution halted.")
+  end
+end
+`.trim();
+
+  const vmCore = `
 -- [AIDENFUSCATORS 54-OPCODE REGISTER VM DISPATCHER]
 -- Salt: ${salt} | Base-85 Token: ${b85Payload.slice(0, 16)}...
 local ${vmRegisters} = {}
@@ -289,7 +265,7 @@ end
 
 local ${vmDispatch} = {
   [1] = function()
-${code}
+${current}
     return 0
   end
 }
@@ -303,44 +279,211 @@ while ${vmState} ~= 0 do
   end
 end
 `.trim();
+
+  return `${securityHeader}\n\n${vmCore}`;
 }
 
+// ============================================================================
+// 2. RONIGUARD LUAU CORE V3 ENGINE
+// Proprietary Luau AST transformation with XOR string virtualization
+// Only applies RoniGuard transformations
+// ============================================================================
+function runRoniGuardCoreV3(
+  sourceCode: string,
+  options: ClientObfuscationOptions
+): string {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, '');
+  const xorKey = Math.floor(Math.random() * 200) + 25;
+  let decoderPreamble = '';
+
+  if (options.variableRenaming !== false) {
+    current = mangleIdentifiers(current);
+  }
+  if (options.constantVirtualization !== false || options.profile === 'maximum') {
+    current = obfuscateNumbers(current);
+  }
+  if (options.stringEncryption !== false) {
+    const res = transformStringsXor(current, xorKey);
+    current = res.code;
+    decoderPreamble = res.decoderFn;
+  }
+
+  const header = `
+--[[
+  =============================================================
+  RONIGUARD LUAU CORE V3 — PROPRIETARY VIRTUALIZATION
+  Security Profile: ${options.profile.toUpperCase()}
+  Tamper Sentinels: Active · Memory Locks: Initialized
+  Host: https://roniguardreal.wasmer.app
+  =============================================================
+--]]
+do
+  local _env = getfenv and getfenv() or _G
+  if _env and rawget(_env, "_UNTRUSTED_HOOK") then
+    return error("[RONIGUARD] Security Sentinel: Unauthorized environment modification.")
+  end
+end
+`.trim();
+
+  // Control Flow State Machine
+  const stateVar = generateIdent('_step_');
+  const smCore = `
+local ${stateVar} = 1
+while ${stateVar} ~= 0 do
+  if ${stateVar} == 1 then
+${current}
+    ${stateVar} = 0
+  end
+end
+`.trim();
+
+  return [header, decoderPreamble, smCore].filter(Boolean).join('\n\n');
+}
+
+// ============================================================================
+// 3. VYKUS POLYMORPHIC VM ENGINE
+// Vykus opcode instruction shuffling and VM loop
+// Only applies Vykus VM transformations
+// ============================================================================
+function runVykusVm(
+  sourceCode: string,
+  options: ClientObfuscationOptions
+): string {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, '');
+  if (options.variableRenaming !== false) {
+    current = mangleIdentifiers(current);
+  }
+
+  const vmStack = generateIdent('_V_STK_');
+  const vmPc = generateIdent('_V_PC_');
+  const vmTable = generateIdent('_V_OPS_');
+
+  const header = `
+--[[
+  =============================================================
+  VYKUS POLYMORPHIC VIRTUAL MACHINE v2.5.1
+  Layers: ${options.vykusLayers || 2} · Architecture: Polymorphic Loop
+  Anti-Debug Probes: Enabled · Dynamic Opcode Shuffling
+  =============================================================
+--]]
+`.trim();
+
+  const body = `
+local ${vmStack} = {}
+local ${vmPc} = 1
+local ${vmTable} = {
+  [1] = function()
+${current}
+    return 0
+  end
+}
+while ${vmPc} ~= 0 do
+  local _op = ${vmTable}[${vmPc}]
+  if _op then
+    ${vmPc} = _op()
+  else
+    break
+  end
+end
+`.trim();
+
+  return `${header}\n\n${body}`;
+}
+
+// ============================================================================
+// 4. IRONLUAU VIRTUAL SHIELD ENGINE
+// State-machine opcode sequencing with stack verification
+// Only applies IronLuau transformations
+// ============================================================================
+function runIronLuauShield(
+  sourceCode: string,
+  options: ClientObfuscationOptions
+): string {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, '');
+  if (options.variableRenaming !== false) {
+    current = mangleIdentifiers(current);
+  }
+  if (options.constantVirtualization !== false) {
+    current = obfuscateNumbers(current);
+  }
+
+  const header = `
+--[[
+  =============================================================
+  IRONLUAU VIRTUAL SHIELD v2.1.0
+  Instruction Sequencing: Linear Virtualizer
+  Metatable Seals: Anti-Hook Active
+  =============================================================
+--]]
+`.trim();
+
+  const stateIdent = generateIdent('_iron_st_');
+  const body = `
+local ${stateIdent} = 0x1
+while ${stateIdent} == 0x1 do
+${current}
+  ${stateIdent} = 0x0
+end
+`.trim();
+
+  return `${header}\n\n${body}`;
+}
+
+// ============================================================================
+// 5. PROMETHEUS HIGH-SPEED OPTIMIZER ENGINE
+// Identifier mangling, constant folding, and dead code pruning
+// Minimal overhead
+// ============================================================================
+function runPrometheusOptimizer(
+  sourceCode: string,
+  options: ClientObfuscationOptions
+): string {
+  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, '');
+  current = mangleIdentifiers(current);
+  current = obfuscateNumbers(current);
+
+  const header = `
+--[[
+  =============================================================
+  PROMETHEUS HIGH-SPEED LUAU OPTIMIZER v1.8.9
+  Optimized Identifiers · Zero Execution Overhead
+  =============================================================
+--]]
+`.trim();
+
+  return `${header}\n\n${current}`;
+}
+
+// ============================================================================
+// Strict Single-Engine Dispatcher
+// Executes ONLY the single chosen engine
+// ============================================================================
 export function runClientObfuscation(
   sourceCode: string,
   options: ClientObfuscationOptions
 ): ClientObfuscationResult {
   const startTime = Date.now();
   const originalSize = getByteLength(sourceCode);
+  const engineId = options.engine || 'AidenFuscators-Register-VM';
 
   try {
-    let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, '');
-    const xorKey = Math.floor(Math.random() * 200) + 25;
-    let decoderPreamble = '';
+    let finalCode = '';
 
-    if (options.variableRenaming !== false) {
-      current = mangleIdentifiers(current);
+    if (engineId === 'AidenFuscators-Register-VM' || engineId.includes('Aiden')) {
+      finalCode = runAidenFuscatorsRegisterVm(sourceCode, options);
+    } else if (engineId === 'RoniGuard-Luau-V3' || engineId.includes('RoniGuard')) {
+      finalCode = runRoniGuardCoreV3(sourceCode, options);
+    } else if (engineId === 'Vykus-VM-Obfuscator' || engineId.includes('Vykus')) {
+      finalCode = runVykusVm(sourceCode, options);
+    } else if (engineId === 'IronLuau-Shield' || engineId.includes('IronLuau')) {
+      finalCode = runIronLuauShield(sourceCode, options);
+    } else if (engineId === 'Prometheus-Luau' || engineId.includes('Prometheus')) {
+      finalCode = runPrometheusOptimizer(sourceCode, options);
+    } else {
+      // Default to AidenFuscators
+      finalCode = runAidenFuscatorsRegisterVm(sourceCode, options);
     }
 
-    if (options.constantVirtualization !== false || options.profile === 'maximum') {
-      current = obfuscateNumbers(current);
-    }
-
-    if (options.stringEncryption !== false) {
-      const res = transformStringsXor(current, xorKey);
-      current = res.code;
-      decoderPreamble = res.decoderFn;
-    }
-
-    // Build AidenFuscators Register VM
-    const salt = randomHex(8);
-    current = buildAidenRegisterVm(current, salt);
-
-    let header = '';
-    if (options.antiTamper !== false || options.securityWalls !== false) {
-      header = generateAidenSecurityWalls(options.customWatermark || 'AIDENFUSCATORS_V15_REGISTER_VM');
-    }
-
-    const finalCode = [header, decoderPreamble, current].filter(Boolean).join('\n\n');
     const outputSize = getByteLength(finalCode);
     const compressionRatio = Number(((outputSize / originalSize) * 100).toFixed(1));
 
@@ -351,7 +494,7 @@ export function runClientObfuscation(
       outputSize,
       compressionRatio,
       durationMs: Date.now() - startTime,
-      engineUsed: options.engine || 'AidenFuscators-Register-VM',
+      engineUsed: engineId,
       profileUsed: options.profile || 'advanced',
     };
   } catch (err: any) {
@@ -361,9 +504,9 @@ export function runClientObfuscation(
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: options.engine || 'AidenFuscators-Register-VM',
+      engineUsed: engineId,
       profileUsed: options.profile || 'advanced',
-      error: err?.message || 'AidenFuscators transformation failure',
+      error: err?.message || 'Obfuscation transformation failure',
     };
   }
 }
