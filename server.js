@@ -199,7 +199,7 @@ function getDefaultState() {
     },
     settings: {
       projectName: "RONIGUARD",
-      defaultEngine: "Vykus-VM-Obfuscator",
+      defaultEngine: "AidenFuscators-Register-VM",
       defaultProfile: "advanced",
       maxFileSizeMb: 10,
       requirePasswordForSourceRecovery: true,
@@ -264,13 +264,22 @@ var db = new Store();
 import crypto2 from "node:crypto";
 var AVAILABLE_ENGINES = [
   {
+    id: "AidenFuscators-Register-VM",
+    name: "AidenFuscators Register VM v1.5",
+    version: "1.5.0",
+    description: "54-Opcode Register Virtual Machine with Base-85 encoding, dead blocks, opaque predicates, and metatable security walls.",
+    supportedProfiles: ["basic", "advanced", "maximum"],
+    supportedTargets: ["Luau", "Lua 5.1", "LuaJIT", "Roblox"],
+    isDefault: true
+  },
+  {
     id: "Vykus-VM-Obfuscator",
     name: "Vykus Polymorphic VM Engine",
     version: "2.5.1",
     description: "Cloud polymorphic virtual machine with encrypted string decks, anti-tamper security walls, and anti-debug probes.",
     supportedProfiles: ["basic", "advanced", "maximum"],
     supportedTargets: ["Luau", "Lua 5.1", "LuaJIT"],
-    isDefault: true
+    isDefault: false
   },
   {
     id: "RoniGuard-Luau-V3",

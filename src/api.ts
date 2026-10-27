@@ -246,7 +246,8 @@ function saveLocalStore(state: LocalStoreState): void {
   } catch {}
 }
 
-let backendOfflineMode = false;
+// If running on Wasmer Edge static host, default to client store to prevent 405 Method Not Allowed on POST
+let backendOfflineMode = typeof window !== 'undefined' && window.location.hostname.includes('wasmer.app');
 
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<any> {
   const token = getStoredToken();
@@ -259,7 +260,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
     headers.set('Content-Type', 'application/json');
   }
 
-  // If we already know the backend is 404 (static Wasmer host), skip to avoid console error flood
+  // If we already know the backend is 404/405 (static Wasmer host), skip network call to avoid 405 console errors
   if (backendOfflineMode) {
     throw new Error('BACKEND_OFFLINE_WASMER_EDGE');
   }
@@ -270,9 +271,13 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
       headers,
     });
 
-    // Detect Wasmer 404 static HTML page
+    // Detect Wasmer static server (404 Not Found, 405 Method Not Allowed, or HTML error page on API)
     const contentType = response.headers.get('content-type') || '';
-    if (response.status === 404 && contentType.includes('text/html')) {
+    if (
+      response.status === 404 ||
+      response.status === 405 ||
+      (response.status >= 400 && contentType.includes('text/html'))
+    ) {
       backendOfflineMode = true;
       throw new Error('BACKEND_OFFLINE_WASMER_EDGE');
     }

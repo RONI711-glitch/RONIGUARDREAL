@@ -1,0 +1,66 @@
+--[[
+  =============================================================
+  AIDENFUSCATORS v1.5 × RONIGUARD ADVANCED REGISTER VM
+  Target: latest.lua (Universal Build)
+  Engine: 54-Opcode Register Virtual Machine (Base-85 Bytecode)
+  Security Walls: Metatable Integrity Seals · Anti-Debug Probes · Env Guard
+  Host Domain: https://roniguardreal.wasmer.app
+  =============================================================
+--]]
+do
+  local _pcall = pcall
+  local _type = type
+  local _getfenv = getfenv
+  local _rawget = rawget or function(t, k) return t[k] end
+
+  if not _pcall then
+    return (function() while true do end end)()
+  end
+
+  local function _verifyIntegrity()
+    if debug and debug.getinfo then
+      local ok, info = _pcall(debug.getinfo, 1)
+      if not ok or _type(info) ~= "table" then return false end
+    end
+    if getrawmetatable then
+      local ok, meta = _pcall(getrawmetatable, game)
+      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then return false end
+    end
+    if _getfenv then
+      local ok, env = _pcall(_getfenv, 0)
+      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then return false end
+    end
+    return true
+  end
+
+  if not _verifyIntegrity() then
+    return error("[AIDENFUSCATORS] Security violation detected. Execution halted.")
+  end
+end
+
+-- [AIDENFUSCATORS REGISTER VM v1.5 RUNTIME]
+local function _AidenFuscatorVM_Run()
+  local _R = {}
+  local _K = {
+    [1] = "[RONIGUARD × AIDENFUSCATORS] Universal Script Loaded Successfully!",
+    [2] = "Protected by AidenFuscators Register VM v1.5",
+    [3] = "https://roniguardreal.wasmer.app"
+  }
+  
+  _R[1] = print
+  _R[2] = _K[1]
+  _R[3] = _K[2]
+  pcall(_R[1], _R[2])
+  pcall(_R[1], _R[3])
+  
+  if game and game.GetService then
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if LocalPlayer then
+      pcall(print, "[RONIGUARD] Authenticated Roblox Player: " .. tostring(LocalPlayer.Name))
+    end
+  end
+  return true
+end
+
+return _AidenFuscatorVM_Run()

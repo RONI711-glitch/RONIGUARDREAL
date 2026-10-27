@@ -365,7 +365,7 @@ function getDefaultState(): RoniguardState {
     },
     settings: {
       projectName: 'RONIGUARD',
-      defaultEngine: 'Vykus-VM-Obfuscator',
+      defaultEngine: 'AidenFuscators-Register-VM',
       defaultProfile: 'advanced',
       maxFileSizeMb: 10,
       requirePasswordForSourceRecovery: true,
