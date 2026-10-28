@@ -4,62 +4,56 @@ import { SectionId, Sidebar } from './components/Sidebar.tsx';
 import { Header } from './components/Header.tsx';
 import { ToastContainer, ToastMessage } from './components/Toast.tsx';
 import { LoginView } from './views/LoginView.tsx';
+import { UserProfile } from './types.ts';
 
-// Views
+// 5 Core Views
 import { OverviewView } from './views/OverviewView.tsx';
 import { PanelsView } from './views/PanelsView.tsx';
 import { ScriptsView } from './views/ScriptsView.tsx';
-import { ObfuscationView } from './views/ObfuscationView.tsx';
-import { WhitelistView } from './views/WhitelistView.tsx';
-import { KeysView } from './views/KeysView.tsx';
-import { HwidView } from './views/HwidView.tsx';
-import { BuildHistoryView } from './views/BuildHistoryView.tsx';
-import { SourceRecoveryView } from './views/SourceRecoveryView.tsx';
-import { DiscordBotView } from './views/DiscordBotView.tsx';
-import { ApiManagementView } from './views/ApiManagementView.tsx';
-import { AnalyticsView } from './views/AnalyticsView.tsx';
+import { LicensesView } from './views/LicensesView.tsx';
+import { AccountView } from './views/AccountView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
 import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
 
 export default function App() {
-  const isLoadstringRoute = typeof window !== 'undefined' && (
-    window.location.pathname.startsWith('/api/loader/raw') ||
-    window.location.pathname.startsWith('/raw/') ||
-    window.location.pathname === '/loader.lua' ||
-    window.location.pathname === '/raw/latest.lua' ||
-    window.location.pathname.startsWith('/load/') ||
-    window.location.pathname.endsWith('.lua')
-  );
+  const isLoadstringRoute =
+    typeof window !== 'undefined' &&
+    (window.location.pathname.startsWith('/api/loader/raw') ||
+      window.location.pathname.startsWith('/raw/') ||
+      window.location.pathname === '/loader.lua' ||
+      window.location.pathname === '/raw/latest.lua' ||
+      window.location.pathname.startsWith('/load/') ||
+      window.location.pathname === '/unauthorized' ||
+      window.location.pathname.endsWith('.lua'));
 
   if (isLoadstringRoute) {
     return <UnauthorizedLandingView />;
   }
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [ownerEmail, setOwnerEmail] = useState('ronizz.edit@gmail.com');
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Navigation context parameters (e.g. scriptId passed to obfuscation)
-  const [targetScriptForObfuscation, setTargetScriptForObfuscation] = useState<string | null>(null);
-
-  // Bot header status & count telemetry
-  const [botConnected, setBotConnected] = useState(false);
-  const [botUsername, setBotUsername] = useState<string | undefined>();
+  // Telemetry counts
+  const [botConnected, setBotConnected] = useState(true);
+  const [botUsername, setBotUsername] = useState<string | undefined>('RONIGUARD Sentinel');
   const [sidebarCounts, setSidebarCounts] = useState<{
     panels: number;
     scripts: number;
     activeKeys: number;
-    whitelist: number;
   }>({
     panels: 0,
     scripts: 0,
     activeKeys: 0,
-    whitelist: 0,
   });
 
-  const showToast = (type: 'success' | 'error' | 'warning' | 'info', title: string, description?: string) => {
+  const showToast = (
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    description?: string
+  ) => {
     const newToast: ToastMessage = {
       id: 'toast_' + Math.random().toString(36).slice(2, 9),
       type,
@@ -85,14 +79,13 @@ export default function App() {
         panels: overview.totalPanels,
         scripts: overview.totalScripts,
         activeKeys: overview.activeKeys,
-        whitelist: overview.whitelistedUsers,
       });
     } catch {
-      // Ignore background refresh errors
+      // Background refresh ignore
     }
   };
 
-  // Check existing session on mount
+  // Check session on mount
   useEffect(() => {
     const checkAuth = async () => {
       const token = getStoredToken();
@@ -102,8 +95,8 @@ export default function App() {
       }
 
       try {
-        const me = await api.getMe();
-        setOwnerEmail(me.email || 'ronizz.edit@gmail.com');
+        const user = await api.getMe();
+        setCurrentUser(user);
         setIsAuthenticated(true);
         refreshTelemetry();
       } catch {
@@ -116,7 +109,7 @@ export default function App() {
 
     const handleUnauthorized = () => {
       setIsAuthenticated(false);
-      showToast('warning', 'Session Expired', 'Please re-authenticate with your owner credentials.');
+      showToast('warning', 'Session Expired', 'Please sign in with Discord again.');
     };
     window.addEventListener('roniguard_unauthorized', handleUnauthorized);
     return () => window.removeEventListener('roniguard_unauthorized', handleUnauthorized);
@@ -128,36 +121,30 @@ export default function App() {
     } catch {
       clearStoredToken();
     }
+    setCurrentUser(null);
     setIsAuthenticated(false);
-    showToast('info', 'Logged Out', 'Owner vault session locked.');
+    showToast('info', 'Signed Out', 'You have been disconnected from RONIGUARD.');
   };
 
-  const handleNavigateToObfuscation = (scriptId: string) => {
-    setTargetScriptForObfuscation(scriptId);
-    setActiveSection('obfuscation');
-  };
-
-  // Initial checking spinner
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-[#07040d] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
-          <span className="text-xs text-neutral-400 font-mono">Authenticating RONIGUARD Vault...</span>
+          <span className="text-xs text-neutral-400 font-mono">Authenticating RONIGUARD Platform...</span>
         </div>
       </div>
     );
   }
 
-  // Login view if unauthenticated
   if (!isAuthenticated) {
     return (
       <>
         <LoginView
           onLoginSuccess={(user) => {
-            setOwnerEmail(user.email || 'ronizz.edit@gmail.com');
+            setCurrentUser(user);
             setIsAuthenticated(true);
-            showToast('success', 'Authenticated', `Welcome back, sole owner ${user.email}`);
+            showToast('success', 'Authenticated', `Welcome back, @${user.username || 'Developer'}`);
             refreshTelemetry();
           }}
         />
@@ -167,19 +154,12 @@ export default function App() {
   }
 
   const SECTION_TITLES: Record<SectionId, string> = {
-    overview: 'Overview & Telemetry',
+    overview: 'Dashboard',
     panels: 'Panels Management',
     scripts: 'Script Management',
-    obfuscation: 'Obfuscation Pipeline Studio',
-    whitelist: 'Whitelist Access Control',
-    keys: 'License Keys Manager',
-    hwid: 'Hardware ID (HWID) Devices',
-    history: 'Build History Audit',
-    'source-recovery': 'Owner Original Source Vault',
-    discord: 'Discord Bot Integration',
-    api: 'API Credentials & Loaders',
-    analytics: 'Security Analytics & Audit Ledger',
-    settings: 'System & Security Settings',
+    licenses: 'Script Licenses',
+    account: 'Account & Settings',
+    admin: 'Administrator Vault',
   };
 
   return (
@@ -189,13 +169,14 @@ export default function App() {
         currentSectionTitle={SECTION_TITLES[activeSection]}
         botConnected={botConnected}
         botUsername={botUsername}
-        ownerEmail={ownerEmail}
+        userLabel={currentUser?.username || 'Developer'}
+        userRole={currentUser?.role || 'user'}
         onToggleMobileNav={() => setIsMobileNavOpen(true)}
         onLogout={handleLogout}
       />
 
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
+        {/* Sidebar with simplified 5 sections */}
         <Sidebar
           activeSection={activeSection}
           onSelectSection={(sec) => {
@@ -205,6 +186,9 @@ export default function App() {
           isOpenMobile={isMobileNavOpen}
           onCloseMobile={() => setIsMobileNavOpen(false)}
           counts={sidebarCounts}
+          username={currentUser?.username || 'Developer'}
+          userRole={currentUser?.role || 'user'}
+          isAdmin={currentUser?.role === 'admin'}
         />
 
         {/* Main Content Area */}
@@ -218,57 +202,17 @@ export default function App() {
             />
           )}
 
-          {activeSection === 'panels' && (
-            <PanelsView onShowToast={showToast} />
+          {activeSection === 'panels' && <PanelsView onShowToast={showToast} />}
+
+          {activeSection === 'scripts' && <ScriptsView onShowToast={showToast} />}
+
+          {activeSection === 'licenses' && <LicensesView onShowToast={showToast} />}
+
+          {activeSection === 'account' && (
+            <AccountView onLogout={handleLogout} onShowToast={showToast} />
           )}
 
-          {activeSection === 'scripts' && (
-            <ScriptsView
-              onShowToast={showToast}
-              onNavigateToObfuscation={handleNavigateToObfuscation}
-            />
-          )}
-
-          {activeSection === 'obfuscation' && (
-            <ObfuscationView
-              initialScriptId={targetScriptForObfuscation}
-              onShowToast={showToast}
-            />
-          )}
-
-          {activeSection === 'whitelist' && (
-            <WhitelistView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'keys' && (
-            <KeysView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'hwid' && (
-            <HwidView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'history' && (
-            <BuildHistoryView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'source-recovery' && (
-            <SourceRecoveryView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'discord' && (
-            <DiscordBotView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'api' && (
-            <ApiManagementView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'analytics' && (
-            <AnalyticsView onShowToast={showToast} />
-          )}
-
-          {activeSection === 'settings' && (
+          {activeSection === 'admin' && (
             <SettingsView
               onShowToast={showToast}
               onNavigate={(sec) => setActiveSection(sec)}

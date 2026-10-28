@@ -338,34 +338,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onShowToast, onNavig
             </h3>
 
             <button
-              onClick={() => onNavigate('discord')}
+              onClick={() => onNavigate('overview')}
               className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[#080410] border border-purple-900/30 text-xs text-neutral-300 hover:text-white hover:border-purple-600/40 transition-colors"
             >
               <span className="flex items-center gap-2">
                 <Bot className="w-4 h-4 text-purple-400" />
-                <span>Existing Discord Bot Setup</span>
+                <span>Discord Bot Sentinel Status</span>
               </span>
               <span className="text-purple-400 font-mono text-[11px]">&rarr;</span>
             </button>
 
             <button
-              onClick={() => onNavigate('api')}
+              onClick={() => onNavigate('licenses')}
               className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[#080410] border border-purple-900/30 text-xs text-neutral-300 hover:text-white hover:border-purple-600/40 transition-colors"
             >
               <span className="flex items-center gap-2">
                 <Terminal className="w-4 h-4 text-purple-400" />
-                <span>API Keys & Luau Loaders</span>
+                <span>Script Licenses & Loadstrings</span>
               </span>
               <span className="text-purple-400 font-mono text-[11px]">&rarr;</span>
             </button>
 
             <button
-              onClick={() => onNavigate('source-recovery')}
+              onClick={() => onNavigate('scripts')}
               className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[#080410] border border-purple-900/30 text-xs text-neutral-300 hover:text-white hover:border-purple-600/40 transition-colors"
             >
               <span className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-amber-400" />
-                <span>Original Source Vault</span>
+                <span>Scripts & Source Files</span>
               </span>
               <span className="text-amber-400 font-mono text-[11px]">&rarr;</span>
             </button>

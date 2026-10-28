@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import apiRouter from './server/routes.ts';
+import apiRouter, { handleRawLoaderRequest } from './server/routes.ts';
 import { discordBotService } from './server/discordBotService.ts';
 
 dotenv.config();
@@ -19,15 +19,11 @@ app.set('trust proxy', 1);
 // Mount API routes
 app.use('/api', apiRouter);
 
-// Direct root aliases for Roblox loadstring URLs (e.g. /raw/:id or /load/:id)
-app.get('/raw/:id', (req, res) => {
-  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-  res.redirect(307, `/api/loader/raw/${req.params.id}${query}`);
-});
-app.get('/load/:id', (req, res) => {
-  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-  res.redirect(307, `/api/loader/raw/${req.params.id}${query}`);
-});
+// Direct root endpoints for Roblox loadstrings
+app.get('/loader.lua', handleRawLoaderRequest);
+app.get('/raw/:id', handleRawLoaderRequest);
+app.get('/load/:id', handleRawLoaderRequest);
+app.get('/raw/latest.lua', handleRawLoaderRequest);
 
 // Development vs Production serving
 async function startServer() {

@@ -1,3 +1,15 @@
+export interface UserProfile {
+  id: string;
+  discordId: string;
+  username: string;
+  discriminator?: string;
+  avatar: string | null;
+  email: string | null;
+  role: 'user' | 'admin';
+  lastLoginAt: string;
+  activeSessionsCount?: number;
+}
+
 export interface OwnerProfile {
   email: string;
   lastLogin: string | null;
@@ -7,6 +19,7 @@ export interface OwnerProfile {
 
 export interface Panel {
   id: string;
+  userId?: string;
   name: string;
   description: string;
   status: 'active' | 'archived';
@@ -22,17 +35,69 @@ export interface Panel {
 
 export interface ScriptItem {
   id: string;
+  userId?: string;
   panelId: string;
   filename: string;
   originalSize: number;
   protectedSize: number;
-  status: 'ready' | 'obfuscated' | 'failed';
+  status: 'ready' | 'obfuscated' | 'failed' | 'processing';
   originalFilename: string;
   originalFileId: string;
   protectedFileId: string | null;
+  apiKey?: string;
+  apiKeyId?: string;
+  isObfuscated?: boolean;
   buildCount: number;
   lastBuiltAt: string | null;
   createdAt: string;
+}
+
+export interface ScriptJobStage {
+  id: number;
+  name: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  timestamp?: string;
+}
+
+export interface ScriptJobRecord {
+  id: string;
+  scriptId: string;
+  userId: string;
+  panelId: string;
+  scriptName: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  currentStageIndex: number;
+  currentStage: string;
+  progressPercent: number;
+  stages: ScriptJobStage[];
+  obfuscationEnabled: boolean;
+  apiKey?: string;
+  error?: string;
+  sourceCodeLength: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface LicenseItem {
+  id: string;
+  userId?: string;
+  scriptId: string;
+  scriptName?: string;
+  panelId: string;
+  key: string;
+  type: 'lifetime' | '30d' | '7d' | '24h';
+  maxUses: number;
+  currentUses: number;
+  hwidLocked: boolean;
+  boundHwid: string | null;
+  status: 'active' | 'revoked' | 'expired';
+  isObfuscated?: boolean;
+  loadstringUrl?: string;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt?: string | null;
+  lastUsedAt: string | null;
 }
 
 export interface BuildHistoryItem {

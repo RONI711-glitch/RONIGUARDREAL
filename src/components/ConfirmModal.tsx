@@ -6,9 +6,11 @@ interface ConfirmModalProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  confirmText?: string;
   cancelLabel?: string;
   isDestructive?: boolean;
-  onConfirm: () => void;
+  confirmVariant?: string;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
   confirmPhrase?: string;
   userPhraseInput?: string;
@@ -20,8 +22,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   title,
   message,
   confirmLabel = 'Confirm Action',
+  confirmText,
   cancelLabel = 'Cancel',
   isDestructive = true,
+  confirmVariant,
   onConfirm,
   onCancel,
   confirmPhrase,
@@ -31,6 +35,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!isOpen) return null;
 
   const isPhraseSatisfied = !confirmPhrase || (userPhraseInput?.trim().toUpperCase() === confirmPhrase.toUpperCase());
+  const effectiveLabel = confirmText || confirmLabel;
+  const effectiveIsDestructive = confirmVariant ? (confirmVariant === 'danger' || confirmVariant === 'destructive') : isDestructive;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -78,14 +84,14 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             onClick={onConfirm}
             disabled={!isPhraseSatisfied}
             className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-md ${
-              isDestructive
+              effectiveIsDestructive
                 ? isPhraseSatisfied
                   ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/40'
                   : 'bg-red-950/40 text-neutral-500 cursor-not-allowed border border-red-900/30'
                 : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/40'
             }`}
           >
-            {confirmLabel}
+            {effectiveLabel}
           </button>
         </div>
       </div>

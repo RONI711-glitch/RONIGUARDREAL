@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   FileCode2,
+  Plus,
   Upload,
-  Download,
+  Copy,
+  Check,
   Trash2,
   Edit2,
   Search,
@@ -10,58 +12,75 @@ import {
   AlertCircle,
   Clock,
   Layers,
-  FileText,
   X,
   Play,
   Terminal,
   RefreshCw,
-  FileUp,
-  Code2,
   Lock,
+  Unlock,
+  KeyRound,
+  ExternalLink,
+  ShieldAlert,
 } from 'lucide-react';
-import { api, WASMER_APP_URL } from '../api.ts';
-import { ScriptItem, Panel } from '../types.ts';
+import { api } from '../api.ts';
+import { ScriptItem, Panel, ScriptJobRecord } from '../types.ts';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
-import { SentinelLoadstringCard } from '../components/SentinelLoadstringCard.tsx';
-import { SectionId } from '../components/Sidebar.tsx';
-import { CLIENT_ENGINES } from '../utils/clientObfuscator.ts';
 
 interface ScriptsViewProps {
   onShowToast: (type: 'success' | 'error' | 'warning' | 'info', title: string, desc?: string) => void;
-  onNavigateToObfuscation: (scriptId: string) => void;
+  onNavigateToObfuscation?: (scriptId: string) => void;
 }
 
-export const ScriptsView: React.FC<ScriptsViewProps> = ({
-  onShowToast,
-  onNavigateToObfuscation,
-}) => {
+const STAGES = [
+  'Syntax & AST Validation',
+  'Security Policy & Sandbox Analysis',
+  'Register VM Intermediate Bytecode Generation',
+  'Control-Flow Flattening & Anti-Tamper Sealing',
+  'String Encryption & XOR Dynamic Table Virtualization',
+  'Environment & Metatable Integrity Wall Injection',
+  'Output Bytecode Verification & Checksum',
+  'Script-Specific API Key Minting & Loadstring Finalization',
+];
+
+export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
   const [scripts, setScripts] = useState<ScriptItem[]>([]);
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPanelFilter, setSelectedPanelFilter] = useState<string>('all');
 
-  // Upload modal states
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [uploadFilename, setUploadFilename] = useState('');
-  const [uploadSource, setUploadSource] = useState('');
-  const [uploadPanelId, setUploadPanelId] = useState('');
-  const [uploadNotes, setUploadNotes] = useState('');
-  const [uploading, setUploading] = useState(false);
+  // Script Creation Modal
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [scriptName, setScriptName] = useState('');
+  const [selectedPanelId, setSelectedPanelId] = useState('');
+  const [newPanelName, setNewPanelName] = useState('');
+  const [isCreatingNewPanel, setIsCreatingNewPanel] = useState(false);
+  const [sourceCode, setSourceCode] = useState('');
+  const [obfuscationEnabled, setObfuscationEnabled] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Edit & Update Script states
+  // Background Job Processing Modal
+  const [activeJob, setActiveJob] = useState<ScriptJobRecord | null>(null);
+  const [completedJobResult, setCompletedJobResult] = useState<{
+    scriptId: string;
+    scriptName: string;
+    apiKey: string;
+    loadstringUrl: string;
+  } | null>(null);
+
+  // In-Place Edit Modal
   const [scriptToEdit, setScriptToEdit] = useState<ScriptItem | null>(null);
-  const [editFilename, setEditFilename] = useState('');
-  const [editPanelId, setEditPanelId] = useState('');
   const [editSourceCode, setEditSourceCode] = useState('');
-  const [editEngine, setEditEngine] = useState('AidenFuscators-Register-VM');
-  const [editProfile, setEditProfile] = useState<'basic' | 'advanced' | 'maximum'>('advanced');
-  const [isUpdatingScript, setIsUpdatingScript] = useState(false);
+  const [editObfuscation, setEditObfuscation] = useState(true);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Delete modal
   const [scriptToDelete, setScriptToDelete] = useState<ScriptItem | null>(null);
-  const [selectedScriptForLoader, setSelectedScriptForLoader] = useState<ScriptItem | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -69,8 +88,8 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
       const [scriptsData, panelsData] = await Promise.all([api.getScripts(), api.getPanels()]);
       setScripts(scriptsData);
       setPanels(panelsData);
-      if (panelsData.length > 0 && !uploadPanelId) {
-        setUploadPanelId(panelsData[0].id);
+      if (panelsData.length > 0 && !selectedPanelId) {
+        setSelectedPanelId(panelsData[0].id);
       }
     } catch (err: any) {
       onShowToast('error', 'Failed to load scripts', err.message);
@@ -81,138 +100,171 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
 
   useEffect(() => {
     loadData();
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, []);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Poll active background job
+  const startJobPolling = (jobId: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await api.getJobStatus(jobId);
+        if (res.job) {
+          setActiveJob(res.job);
+          if (res.job.status === 'completed') {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            const loadUrl = `https://roniguardreal.wasmer.app/loader.lua?script=${res.job.scriptId}&key=${res.job.apiKey}`;
+            setCompletedJobResult({
+              scriptId: res.job.scriptId,
+              scriptName: res.job.scriptName,
+              apiKey: res.job.apiKey || '',
+              loadstringUrl: loadUrl,
+            });
+            onShowToast('success', 'Script Processed & Secured', `API Key generated: ${res.job.apiKey}`);
+            loadData();
+          } else if (res.job.status === 'failed') {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            onShowToast('error', 'Processing Failed', res.job.error || 'Unknown error');
+          }
+        }
+      } catch {
+        // Continue polling
+      }
+    }, 1500);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.name.endsWith('.lua') && !file.name.endsWith('.luau') && !file.name.endsWith('.txt')) {
-      onShowToast('error', 'Invalid file type', 'Only .lua, .luau, and .txt files are allowed.');
+      onShowToast('error', 'Invalid File', 'Only .lua, .luau, and .txt files are supported.');
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      onShowToast('error', 'File too large', 'Max file size is 10 MB.');
-      return;
+    if (!scriptName) {
+      setScriptName(file.name.replace(/\.[^/.]+$/, ''));
     }
 
-    setUploadFilename(file.name);
     const reader = new FileReader();
     reader.onload = (event) => {
-      setUploadSource(event.target?.result as string);
-      setIsUploadOpen(true);
+      setSourceCode(event.target?.result as string);
     };
     reader.readAsText(file);
   };
 
-  const handleUploadSubmit = async (e: React.FormEvent) => {
+  const handleCreateScript = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadFilename.trim() || !uploadSource.trim()) return;
-
-    setUploading(true);
-    try {
-      const res = await api.uploadScript(
-        uploadFilename.trim(),
-        uploadSource,
-        uploadPanelId || panels[0]?.id,
-        uploadNotes
-      );
-      setScripts([res.script, ...scripts]);
-      setIsUploadOpen(false);
-      setUploadFilename('');
-      setUploadSource('');
-      onShowToast('success', 'Script uploaded & secured', `"${res.script.filename}" was processed.`);
-    } catch (err: any) {
-      onShowToast('error', 'Upload failed', err.message);
-    } finally {
-      setUploading(false);
+    if (!scriptName.trim()) {
+      onShowToast('warning', 'Missing Field', 'Please provide a script name.');
+      return;
     }
-  };
-
-  const handleOpenUpdateModal = async (script: ScriptItem) => {
-    setScriptToEdit(script);
-    setEditFilename(script.filename);
-    setEditPanelId(script.panelId);
-    setEditEngine('AidenFuscators-Register-VM');
-    setEditProfile('advanced');
-    setEditSourceCode('');
-
-    try {
-      const src = await api.getScriptSource(script.id);
-      if (src) setEditSourceCode(src);
-    } catch {
-      // Ignore source pre-fill errors
-    }
-  };
-
-  const handleEditFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.lua') && !file.name.endsWith('.luau') && !file.name.endsWith('.txt')) {
-      onShowToast('error', 'Invalid file type', 'Only .lua, .luau, and .txt files are allowed.');
+    if (!sourceCode.trim()) {
+      onShowToast('warning', 'Empty Script', 'Please paste or upload Lua source code.');
       return;
     }
 
-    setEditFilename(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setEditSourceCode(event.target?.result as string);
-      onShowToast('info', 'New file loaded', `Loaded "${file.name}" into editor. Click Save to re-obfuscate.`);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scriptToEdit || !editFilename.trim()) return;
-
-    setIsUpdatingScript(true);
+    setIsSubmitting(true);
     try {
-      const updated = await api.updateScript(scriptToEdit.id, {
-        filename: editFilename.trim(),
-        panelId: editPanelId,
-        newSourceCode: editSourceCode.trim() || undefined,
-        engine: editEngine,
-        profile: editProfile,
+      let panelId = selectedPanelId;
+      if (isCreatingNewPanel && newPanelName.trim()) {
+        const p = await api.createPanel({ name: newPanelName.trim() });
+        panelId = p.id;
+        setPanels((prev) => [p, ...prev]);
+      }
+
+      const res = await api.processScriptJob({
+        name: scriptName.trim(),
+        panelId: panelId || panels[0]?.id || 'pnl_main',
+        sourceCode: sourceCode.trim(),
+        obfuscationEnabled,
       });
 
-      setScripts(scripts.map((s) => (s.id === updated.id ? updated : s)));
-      setScriptToEdit(null);
-      setEditSourceCode('');
-      onShowToast(
-        'success',
-        'Script Updated & Re-Obfuscated!',
-        `Saved changes to "${updated.filename}". Existing loadstrings now deliver the updated script without changing URLs.`
-      );
+      setIsCreateOpen(false);
+      setScriptName('');
+      setSourceCode('');
+      setIsCreatingNewPanel(false);
+      setNewPanelName('');
+
+      // Initialize active job tracker modal
+      setActiveJob({
+        id: res.jobId,
+        scriptId: res.scriptId,
+        userId: '',
+        panelId,
+        scriptName,
+        status: 'processing',
+        currentStageIndex: 0,
+        currentStage: STAGES[0],
+        progressPercent: 5,
+        stages: STAGES.map((name, i) => ({ id: i + 1, name, status: i === 0 ? 'in_progress' : 'pending' })),
+        obfuscationEnabled,
+        apiKey: res.apiKey,
+        sourceCodeLength: sourceCode.length,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      startJobPolling(res.jobId);
     } catch (err: any) {
-      onShowToast('error', 'Update failed', err.message);
+      onShowToast('error', 'Creation Failed', err.message);
     } finally {
-      setIsUpdatingScript(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async () => {
+  // Open Edit Modal & load source
+  const handleOpenEdit = async (script: ScriptItem) => {
+    setScriptToEdit(script);
+    setEditObfuscation(script.isObfuscated ?? true);
+    setEditSourceCode('Loading script source...');
+    try {
+      const src = await api.getScriptSource(script.id);
+      setEditSourceCode(src || `-- Source code for ${script.filename}`);
+    } catch {
+      setEditSourceCode('-- Unable to load original source file');
+    }
+  };
+
+  const handleSaveInPlaceEdit = async () => {
+    if (!scriptToEdit) return;
+    setIsSavingEdit(true);
+    try {
+      await api.updateScriptInPlace(scriptToEdit.id, {
+        sourceCode: editSourceCode,
+        obfuscationEnabled: editObfuscation,
+      });
+      onShowToast('success', 'Script Updated In-Place', 'Loadstring URL and API key remain unchanged!');
+      setScriptToEdit(null);
+      loadData();
+    } catch (err: any) {
+      onShowToast('error', 'Update Failed', err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteScript = async () => {
     if (!scriptToDelete) return;
     try {
       await api.deleteScript(scriptToDelete.id);
-      setScripts(scripts.filter((s) => s.id !== scriptToDelete.id));
-      onShowToast('success', 'Script removed', `Deleted "${scriptToDelete.filename}".`);
+      setScripts((prev) => prev.filter((s) => s.id !== scriptToDelete.id));
+      onShowToast('info', 'Script Deleted', `"${scriptToDelete.filename}" removed.`);
     } catch (err: any) {
-      onShowToast('error', 'Delete failed', err.message);
+      onShowToast('error', 'Delete Failed', err.message);
     } finally {
       setScriptToDelete(null);
     }
   };
 
-  const handleDownloadProtected = async (script: ScriptItem) => {
-    try {
-      await api.downloadProtectedScript(script.id, script.filename);
-      onShowToast('success', 'Download initiated', `Saving protected copy of "${script.filename}".`);
-    } catch (err: any) {
-      onShowToast('error', 'Download failed', err.message);
-    }
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    onShowToast('success', 'Copied to Clipboard', text.substring(0, 50) + '...');
+    setTimeout(() => setCopiedId(null), 2500);
   };
 
   const filteredScripts = scripts.filter((s) => {
@@ -225,63 +277,46 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Action Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Script Management</h2>
-          <p className="text-xs text-neutral-400 mt-0.5">
-            Manage your Lua / Luau codebase. Original files are safely held in the private backend vault.
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <FileCode2 className="w-5 h-5 text-purple-400" />
+            Scripts & Deployments
+          </h2>
+          <p className="text-xs text-neutral-400 mt-1">
+            Build, protect with RONIGUARD MAX, and issue script-specific loadstring API keys.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept=".lua,.luau,.txt"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-900/40 bg-purple-950/30 hover:bg-purple-900/40 text-neutral-200 text-xs font-medium transition-colors"
-          >
-            <Upload className="w-4 h-4 text-purple-400" />
-            <span>Select File</span>
-          </button>
-          <button
-            onClick={() => {
-              setUploadFilename('');
-              setUploadSource('');
-              setIsUploadOpen(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md shadow-purple-900/30 transition-all"
-          >
-            <FileCode2 className="w-4 h-4" />
-            <span>Paste / Create</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setIsCreateOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/30 transition-all shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          Create Script
+        </button>
       </div>
 
-      {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
+          <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search scripts by filename or ID..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0f0a1c] border border-purple-900/30 text-white text-xs placeholder:text-neutral-500 focus:outline-none focus:border-purple-500 transition-colors font-mono"
+            className="w-full pl-10 pr-4 py-2 bg-[#0d071a] border border-purple-900/30 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500/60"
           />
         </div>
 
         <select
           value={selectedPanelFilter}
           onChange={(e) => setSelectedPanelFilter(e.target.value)}
-          className="px-3.5 py-2.5 rounded-xl bg-[#0f0a1c] border border-purple-900/30 text-xs text-neutral-300 focus:outline-none focus:border-purple-500"
+          className="px-3 py-2 bg-[#0d071a] border border-purple-900/30 rounded-xl text-xs text-neutral-300 focus:outline-none focus:border-purple-500/60"
         >
-          <option value="all">All Security Panels</option>
+          <option value="all">All Panels</option>
           {panels.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -290,429 +325,278 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
         </select>
       </div>
 
-      {/* Scripts Table / Cards */}
+      {/* Scripts Grid / List */}
       {loading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
-          <div className="w-7 h-7 border-2 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+        <div className="p-12 text-center text-xs text-neutral-500 flex flex-col items-center gap-3">
+          <RefreshCw className="w-6 h-6 animate-spin text-purple-400" />
+          Loading scripts and protection state...
         </div>
       ) : filteredScripts.length === 0 ? (
-        <div className="p-8 rounded-2xl bg-[#0f0a1c] border border-purple-900/25 text-center">
+        <div className="p-12 border border-purple-900/20 rounded-2xl bg-[#0d071a]/40 text-center">
           <FileCode2 className="w-10 h-10 text-neutral-600 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-white">No Scripts Stored</h3>
-          <p className="text-xs text-neutral-400 mt-1 max-w-sm mx-auto">
-            {searchQuery
-              ? 'No scripts match the search criteria.'
-              : 'Upload a Lua or Luau script to initiate genuine protection.'}
+          <h3 className="text-sm font-semibold text-neutral-300">No Scripts Found</h3>
+          <p className="text-xs text-neutral-500 max-w-sm mx-auto mt-1 mb-4">
+            Create your first script with RONIGUARD MAX obfuscation to generate an executor loadstring.
           </p>
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold inline-flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Create Script Now
+          </button>
         </div>
       ) : (
-        <div className="rounded-2xl bg-[#0f0a1c] border border-purple-900/25 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-purple-900/25 bg-[#090514]/60 text-neutral-400 font-semibold">
-                  <th className="py-3 px-4">Script Filename</th>
-                  <th className="py-3 px-4">Panel</th>
-                  <th className="py-3 px-4">Raw Size</th>
-                  <th className="py-3 px-4">Protected Size</th>
-                  <th className="py-3 px-4">Build Status</th>
-                  <th className="py-3 px-4">Uploaded</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-purple-900/15">
-                {filteredScripts.map((script) => {
-                  const panel = panels.find((p) => p.id === script.panelId);
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredScripts.map((script) => {
+            const panel = panels.find((p) => p.id === script.panelId);
+            const loadstringSnippet = `loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey || 'YOUR_KEY'}"))()`;
 
-                  return (
-                    <tr
-                      key={script.id}
-                      className="hover:bg-purple-950/20 transition-colors text-neutral-300"
+            return (
+              <div
+                key={script.id}
+                className="bg-[#0e081c] border border-purple-900/30 hover:border-purple-500/40 rounded-2xl p-5 flex flex-col justify-between transition-all group"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-purple-950/80 border border-purple-800/40 flex items-center justify-center shrink-0">
+                        <FileCode2 className="w-4 h-4 text-purple-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-bold text-white truncate">{script.filename}</h4>
+                        <span className="text-[10px] font-mono text-purple-400">{script.id}</span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        script.isObfuscated
+                          ? 'bg-purple-900/40 text-purple-300 border border-purple-700/50'
+                          : 'bg-neutral-800 text-neutral-400 border border-neutral-700'
+                      }`}
                     >
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2.5">
-                          <FileCode2 className="w-4 h-4 text-purple-400 shrink-0" />
-                          <div className="min-w-0">
-                            <span className="font-semibold text-white font-mono truncate block">
-                              {script.filename}
-                            </span>
-                            <span className="text-[10px] text-neutral-500 font-mono">
-                              {script.id}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
+                      {script.isObfuscated ? (
+                        <>
+                          <Lock className="w-3 h-3 text-purple-400" />
+                          MAX
+                        </>
+                      ) : (
+                        <>
+                          <Unlock className="w-3 h-3" />
+                          Plain
+                        </>
+                      )}
+                    </span>
+                  </div>
 
-                      <td className="py-3.5 px-4 font-medium text-neutral-300">
-                        {panel?.name || 'Unassigned'}
-                      </td>
-
-                      <td className="py-3.5 px-4 font-mono tabular-nums text-neutral-400">
+                  <div className="space-y-1.5 text-xs text-neutral-400 mb-4 bg-purple-950/20 p-3 rounded-xl border border-purple-900/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-500">Panel:</span>
+                      <span className="text-neutral-300 font-medium truncate max-w-[150px]">
+                        {panel?.name || script.panelId}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-500">API Key:</span>
+                      <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[140px]">
+                        {script.apiKey || 'Generated upon deployment'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-500">Original Size:</span>
+                      <span className="font-mono text-neutral-300">
                         {(script.originalSize / 1024).toFixed(1)} KB
-                      </td>
-
-                      <td className="py-3.5 px-4 font-mono tabular-nums text-purple-300">
-                        {script.protectedSize ? `${(script.protectedSize / 1024).toFixed(1)} KB` : '—'}
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`font-semibold capitalize ${
-                            script.status === 'obfuscated'
-                              ? 'text-emerald-400'
-                              : script.status === 'ready'
-                              ? 'text-blue-400'
-                              : 'text-red-400'
-                          }`}
-                        >
-                          {script.status}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-neutral-400 font-mono text-[11px] tabular-nums">
-                        {new Date(script.createdAt).toLocaleDateString()}
-                      </td>
-
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => setSelectedScriptForLoader(script)}
-                            className="p-1.5 text-neutral-400 hover:text-purple-300 rounded-lg hover:bg-purple-950/40 transition-colors"
-                            title="Get Sentinel Loadstring (Air-Gap Protected)"
-                          >
-                            <Terminal className="w-3.5 h-3.5 text-purple-400" />
-                          </button>
-
-                          <button
-                            onClick={() => onNavigateToObfuscation(script.id)}
-                            className="p-1.5 text-neutral-400 hover:text-purple-300 rounded-lg hover:bg-purple-950/40 transition-colors"
-                            title="Re-obfuscate or configure build"
-                          >
-                            <Play className="w-3.5 h-3.5" />
-                          </button>
-
-                          {script.protectedFileId && (
-                            <button
-                              onClick={() => handleDownloadProtected(script)}
-                              className="p-1.5 text-neutral-400 hover:text-emerald-400 rounded-lg hover:bg-emerald-950/30 transition-colors"
-                              title="Download protected output"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => handleOpenUpdateModal(script)}
-                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-purple-300 hover:text-white rounded-lg bg-purple-950/60 hover:bg-purple-900/60 border border-purple-800/40 transition-colors"
-                            title="Update Script & Replace Code (Loadstring unchanged)"
-                          >
-                            <RefreshCw className="w-3 h-3 text-purple-400" />
-                            <span>Update</span>
-                          </button>
-
-                          <button
-                            onClick={() => setScriptToDelete(script)}
-                            className="p-1.5 text-neutral-400 hover:text-red-400 rounded-lg hover:bg-red-950/30 transition-colors"
-                            title="Delete script and build"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Upload / Create Modal */}
-      {isUploadOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-[#0f0a1c] border border-purple-900/40 rounded-2xl p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto">
-            <button
-              onClick={() => setIsUploadOpen(false)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-white p-1 rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-bold text-white mb-1">Upload Lua/Luau Script</h3>
-            <p className="text-xs text-neutral-400 mb-4">
-              Original code will be saved in private storage and processed with the panel's protection profile.
-            </p>
-
-            <form onSubmit={handleUploadSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                    Filename (e.g. main.lua, loader.luau)
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={uploadFilename}
-                    onChange={(e) => setUploadFilename(e.target.value)}
-                    placeholder="script_core.lua"
-                    className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs font-mono focus:outline-none focus:border-purple-500"
-                  />
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                    Target Panel
-                  </label>
-                  <select
-                    value={uploadPanelId}
-                    onChange={(e) => setUploadPanelId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs focus:outline-none focus:border-purple-500"
+                <div className="space-y-2 pt-2 border-t border-purple-900/20">
+                  <button
+                    onClick={() => copyToClipboard(loadstringSnippet, `ls_${script.id}`)}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700/40 text-purple-200 text-xs font-semibold transition-all"
                   >
-                    {panels.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.protectionProfile})
-                      </option>
-                    ))}
-                  </select>
+                    {copiedId === `ls_${script.id}` ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400 font-bold">Copied Loadstring</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Loadstring</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleOpenEdit(script)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-[11px] border border-neutral-800 transition-all"
+                    >
+                      <Edit2 className="w-3 h-3 text-neutral-400" />
+                      Edit Script
+                    </button>
+                    <button
+                      onClick={() => setScriptToDelete(script)}
+                      className="p-1.5 rounded-lg bg-neutral-900 hover:bg-red-950/40 text-neutral-400 hover:text-red-400 border border-neutral-800 hover:border-red-800/40 transition-all"
+                      title="Delete script"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Lua / Luau Source Code
-                </label>
-                <textarea
-                  rows={10}
-                  required
-                  value={uploadSource}
-                  onChange={(e) => setUploadSource(e.target.value)}
-                  placeholder="-- Paste your Lua script here..."
-                  className="w-full px-3 py-2.5 rounded-xl bg-[#080410] border border-purple-900/40 text-neutral-200 text-xs font-mono focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsUploadOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-neutral-700 text-neutral-300 text-xs font-medium hover:bg-neutral-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={uploading}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {uploading ? 'Processing Obfuscation...' : 'Store & Secure'}
-                </button>
-              </div>
-            </form>
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Update Script & Code Modal (Loadstring Remains Valid) */}
-      {scriptToEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="w-full max-w-2xl bg-[#0e081c] border border-purple-800/50 rounded-2xl p-6 shadow-2xl relative my-8 space-y-5">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-purple-900/30 pb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-base font-bold text-white tracking-tight">
-                    Update Script &amp; Code
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">
-                    Loadstring Unchanged
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-400 mt-1">
-                  Replace or modify this script's code without breaking existing loadstrings. All executors and users using your loadstring will immediately receive this updated code on their next execution.
-                </p>
+      {/* CREATE SCRIPT MODAL */}
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f0920] border border-purple-700/40 rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-purple-900/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileCode2 className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-white">Create & Protect Script</h3>
               </div>
               <button
-                type="button"
-                onClick={() => setScriptToEdit(null)}
-                className="text-neutral-400 hover:text-white p-1 rounded-lg"
+                onClick={() => setIsCreateOpen(false)}
+                className="p-1 text-neutral-400 hover:text-white rounded-md"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Loadstring URL Unchanged Notification */}
-            <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-800/40 space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] font-bold text-purple-300">
-                <span className="flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Existing Permanent Loadstring:</span>
-                </span>
-                <span className="text-emerald-400 text-[10px] font-mono">Zero 404 Guaranteed</span>
+            <form onSubmit={handleCreateScript} className="p-6 overflow-y-auto space-y-5 flex-1">
+              <div>
+                <label className="block text-xs font-bold text-neutral-300 mb-1.5">Script Name</label>
+                <input
+                  type="text"
+                  required
+                  value={scriptName}
+                  onChange={(e) => setScriptName(e.target.value)}
+                  placeholder="e.g. CombatHub, AutoFarm, UniversalLoader"
+                  className="w-full px-3.5 py-2.5 bg-[#0a0515] border border-purple-900/40 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                />
               </div>
-              <div className="p-2 rounded-lg bg-black/70 border border-purple-900/40 text-[11px] font-mono text-cyan-300 break-all select-all">
-                loadstring(game:HttpGet("{WASMER_APP_URL}/loader.lua"))()
-              </div>
-            </div>
 
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              {/* File Info Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                    Script Filename
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFilename}
-                    onChange={(e) => setEditFilename(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs font-mono focus:border-purple-500 focus:outline-none"
-                  />
+              {/* Panel Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-neutral-300">Target Panel</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingNewPanel(!isCreatingNewPanel)}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold"
+                  >
+                    {isCreatingNewPanel ? 'Use Existing Panel' : '+ Create New Panel'}
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                    Assigned Panel
-                  </label>
+                {isCreatingNewPanel ? (
+                  <input
+                    type="text"
+                    value={newPanelName}
+                    onChange={(e) => setNewPanelName(e.target.value)}
+                    placeholder="Enter new panel name..."
+                    className="w-full px-3.5 py-2.5 bg-[#0a0515] border border-purple-900/40 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
+                  />
+                ) : (
                   <select
-                    value={editPanelId}
-                    onChange={(e) => setEditPanelId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#080410] border border-purple-900/40 text-white text-xs focus:border-purple-500 focus:outline-none"
+                    value={selectedPanelId}
+                    onChange={(e) => setSelectedPanelId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-[#0a0515] border border-purple-900/40 rounded-xl text-xs text-neutral-200 focus:outline-none focus:border-purple-500"
                   >
                     {panels.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
+                        {p.name} ({p.id})
                       </option>
                     ))}
                   </select>
-                </div>
+                )}
               </div>
 
-              {/* Single Obfuscation Engine Picker */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-neutral-300">
-                    Obfuscation Engine
-                  </label>
-                  <span className="text-[10px] font-medium text-amber-400">
-                    ⚡ Strict Single-Engine Execution (No Stacking)
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {CLIENT_ENGINES.map((eng) => {
-                    const isSelected = editEngine === eng.id;
-                    return (
-                      <button
-                        key={eng.id}
-                        type="button"
-                        onClick={() => setEditEngine(eng.id)}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? 'bg-purple-900/40 border-purple-500 shadow-md shadow-purple-950 text-white'
-                            : 'bg-[#080410] border-purple-900/20 text-neutral-400 hover:text-neutral-200 hover:border-purple-800/40'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold truncate">{eng.name}</span>
-                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
-                        </div>
-                        <span className="text-[10px] text-neutral-400 line-clamp-1 block">
-                          v{eng.version}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Security Profile */}
-              <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Protection Profile
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['basic', 'advanced', 'maximum'] as const).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setEditProfile(p)}
-                      className={`py-1.5 px-3 rounded-xl border text-xs font-bold uppercase transition-all ${
-                        editProfile === p
-                          ? 'bg-purple-600 border-purple-400 text-white'
-                          : 'bg-[#080410] border-purple-900/30 text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Code Editor & File Replacement Area */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-neutral-300">
-                    Script Source Code (Edit or Upload New File)
-                  </label>
+              {/* Obfuscation Engine (Single Engine: RONIGUARD MAX with ON/OFF Toggle) */}
+              <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-900/40 flex items-center justify-between">
+                <div>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="file"
-                      ref={editFileInputRef}
-                      onChange={handleEditFileSelect}
-                      accept=".lua,.luau,.txt"
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => editFileInputRef.current?.click()}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-purple-700/50 bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 text-[11px] font-semibold transition-colors"
-                    >
-                      <FileUp className="w-3 h-3 text-purple-400" />
-                      <span>Upload New File</span>
-                    </button>
+                    <Lock className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-bold text-white">RONIGUARD MAX Obfuscation</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-800/60 text-purple-200">
+                      REGISTER VM
+                    </span>
                   </div>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Transforms code with Register VM virtualization, dynamic XOR strings & metatable security walls.
+                  </p>
                 </div>
 
-                <div className="relative">
-                  <textarea
-                    rows={8}
-                    value={editSourceCode}
-                    onChange={(e) => setEditSourceCode(e.target.value)}
-                    placeholder="-- Paste or edit your updated Lua / Luau source code here...&#10;print('Hello World - Updated Script')"
-                    className="w-full p-3 rounded-xl bg-[#06030c] border border-purple-900/40 text-neutral-200 font-mono text-xs focus:border-purple-500 focus:outline-none leading-relaxed resize-y"
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                  <input
+                    type="checkbox"
+                    checked={obfuscationEnabled}
+                    onChange={(e) => setObfuscationEnabled(e.target.checked)}
+                    className="sr-only peer"
                   />
-                  <div className="text-[10px] text-neutral-500 text-right mt-0.5 font-mono">
-                    {editSourceCode.length} characters · {editSourceCode.split('\n').length} lines
-                  </div>
-                </div>
+                  <div className="w-11 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
               </div>
 
-              {/* Actions Footer */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-purple-900/30">
+              {/* Lua Source Code Input */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-neutral-300">Lua / Luau Source Code</label>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Upload File (.lua)
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept=".lua,.luau,.txt"
+                    className="hidden"
+                  />
+                </div>
+                <textarea
+                  required
+                  rows={8}
+                  value={sourceCode}
+                  onChange={(e) => setSourceCode(e.target.value)}
+                  placeholder="-- Paste your raw Lua script here&#10;print('Hello from RONIGUARD!')&#10;local Player = game.Players.LocalPlayer"
+                  className="w-full p-3 font-mono text-xs bg-[#090412] border border-purple-900/40 rounded-xl text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-purple-900/30 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  disabled={isUpdatingScript}
-                  onClick={() => setScriptToEdit(null)}
-                  className="px-4 py-2 rounded-xl border border-neutral-700 text-neutral-300 text-xs hover:bg-neutral-800 transition-colors"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isUpdatingScript || !editFilename.trim()}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-900/40 transition-all"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all flex items-center gap-2"
                 >
-                  {isUpdatingScript ? (
+                  {isSubmitting ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                      <span>Updating &amp; Re-Obfuscating...</span>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Initiating Pipeline...
                     </>
                   ) : (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Save Changes &amp; Update Script</span>
+                      <Play className="w-4 h-4" />
+                      Save & Deploy Script
                     </>
                   )}
                 </button>
@@ -722,33 +606,244 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({
         </div>
       )}
 
-      {/* Sentinel Loadstring Modal */}
-      {selectedScriptForLoader && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-[#0f0a1c] border border-purple-900/50 rounded-2xl p-5 shadow-2xl relative max-h-[92vh] overflow-y-auto">
-            <button
-              onClick={() => setSelectedScriptForLoader(null)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-white p-1 rounded-lg z-10"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* LIVE 8-STAGE BACKGROUND PROCESSING TRACKER MODAL */}
+      {activeJob && !completedJobResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f0920] border border-purple-600/60 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-900/50 border border-purple-500/40 flex items-center justify-center animate-pulse">
+                <RefreshCw className="w-5 h-5 text-purple-300 animate-spin" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Processing Script Payload</h3>
+                <p className="text-xs text-neutral-400">{activeJob.scriptName}</p>
+              </div>
+            </div>
 
-            <SentinelLoadstringCard
-              scriptId={selectedScriptForLoader.id}
-              filename={selectedScriptForLoader.filename}
-              onShowToast={onShowToast}
-            />
+            {/* Overall progress bar */}
+            <div>
+              <div className="flex justify-between text-xs font-bold text-purple-300 mb-1.5">
+                <span>Stage {activeJob.currentStageIndex + 1} of 8</span>
+                <span>{activeJob.progressPercent}%</span>
+              </div>
+              <div className="w-full h-2.5 bg-neutral-900 rounded-full overflow-hidden border border-purple-950">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-700 ease-out"
+                  style={{ width: `${activeJob.progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Stage Items */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {STAGES.map((stageName, idx) => {
+                const isPassed = idx < activeJob.currentStageIndex;
+                const isCurrent = idx === activeJob.currentStageIndex;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all ${
+                      isCurrent
+                        ? 'bg-purple-900/40 border border-purple-500/50 text-white font-bold'
+                        : isPassed
+                        ? 'text-neutral-400 bg-neutral-900/40'
+                        : 'text-neutral-600'
+                    }`}
+                  >
+                    {isPassed ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : isCurrent ? (
+                      <RefreshCw className="w-4 h-4 text-purple-400 animate-spin shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-neutral-700 shrink-0" />
+                    )}
+                    <span className="truncate">{stageName}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] text-neutral-500 text-center">
+              Processing occurs in a secure server-side worker sandbox. Survives page reload.
+            </p>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation */}
+      {/* COMPLETED RESULT MODAL WITH GENERATED API KEY & LOADSTRING */}
+      {completedJobResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f0920] border border-emerald-500/50 rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Script Deployed & Protected</h3>
+                <p className="text-xs text-neutral-400">"{completedJobResult.scriptName}" is ready for executors</p>
+              </div>
+            </div>
+
+            {/* Generated API Key Card */}
+            <div className="p-4 rounded-xl bg-[#090412] border border-purple-900/40 space-y-2">
+              <div className="flex items-center justify-between text-xs text-neutral-400">
+                <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                  Script-Specific API Key:
+                </span>
+                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                  ACTIVE
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-black/60 font-mono text-xs text-white border border-neutral-800">
+                <span className="truncate select-all">{completedJobResult.apiKey}</span>
+                <button
+                  onClick={() => copyToClipboard(completedJobResult.apiKey, 'modal_api_key')}
+                  className="p-1 hover:text-purple-300"
+                >
+                  {copiedId === 'modal_api_key' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Loadstring Snippet Card */}
+            <div className="p-4 rounded-xl bg-[#090412] border border-purple-900/40 space-y-2">
+              <span className="text-xs font-semibold text-neutral-300">Roblox Executor Loadstring:</span>
+              <div className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-black/60 font-mono text-[11px] text-purple-200 border border-neutral-800 overflow-x-auto">
+                <code className="break-all">{`loadstring(game:HttpGet("${completedJobResult.loadstringUrl}"))()`}</code>
+                <button
+                  onClick={() =>
+                    copyToClipboard(
+                      `loadstring(game:HttpGet("${completedJobResult.loadstringUrl}"))()`,
+                      'modal_loadstring'
+                    )
+                  }
+                  className="p-1 hover:text-purple-300 shrink-0"
+                >
+                  {copiedId === 'modal_loadstring' ? (
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => {
+                  setCompletedJobResult(null);
+                  setActiveJob(null);
+                }}
+                className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IN-PLACE SCRIPT UPDATE MODAL */}
+      {scriptToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f0920] border border-purple-700/40 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-purple-900/30 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white">Update Script In-Place</h3>
+                <p className="text-xs text-neutral-400">
+                  Loadstring URL and API key will stay the same for existing users.
+                </p>
+              </div>
+              <button
+                onClick={() => setScriptToEdit(null)}
+                className="p-1 text-neutral-400 hover:text-white rounded-md"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-300">Updated Source Code</span>
+                <button
+                  type="button"
+                  onClick={() => editFileInputRef.current?.click()}
+                  className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Replace from File
+                </button>
+                <input
+                  type="file"
+                  ref={editFileInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setEditSourceCode(ev.target?.result as string);
+                    reader.readAsText(file);
+                  }}
+                  accept=".lua,.luau,.txt"
+                  className="hidden"
+                />
+              </div>
+
+              <textarea
+                rows={10}
+                value={editSourceCode}
+                onChange={(e) => setEditSourceCode(e.target.value)}
+                className="w-full p-3 font-mono text-xs bg-[#090412] border border-purple-900/40 rounded-xl text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-purple-500"
+              />
+
+              <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-900/40 flex items-center justify-between">
+                <span className="text-xs font-semibold text-neutral-200">
+                  RONIGUARD MAX Protection
+                </span>
+                <input
+                  type="checkbox"
+                  checked={editObfuscation}
+                  onChange={(e) => setEditObfuscation(e.target.checked)}
+                  className="w-4 h-4 accent-purple-600"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-purple-900/30 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setScriptToEdit(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveInPlaceEdit}
+                disabled={isSavingEdit}
+                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center gap-2"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Updating In-Place...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
       <ConfirmModal
         isOpen={!!scriptToDelete}
         title="Delete Script"
-        message={`Are you sure you want to permanently delete "${scriptToDelete?.filename}"? Both original source and protected builds will be deleted.`}
-        confirmLabel="Delete Script"
-        onConfirm={handleDelete}
+        message={`Are you sure you want to delete "${scriptToDelete?.filename}"? This will permanently revoke its API key and disable its loadstring URL.`}
+        confirmText="Delete Script"
+        confirmVariant="danger"
+        onConfirm={handleDeleteScript}
         onCancel={() => setScriptToDelete(null)}
       />
     </div>

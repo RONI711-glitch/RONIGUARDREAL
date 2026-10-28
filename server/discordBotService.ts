@@ -97,6 +97,87 @@ class DiscordBotService {
       console.log('[RONIGUARD-BOT] Synchronizing slash commands with Discord API...');
       const commands = [
         {
+          name: 'panelsetup',
+          description: 'Initialize and deploy a new RONIGUARD protection panel',
+          options: [
+            {
+              type: 3, // STRING
+              name: 'name',
+              description: 'Panel name (e.g. My Hub Panel)',
+              required: false,
+            },
+            {
+              type: 3,
+              name: 'description',
+              description: 'Panel description or notes',
+              required: false,
+            },
+          ],
+        },
+        {
+          name: 'lic',
+          description: 'Inspect, manage, and revoke script-specific API license keys',
+          options: [
+            {
+              type: 1, // SUB_COMMAND
+              name: 'check',
+              description: 'Check status and validity of a license key',
+              options: [
+                {
+                  type: 3,
+                  name: 'key',
+                  description: 'License key (e.g. RONI-API-...)',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              name: 'info',
+              description: 'Look up licensing and loadstring info for a script or key',
+              options: [
+                {
+                  type: 3,
+                  name: 'query',
+                  description: 'Script name, script ID, or license key',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              name: 'revoke',
+              description: 'Revoke an active license key immediately',
+              options: [
+                {
+                  type: 3,
+                  name: 'key',
+                  description: 'License key to revoke',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              name: 'list',
+              description: 'List your active script licenses and associated scripts',
+            },
+            {
+              type: 1,
+              name: 'generate',
+              description: 'Generate a new API key for a script',
+              options: [
+                {
+                  type: 3,
+                  name: 'script',
+                  description: 'Target script filename or ID',
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+        {
           name: 'status',
           description: 'View live RONIGUARD security status, active keys, and panels',
         },
@@ -423,14 +504,19 @@ class DiscordBotService {
     }
 
     let responseMessage = '';
+    const caller = interaction.member?.user || interaction.user || {};
     try {
       if (commandName === 'help') {
-        responseMessage = `🛡️ **RONIGUARD Lua Security Shield**\n\n**Available Slash Commands:**\n• \`/status\` — View active panels, scripts, keys, and bot latency\n• \`/whitelist add <user>\` — Whitelist a Discord ID or Roblox UserID\n• \`/whitelist check <user>\` — Check user whitelist status\n• \`/whitelist remove <user>\` — Revoke whitelist access\n• \`/key generate [type]\` — Generate a \`RONI-XXXX\` license key\n• \`/hwid reset <user>\` — Reset device HWID binding\n\n*Manage everything securely via your private RONIGUARD Dashboard!*`;
+        responseMessage = `🛡️ **RONIGUARD Lua Security & Licensing System**\n\n**Available Slash Commands:**\n• \`/panelsetup [name] [description]\` — Create and deploy a new security panel\n• \`/lic check <key>\` — Verify validity of a script API key\n• \`/lic info <query>\` — Lookup script and loadstring URL\n• \`/lic revoke <key>\` — Revoke an API key immediately\n• \`/lic list\` — List your active script licenses\n• \`/lic generate <script>\` — Generate a new API key for a script\n• \`/status\` — View system metrics and protection status\n• \`/whitelist add|remove|check <user>\` — Control user whitelist\n• \`/hwid reset <user>\` — Reset device hardware lock\n\n*Manage your panels, scripts, and API keys at https://roniguardreal.wasmer.app*`;
       } else {
         const result = await executeBotCommand({
           commandName,
           args,
           source: 'discord_bot_bridge',
+          user: {
+            id: caller.id || 'discord_user',
+            username: caller.username || 'Discord User',
+          },
         });
         responseMessage = `${result.success ? '✅' : '⚠️'} **[RONIGUARD]** ${result.message}`;
       }

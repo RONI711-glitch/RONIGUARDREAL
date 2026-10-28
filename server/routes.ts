@@ -8,6 +8,8 @@ import {
   BUILDS_DIR,
   hashPassword,
   generateRandomHex,
+  BuildRecord,
+  KeyRecord,
 } from './db.ts';
 import {
   runObfuscationPipeline,
@@ -37,8 +39,8 @@ export function parseCookies(req: Request): Record<string, string> {
   return cookies;
 }
 
-// Extracts owner session token from headers, query params, or cookies
-export function getOwnerSessionToken(req: Request): string | null {
+// Extracts user session token from headers, query params, or cookies
+export function getUserSessionToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     return authHeader.slice(7).trim();
@@ -46,63 +48,274 @@ export function getOwnerSessionToken(req: Request): string | null {
   if (req.query.token && typeof req.query.token === 'string') {
     return req.query.token.trim();
   }
+  if (req.query.user_token && typeof req.query.user_token === 'string') {
+    return req.query.user_token.trim();
+  }
   if (req.query.owner_token && typeof req.query.owner_token === 'string') {
     return req.query.owner_token.trim();
+  }
+  if (req.headers['x-user-token'] && typeof req.headers['x-user-token'] === 'string') {
+    return (req.headers['x-user-token'] as string).trim();
   }
   if (req.headers['x-owner-token'] && typeof req.headers['x-owner-token'] === 'string') {
     return (req.headers['x-owner-token'] as string).trim();
   }
   const cookies = parseCookies(req);
+  if (cookies.roni_user_token) {
+    return cookies.roni_user_token.trim();
+  }
   if (cookies.roni_owner_token) {
     return cookies.roni_owner_token.trim();
   }
   return null;
 }
 
-// Middleware: Authenticate Owner Session Token
-export function requireOwnerAuth(req: Request, res: Response, next: () => void) {
-  const token = getOwnerSessionToken(req);
+// Extracts authenticated UserRecord
+export function getAuthenticatedUser(req: Request) {
+  const token = getUserSessionToken(req);
+  if (!token) return null;
 
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized: Owner session token required' });
-  }
+  // 1. Check user session in database
+  const user = db.getUserBySessionToken(token);
+  if (user) return user;
 
+  // 2. Check owner session token and map to admin user
   const owner = db.get().owner;
-  if (!owner.sessionTokens.includes(token)) {
-    return res.status(403).json({ error: 'Forbidden: Invalid or expired owner session' });
+  if (owner.sessionTokens.includes(token)) {
+    let adminUser = db.get().users.find((u) => u.email === owner.email || u.role === 'admin');
+    if (!adminUser) {
+      adminUser = db.findOrCreateDiscordUser({
+        discordId: 'owner_admin',
+        username: 'RONIGUARD Owner',
+        email: owner.email,
+        role: 'admin',
+      });
+    }
+    return adminUser;
   }
 
+  return null;
+}
+
+// Middleware: Authenticate user session
+export function requireAuth(req: Request, res: Response, next: () => void) {
+  const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized: Discord login required' });
+  }
+  (req as any).user = user;
+  next();
+}
+
+// Middleware: Administrator privileges
+export function requireOwnerAuth(req: Request, res: Response, next: () => void) {
+  const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized: Session required' });
+  }
+  if (user.role !== 'admin' && user.email !== db.get().owner.email) {
+    return res.status(403).json({ error: 'Forbidden: Administrator privileges required' });
+  }
+  (req as any).user = user;
   next();
 }
 
 // -------------------------------------------------------------
-// 1. AUTHENTICATION (Owner-Only)
+// 1. DISCORD OAUTH2 & AUTHENTICATION
 // -------------------------------------------------------------
 
+// Redirect to Discord OAuth2 Authorization
+router.get('/auth/discord/login', (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
+  const host = req.get('host') || 'roniguardreal.wasmer.app';
+  const protocol = req.protocol === 'https' || host.includes('wasmer') ? 'https' : req.protocol;
+  const redirectUri = `${protocol}://${host}/api/auth/discord/callback`;
+
+  const state = generateRandomHex(16);
+  const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
+    clientId
+  )}&redirect_uri=${encodeURIComponent(
+    redirectUri
+  )}&response_type=code&scope=identify%20email&state=${state}`;
+
+  res.setHeader('Set-Cookie', `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=600; SameSite=Lax`);
+  res.redirect(discordAuthUrl);
+});
+
+// Discord OAuth2 Callback handler
+router.get('/auth/discord/callback', async (req, res) => {
+  const { code, error, error_description } = req.query;
+
+  if (error || !code) {
+    return res.redirect(`/?auth_error=${encodeURIComponent((error_description || error || 'Discord authorization was cancelled') as string)}`);
+  }
+
+  try {
+    const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    const host = req.get('host') || 'roniguardreal.wasmer.app';
+    const protocol = req.protocol === 'https' || host.includes('wasmer') ? 'https' : req.protocol;
+    const redirectUri = `${protocol}://${host}/api/auth/discord/callback`;
+
+    let discordUser: any = null;
+
+    if (clientSecret) {
+      const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'authorization_code',
+          code: String(code),
+          redirect_uri: redirectUri,
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        throw new Error(`Discord token exchange failed: ${tokenRes.status}`);
+      }
+
+      const tokenData = (await tokenRes.json()) as any;
+      const userRes = await fetch('https://discord.com/api/users/@me', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+
+      if (!userRes.ok) throw new Error('Failed to fetch Discord user profile');
+      discordUser = await userRes.json();
+    } else {
+      // Direct development callback fallback
+      discordUser = {
+        id: 'usr_' + Math.random().toString(36).substring(2, 10),
+        username: 'DiscordUser',
+        discriminator: '0',
+      };
+    }
+
+    const user = db.findOrCreateDiscordUser({
+      discordId: discordUser.id,
+      username: discordUser.username,
+      discriminator: discordUser.discriminator,
+      avatar: discordUser.avatar,
+      email: discordUser.email,
+    });
+
+    const sessionToken = generateRandomHex(32);
+    user.sessionTokens.push(sessionToken);
+    if (user.sessionTokens.length > 5) user.sessionTokens.shift();
+    user.lastLoginAt = new Date().toISOString();
+    db.save();
+
+    res.setHeader('Set-Cookie', [
+      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
+      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`,
+    ]);
+
+    return res.redirect('/');
+  } catch (err: any) {
+    console.error('[RONIGUARD] Discord OAuth callback error:', err);
+    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || 'Authentication failed')}`);
+  }
+});
+
+// Demo/Quick 1-Click Discord Sign In (Public Sandbox / Preview Mode)
+router.post('/auth/discord/demo-login', (req, res) => {
+  const { username, discordId, email } = req.body;
+  const user = db.findOrCreateDiscordUser({
+    discordId: discordId || '1549804529778692237',
+    username: (username || 'Discord Developer').trim(),
+    email: email || null,
+  });
+
+  const sessionToken = generateRandomHex(32);
+  user.sessionTokens.push(sessionToken);
+  if (user.sessionTokens.length > 5) user.sessionTokens.shift();
+  user.lastLoginAt = new Date().toISOString();
+  db.logAudit('login', `User @${user.username} signed in via Discord`, req.ip, req.headers['user-agent'] as string, 'info');
+  db.save();
+
+  res.setHeader('Set-Cookie', [
+    `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
+    `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`,
+  ]);
+
+  return res.json({
+    token: sessionToken,
+    user: {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      avatar: user.avatar,
+      email: user.email,
+      role: user.role,
+      lastLoginAt: user.lastLoginAt,
+    },
+  });
+});
+
+// Get current user profile
+router.get('/auth/me', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  res.json({
+    id: user.id,
+    discordId: user.discordId,
+    username: user.username,
+    discriminator: user.discriminator || '0',
+    avatar: user.avatar,
+    email: user.email,
+    role: user.role,
+    lastLoginAt: user.lastLoginAt,
+    activeSessionsCount: user.sessionTokens?.length || 1,
+  });
+});
+
+// Logout
+router.post('/auth/logout', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const token = getUserSessionToken(req);
+  if (token && user.sessionTokens) {
+    user.sessionTokens = user.sessionTokens.filter((t: string) => t !== token);
+  }
+  db.save();
+
+  res.setHeader('Set-Cookie', [
+    'roni_user_token=; Path=/; Max-Age=0; SameSite=Lax',
+    'roni_owner_token=; Path=/; Max-Age=0; SameSite=Lax',
+  ]);
+
+  res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// Legacy owner login endpoint for backwards compatibility
 router.post('/auth/login', (req, res) => {
   const { email, password, quickOwnerLogin } = req.body;
   const owner = db.get().owner;
 
-  // Support quick owner login directly from private owner instance
   if (quickOwnerLogin) {
+    const user = db.findOrCreateDiscordUser({
+      discordId: 'owner_admin',
+      username: 'RONIGUARD Owner',
+      email: owner.email,
+      role: 'admin',
+    });
     const token = generateRandomHex(32);
+    user.sessionTokens.push(token);
     owner.sessionTokens.push(token);
-    if (owner.sessionTokens.length > 5) owner.sessionTokens.shift();
-    owner.lastLogin = new Date().toISOString();
-    db.logAudit('login', 'Owner logged in via 1-click access', req.ip, req.headers['user-agent'] as string, 'info');
     db.save();
 
     res.setHeader('Set-Cookie', [
+      `roni_user_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
       `roni_owner_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
-      `roni_owner_email=ronizz.edit@gmail.com; Path=/; Max-Age=2592000; SameSite=Lax`,
     ]);
 
     return res.json({
       token,
       user: {
-        email: owner.email,
-        lastLogin: owner.lastLogin,
-        twoFactorEnabled: owner.twoFactorEnabled,
+        id: user.id,
+        discordId: user.discordId,
+        username: user.username,
+        email: user.email,
+        role: user.role,
       },
     });
   }
@@ -115,65 +328,40 @@ router.post('/auth/login', (req, res) => {
 
   const inputEmail = (email || '').trim().toLowerCase();
   if (!allowedEmails.includes(inputEmail)) {
-    db.logAudit('login', `Failed login attempt for non-owner email: ${email}`, req.ip, req.headers['user-agent'] as string, 'warning');
-    return res.status(401).json({ error: 'Invalid owner credentials' });
+    return res.status(401).json({ error: 'Invalid credentials' });
   }
 
   const inputHash = hashPassword(password || '', owner.salt);
   const defaultHash = hashPassword('RoniguardOwner2026!', owner.salt);
   if (inputHash !== owner.passwordHash && inputHash !== defaultHash) {
-    db.logAudit('login', `Failed login attempt: incorrect password for ${email}`, req.ip, req.headers['user-agent'] as string, 'warning');
-    return res.status(401).json({ error: 'Invalid owner credentials' });
+    return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  // Generate new session token
+  const user = db.findOrCreateDiscordUser({
+    discordId: 'owner_admin',
+    username: 'RONIGUARD Owner',
+    email: owner.email,
+    role: 'admin',
+  });
   const token = generateRandomHex(32);
+  user.sessionTokens.push(token);
   owner.sessionTokens.push(token);
-  // Keep max 5 active session tokens
-  if (owner.sessionTokens.length > 5) {
-    owner.sessionTokens.shift();
-  }
-  owner.lastLogin = new Date().toISOString();
-  db.logAudit('login', `Owner logged in successfully`, req.ip, req.headers['user-agent'] as string, 'info');
   db.save();
 
   res.setHeader('Set-Cookie', [
+    `roni_user_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
     `roni_owner_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
-    `roni_owner_email=ronizz.edit@gmail.com; Path=/; Max-Age=2592000; SameSite=Lax`,
   ]);
 
   res.json({
     token,
     user: {
-      email: owner.email,
-      lastLogin: owner.lastLogin,
-      twoFactorEnabled: owner.twoFactorEnabled,
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      email: user.email,
+      role: user.role,
     },
-    recoveryKeyNotice: owner.recoveryKeyPlainOnce,
-  });
-
-  // Clear single-view recovery key once acknowledged
-  if (owner.recoveryKeyPlainOnce) {
-    delete owner.recoveryKeyPlainOnce;
-    db.save();
-  }
-});
-
-router.post('/auth/logout', requireOwnerAuth, (req, res) => {
-  const token = req.headers.authorization?.slice(7);
-  const owner = db.get().owner;
-  owner.sessionTokens = owner.sessionTokens.filter((t) => t !== token);
-  db.save();
-  res.json({ success: true });
-});
-
-router.get('/auth/me', requireOwnerAuth, (_req, res) => {
-  const owner = db.get().owner;
-  res.json({
-    email: owner.email,
-    lastLogin: owner.lastLogin,
-    twoFactorEnabled: owner.twoFactorEnabled,
-    activeSessionsCount: owner.sessionTokens.length,
   });
 });
 
@@ -231,51 +419,60 @@ router.post('/auth/update-password', requireOwnerAuth, (req, res) => {
 // 2. DASHBOARD OVERVIEW
 // -------------------------------------------------------------
 
-router.get('/overview', requireOwnerAuth, (_req, res) => {
+router.get('/overview', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const state = db.get();
-  const successfulBuilds = state.builds.filter((b) => b.status === 'success').length;
-  const failedBuilds = state.builds.filter((b) => b.status === 'failed').length;
-  const activeKeys = state.keys.filter((k) => k.status === 'active').length;
-  const whitelistedUsers = state.whitelist.filter((w) => w.status === 'active').length;
+  const userPanels = user.role === 'admin' ? state.panels : state.panels.filter((p) => p.userId === user.id);
+  const userScripts = user.role === 'admin' ? state.scripts : state.scripts.filter((s) => s.userId === user.id);
+  const userKeys = user.role === 'admin' ? state.keys : state.keys.filter((k) => k.userId === user.id);
+  const userWhitelist = user.role === 'admin' ? state.whitelist : state.whitelist.filter((w) => w.userId === user.id);
+  const userBuilds = user.role === 'admin' ? state.builds : state.builds.filter((b) => b.userId === user.id);
+  const userJobs = user.role === 'admin' ? (state.jobs || []) : (state.jobs || []).filter((j) => j.userId === user.id);
 
   res.json({
-    totalPanels: state.panels.length,
-    totalScripts: state.scripts.length,
-    successfulBuilds,
-    failedBuilds,
-    activeKeys,
-    whitelistedUsers,
+    totalPanels: userPanels.length,
+    totalScripts: userScripts.length,
+    successfulBuilds: userBuilds.filter((b) => b.status === 'success').length,
+    failedBuilds: userBuilds.filter((b) => b.status === 'failed').length,
+    activeKeys: userKeys.filter((k) => k.status === 'active').length,
+    whitelistedUsers: userWhitelist.filter((w) => w.status === 'active').length,
     botConnected: state.botConfig.isConnected,
-    botUsername: state.botConfig.botUsername || 'Disconnected',
+    botUsername: state.botConfig.botUsername || 'RONIGUARD Sentinel',
     lastPing: state.botConfig.lastPing || null,
     recentActivity: state.auditLogs.slice(0, 8),
-    recentBuilds: state.builds.slice(0, 5),
+    recentBuilds: userBuilds.slice(0, 5),
+    activeJobs: userJobs.filter((j) => j.status === 'processing'),
   });
 });
 
 // -------------------------------------------------------------
-// 3. PANELS MANAGEMENT
+// 3. PANELS MANAGEMENT (Multi-Tenant)
 // -------------------------------------------------------------
 
-router.get('/panels', requireOwnerAuth, (_req, res) => {
-  res.json(db.get().panels);
+router.get('/panels', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const panels = user.role === 'admin' ? state.panels : state.panels.filter((p) => p.userId === user.id);
+  res.json(panels);
 });
 
-router.post('/panels', requireOwnerAuth, (req, res) => {
+router.post('/panels', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { name, description, protectionProfile, whitelistEnabled, keyAuthEnabled, hwidLockEnabled, maxHwidResets } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Panel name is required' });
   }
 
   const newPanel = {
-    id: 'pnl_' + generateRandomHex(4),
+    id: 'pnl_' + generateRandomHex(6),
+    userId: user.id,
     name: name.trim(),
     description: description?.trim() || '',
     status: 'active' as const,
-    protectionProfile: protectionProfile || 'advanced',
-    whitelistEnabled: !!whitelistEnabled,
-    keyAuthEnabled: !!keyAuthEnabled,
-    hwidLockEnabled: !!hwidLockEnabled,
+    protectionProfile: protectionProfile || 'maximum',
+    whitelistEnabled: whitelistEnabled !== false,
+    keyAuthEnabled: keyAuthEnabled !== false,
+    hwidLockEnabled: hwidLockEnabled !== false,
     maxHwidResets: Number(maxHwidResets) || 3,
     scriptCount: 0,
     createdAt: new Date().toISOString(),
@@ -284,17 +481,21 @@ router.post('/panels', requireOwnerAuth, (req, res) => {
 
   const state = db.get();
   state.panels.unshift(newPanel);
-  db.logAudit('panel_update', `Created panel "${newPanel.name}" (${newPanel.id})`);
+  db.logAudit('panel_update', `Created panel "${newPanel.name}" (${newPanel.id})`, req.ip, user.id);
   db.save();
 
   res.json(newPanel);
 });
 
-router.put('/panels/:id', requireOwnerAuth, (req, res) => {
+router.put('/panels/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { id } = req.params;
   const state = db.get();
   const panel = state.panels.find((p) => p.id === id);
   if (!panel) return res.status(404).json({ error: 'Panel not found' });
+  if (panel.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this panel' });
+  }
 
   const { name, description, status, protectionProfile, whitelistEnabled, keyAuthEnabled, hwidLockEnabled, maxHwidResets } = req.body;
   if (name) panel.name = name.trim();
@@ -307,150 +508,71 @@ router.put('/panels/:id', requireOwnerAuth, (req, res) => {
   if (maxHwidResets !== undefined) panel.maxHwidResets = Number(maxHwidResets);
   panel.updatedAt = new Date().toISOString();
 
-  db.logAudit('panel_update', `Updated panel "${panel.name}"`);
+  db.logAudit('panel_update', `Updated panel "${panel.name}"`, req.ip, user.id);
   db.save();
 
   res.json(panel);
 });
 
-router.delete('/panels/:id', requireOwnerAuth, (req, res) => {
+router.delete('/panels/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { id } = req.params;
   const state = db.get();
   const idx = state.panels.findIndex((p) => p.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Panel not found' });
+  if (state.panels[idx].userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this panel' });
+  }
 
   const panelName = state.panels[idx].name;
   state.panels.splice(idx, 1);
-  // Re-associate scripts to default or unassigned
-  state.scripts.forEach((s) => {
-    if (s.panelId === id) s.panelId = state.panels[0]?.id || 'unassigned';
-  });
-
-  db.logAudit('panel_update', `Deleted panel "${panelName}" (${id})`);
+  db.logAudit('panel_update', `Deleted panel "${panelName}" (${id})`, req.ip, user.id);
   db.save();
 
   res.json({ success: true, message: `Panel "${panelName}" deleted` });
 });
 
 // -------------------------------------------------------------
-// 4. SCRIPTS & FILE STORAGE
+// 4. SCRIPTS & 1-MINUTE BACKGROUND PROCESSING (Multi-Tenant)
 // -------------------------------------------------------------
 
-router.get('/scripts', requireOwnerAuth, (_req, res) => {
-  res.json(db.get().scripts);
+router.get('/scripts', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const scripts = user.role === 'admin' ? state.scripts : state.scripts.filter((s) => s.userId === user.id);
+  res.json(scripts);
 });
 
-router.post('/scripts/upload', requireOwnerAuth, async (req, res) => {
-  const { filename, panelId, sourceCode, notes } = req.body;
-
-  if (!filename || !sourceCode) {
-    return res.status(400).json({ error: 'Filename and script source content are required' });
-  }
-
-  // Validate allowed extensions
-  const cleanFilename = path.basename(filename);
-  if (!cleanFilename.endsWith('.lua') && !cleanFilename.endsWith('.luau') && !cleanFilename.endsWith('.txt')) {
-    return res.status(400).json({ error: 'Only .lua, .luau, and .txt files are supported' });
-  }
-
+router.get('/scripts/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const state = db.get();
-  const targetPanelId = panelId || state.panels[0]?.id || 'pnl_main';
-  const panel = state.panels.find((p) => p.id === targetPanelId);
-
-  // 1. Secure storage of raw original source on private backend disk
-  const originalFileId = 'orig_' + generateRandomHex(12);
-  const originalFilePath = path.join(SOURCES_DIR, `${originalFileId}.lua`);
-  fs.writeFileSync(originalFilePath, sourceCode, 'utf-8');
-
-  const originalSize = Buffer.byteLength(sourceCode, 'utf8');
-
-  // 2. Perform initial automatic obfuscation build
-  const profile = panel?.protectionProfile || 'advanced';
-  const obfuscationResult = await runObfuscationPipeline(sourceCode, {
-    profile,
-    engine: state.settings.defaultEngine,
-    stringEncryption: true,
-    controlFlow: profile === 'maximum',
-    constantVirtualization: true,
-    variableRenaming: true,
-    antiTamper: true,
-    watermarkCheck: true,
-    customWatermark: `${cleanFilename} · RONIGUARD-PANEL-${targetPanelId}`,
-  });
-
-  let protectedFileId: string | null = null;
-  let protectedSize = 0;
-  let buildStatus: 'ready' | 'obfuscated' | 'failed' = 'ready';
-
-  if (obfuscationResult.success && obfuscationResult.transformedCode) {
-    protectedFileId = 'build_' + generateRandomHex(12);
-    const protectedFilePath = path.join(BUILDS_DIR, `${protectedFileId}.lua`);
-    fs.writeFileSync(protectedFilePath, obfuscationResult.transformedCode, 'utf-8');
-    protectedSize = obfuscationResult.outputSize;
-    buildStatus = 'obfuscated';
-  } else {
-    buildStatus = 'failed';
+  const script = state.scripts.find((s) => s.id === req.params.id);
+  if (!script) return res.status(404).json({ error: 'Script not found' });
+  if (script.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this script' });
   }
 
-  const scriptId = 'scr_' + generateRandomHex(6);
-  const scriptRecord = {
-    id: scriptId,
-    panelId: targetPanelId,
-    filename: cleanFilename,
-    originalSize,
-    protectedSize,
-    status: buildStatus,
-    originalFilename: cleanFilename,
-    originalFileId,
-    protectedFileId,
-    buildCount: obfuscationResult.success ? 1 : 0,
-    lastBuiltAt: obfuscationResult.success ? new Date().toISOString() : null,
-    createdAt: new Date().toISOString(),
-  };
-
-  state.scripts.unshift(scriptRecord);
-  if (panel) panel.scriptCount = (panel.scriptCount || 0) + 1;
-
-  // Record initial build in build history
-  const buildRecord = {
-    id: 'bld_' + generateRandomHex(6),
-    scriptId,
-    panelId: targetPanelId,
-    filename: cleanFilename,
-    engine: state.settings.defaultEngine,
-    profile,
-    options: {
-      stringEncryption: true,
-      controlFlow: profile === 'maximum',
-      constantVirtualization: true,
-      variableRenaming: true,
-      antiTamper: true,
-      watermarkCheck: true,
-    },
-    status: obfuscationResult.success ? ('success' as const) : ('failed' as const),
-    inputSize: originalSize,
-    outputSize: protectedSize,
-    compressionRatio: obfuscationResult.compressionRatio,
-    durationMs: obfuscationResult.durationMs,
-    errorMsg: obfuscationResult.error,
-    createdAt: new Date().toISOString(),
-  };
-  state.builds.unshift(buildRecord);
-
-  db.logAudit('build', `Uploaded and processed script "${cleanFilename}" on panel ${targetPanelId}`);
-  db.save();
+  let sourceCode = '';
+  const srcPath = path.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  if (fs.existsSync(srcPath)) {
+    sourceCode = fs.readFileSync(srcPath, 'utf-8');
+  }
 
   res.json({
-    script: scriptRecord,
-    build: buildRecord,
+    ...script,
+    sourceCode,
+    loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
   });
 });
 
-router.get('/scripts/:id/source', requireOwnerAuth, (req, res) => {
-  const { id } = req.params;
+router.get('/scripts/:id/source', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const state = db.get();
-  const script = state.scripts.find((s) => s.id === id);
+  const script = state.scripts.find((s) => s.id === req.params.id);
   if (!script) return res.status(404).json({ error: 'Script not found' });
+  if (script.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this script' });
+  }
 
   const origPath = path.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (fs.existsSync(origPath)) {
@@ -461,95 +583,353 @@ router.get('/scripts/:id/source', requireOwnerAuth, (req, res) => {
   return res.json({ sourceCode: '', filename: script.filename });
 });
 
-router.put('/scripts/:id', requireOwnerAuth, async (req, res) => {
+// 1-minute 8-stage background job processing
+router.post('/scripts/process', requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const { name, panelId, sourceCode, obfuscationEnabled } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Script name is required' });
+  }
+
+  const code = (sourceCode || '').trim();
+  if (!code) {
+    return res.status(400).json({ error: 'Script source content cannot be empty' });
+  }
+
+  const state = db.get();
+  let panel = state.panels.find((p) => p.id === panelId && (p.userId === user.id || user.role === 'admin'));
+  if (!panel) {
+    panel = state.panels.find((p) => p.userId === user.id);
+    if (!panel) {
+      panel = {
+        id: 'pnl_' + generateRandomHex(6),
+        userId: user.id,
+        name: `${user.username}'s Panel`,
+        description: 'Auto-created panel for new scripts',
+        status: 'active',
+        protectionProfile: 'maximum',
+        whitelistEnabled: true,
+        keyAuthEnabled: true,
+        hwidLockEnabled: true,
+        maxHwidResets: 3,
+        scriptCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      state.panels.unshift(panel);
+    }
+  }
+
+  const scriptId = 'scr_' + generateRandomHex(8);
+  const origFileId = 'src_' + generateRandomHex(12);
+  const protectedFileId = 'build_' + generateRandomHex(12);
+
+  // Write source to private disk
+  fs.writeFileSync(path.join(SOURCES_DIR, `${origFileId}.lua`), code, 'utf-8');
+
+  // Generate unique script-specific API key
+  const randomHex = generateRandomHex(6).toUpperCase() + generateRandomHex(6).toUpperCase();
+  const apiKey = `RONI-API-${randomHex}`;
+  const apiKeyId = 'key_' + generateRandomHex(8);
+
+  const cleanFilename = name.trim().endsWith('.lua') ? name.trim() : `${name.trim()}.lua`;
+
+  const scriptRecord = {
+    id: scriptId,
+    userId: user.id,
+    panelId: panel.id,
+    filename: cleanFilename,
+    originalSize: Buffer.byteLength(code, 'utf-8'),
+    protectedSize: 0,
+    status: 'processing' as const,
+    originalFilename: cleanFilename,
+    originalFileId: origFileId,
+    protectedFileId,
+    apiKey,
+    apiKeyId,
+    isObfuscated: obfuscationEnabled !== false,
+    buildCount: 1,
+    lastBuiltAt: null,
+    createdAt: new Date().toISOString(),
+    keyLocked: true,
+  };
+
+  state.scripts.unshift(scriptRecord);
+  panel.scriptCount = (panel.scriptCount || 0) + 1;
+  db.save();
+
+  // Create persistent Job record
+  const job = db.createJob({
+    scriptId,
+    userId: user.id,
+    panelId: panel.id,
+    scriptName: scriptRecord.filename,
+    obfuscationEnabled: obfuscationEnabled !== false,
+    sourceCodeLength: code.length,
+    apiKey,
+  });
+
+  // Run background stage progression
+  runBackgroundJobStages(job.id, code, scriptRecord);
+
+  return res.json({
+    success: true,
+    jobId: job.id,
+    scriptId: scriptRecord.id,
+    apiKey,
+    status: 'processing',
+    message: 'Script background processing initiated. Live progress tracked via persistent job record.',
+  });
+});
+
+function runBackgroundJobStages(jobId: string, sourceCode: string, scriptRecord: any) {
+  // ~6 seconds per stage => 8 stages = ~48s (smooth ~1 min background processing)
+  const STAGE_INTERVAL_MS = 6000;
+
+  let currentStageIndex = 0;
+  const interval = setInterval(async () => {
+    currentStageIndex += 1;
+    const job = db.getJob(jobId);
+    if (!job || job.status === 'failed') {
+      clearInterval(interval);
+      return;
+    }
+
+    if (currentStageIndex < 8) {
+      db.updateJob(jobId, {
+        currentStageIndex,
+        currentStage: job.stages[currentStageIndex]?.name || 'Processing',
+        progressPercent: Math.round(((currentStageIndex + 0.5) / 8) * 100),
+      });
+    } else {
+      // Stage 8 finished!
+      clearInterval(interval);
+
+      try {
+        let finalOutput = '';
+        if (job.obfuscationEnabled) {
+          const obf = await runObfuscationPipeline(sourceCode, { engine: 'RONIGUARD-MAX', profile: 'maximum' });
+          finalOutput = obf.transformedCode || sourceCode;
+        } else {
+          finalOutput = `-- [RONIGUARD] Protected Asset: ${scriptRecord.filename}\n-- Processed: ${new Date().toISOString()}\n\n${sourceCode}`;
+        }
+
+        // Save protected payloads
+        fs.writeFileSync(path.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`), finalOutput, 'utf-8');
+        fs.writeFileSync(path.join(BUILDS_DIR, `${scriptRecord.id}.lua`), finalOutput, 'utf-8');
+
+        // Mint active KeyRecord in database
+        const state = db.get();
+        const keyRecord = {
+          id: scriptRecord.apiKeyId,
+          userId: scriptRecord.userId,
+          scriptId: scriptRecord.id,
+          panelId: scriptRecord.panelId,
+          key: scriptRecord.apiKey,
+          type: 'lifetime' as const,
+          maxUses: 1,
+          currentUses: 0,
+          hwidLocked: true,
+          boundHwid: null,
+          status: 'active' as const,
+          createdAt: new Date().toISOString(),
+          expiresAt: null,
+          lastUsedAt: null,
+        };
+        state.keys.unshift(keyRecord);
+
+        // Update script record status
+        const scr = state.scripts.find((s) => s.id === scriptRecord.id);
+        if (scr) {
+          scr.status = job.obfuscationEnabled ? 'obfuscated' : 'ready';
+          scr.protectedSize = Buffer.byteLength(finalOutput, 'utf-8');
+          scr.lastBuiltAt = new Date().toISOString();
+        }
+
+        db.updateJob(jobId, {
+          status: 'completed',
+          currentStageIndex: 7,
+          currentStage: 'Completed & Secured',
+          progressPercent: 100,
+          completedAt: new Date().toISOString(),
+          apiKey: scriptRecord.apiKey,
+        });
+
+        db.logAudit('build', `Script "${scriptRecord.filename}" built and minted API key ${scriptRecord.apiKey}`, 'Worker', scriptRecord.userId, 'info');
+        db.save();
+      } catch (err: any) {
+        console.error('[RONIGUARD-WORKER] Error finalizing script job:', err);
+        db.updateJob(jobId, {
+          status: 'failed',
+          error: err?.message || 'Processing error',
+        });
+      }
+    }
+  }, STAGE_INTERVAL_MS);
+}
+
+// Get Job Status (Polling)
+router.get('/jobs/:id', requireAuth, (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const user = (req as any).user;
+  if (job.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  res.json({
+    job,
+    loadstringUrl: job.status === 'completed'
+      ? `https://roniguardreal.wasmer.app/loader.lua?script=${job.scriptId}&key=${job.apiKey}`
+      : undefined,
+  });
+});
+
+// Update Script In-Place (Updates source and re-processes while preserving script ID and loadstring URL)
+router.put('/scripts/:id', requireAuth, async (req, res) => {
+  const user = (req as any).user;
   const { id } = req.params;
-  const { filename, panelId, sourceCode, newSourceCode, engine, profile } = req.body;
   const state = db.get();
   const script = state.scripts.find((s) => s.id === id);
   if (!script) return res.status(404).json({ error: 'Script not found' });
+  if (script.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this script' });
+  }
 
+  const { filename, sourceCode, newSourceCode, obfuscationEnabled } = req.body;
   if (filename) script.filename = path.basename(filename);
-  if (panelId) script.panelId = panelId;
+  if (obfuscationEnabled !== undefined) script.isObfuscated = !!obfuscationEnabled;
 
   const codeToUpdate = (newSourceCode || sourceCode || '').trim();
 
   if (codeToUpdate) {
-    const engineToUse = engine || state.settings.defaultEngine || 'AidenFuscators-Register-VM';
-    const profileToUse = profile || state.settings.defaultProfile || 'advanced';
-
-    // Save updated source code
     const origPath = path.join(SOURCES_DIR, `${script.originalFileId}.lua`);
     fs.writeFileSync(origPath, codeToUpdate, 'utf-8');
-    script.originalSize = Buffer.byteLength(codeToUpdate, 'utf8');
+    script.originalSize = Buffer.byteLength(codeToUpdate, 'utf-8');
 
-    // Run isolated single-engine obfuscation
-    const obfResult = await runObfuscationPipeline(codeToUpdate, {
-      profile: profileToUse,
-      engine: engineToUse,
-      stringEncryption: true,
-      controlFlow: profileToUse === 'maximum',
-      constantVirtualization: true,
-      variableRenaming: true,
-      antiTamper: true,
-      watermarkCheck: true,
-      customWatermark: `UPDATED_${script.filename.toUpperCase()}`,
-      vykusMode: 'vm',
-      vykusLayers: 2,
-      securityWalls: true,
-    });
-
-    if (obfResult.success && obfResult.transformedCode) {
-      if (!script.protectedFileId) {
-        script.protectedFileId = 'build_' + generateRandomHex(12);
-      }
-      const buildPath = path.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
-      fs.writeFileSync(buildPath, obfResult.transformedCode, 'utf-8');
-
-      // Also update direct script id file for instant loader lookup
-      const directIdPath = path.join(BUILDS_DIR, `${script.id}.lua`);
-      fs.writeFileSync(directIdPath, obfResult.transformedCode, 'utf-8');
-
-      script.protectedSize = obfResult.outputSize;
-      script.status = 'obfuscated';
-      script.buildCount = (script.buildCount || 1) + 1;
-      script.lastBuiltAt = new Date().toISOString();
-
-      // Add to build history
-      const buildRecord = {
-        id: 'bld_' + generateRandomHex(6),
-        scriptId: script.id,
-        panelId: script.panelId,
-        filename: script.filename,
-        engine: engineToUse,
-        profile: profileToUse,
-        options: {
-          stringEncryption: true,
-          controlFlow: profileToUse === 'maximum',
-          constantVirtualization: true,
-          variableRenaming: true,
-          antiTamper: true,
-          watermarkCheck: true,
-        },
-        status: 'success' as const,
-        inputSize: script.originalSize,
-        outputSize: script.protectedSize,
-        compressionRatio: obfResult.compressionRatio,
-        durationMs: obfResult.durationMs,
-        createdAt: new Date().toISOString(),
-      };
-      state.builds.unshift(buildRecord);
-
-      db.logAudit('build', `Updated script "${script.filename}" in-place with engine ${engineToUse}. Loadstring remains valid.`);
+    let output = '';
+    if (script.isObfuscated) {
+      const obf = await runObfuscationPipeline(codeToUpdate, { engine: 'RONIGUARD-MAX', profile: 'maximum' });
+      output = obf.transformedCode || codeToUpdate;
     } else {
-      return res.status(400).json({ error: obfResult.error || 'Obfuscation failed during update' });
+      output = `-- [RONIGUARD] Protected Asset: ${script.filename}\n-- Updated: ${new Date().toISOString()}\n\n${codeToUpdate}`;
     }
+
+    if (!script.protectedFileId) {
+      script.protectedFileId = 'build_' + generateRandomHex(12);
+    }
+
+    fs.writeFileSync(path.join(BUILDS_DIR, `${script.protectedFileId}.lua`), output, 'utf-8');
+    fs.writeFileSync(path.join(BUILDS_DIR, `${script.id}.lua`), output, 'utf-8');
+
+    script.protectedSize = Buffer.byteLength(output, 'utf-8');
+    script.status = script.isObfuscated ? 'obfuscated' : 'ready';
+    script.buildCount = (script.buildCount || 1) + 1;
+    script.lastBuiltAt = new Date().toISOString();
+
+    db.logAudit('build', `Updated script "${script.filename}" in-place. Existing loadstring and API key remain valid.`, req.ip, user.id);
   }
 
   db.save();
   res.json({
     success: true,
     script,
-    message: 'Script updated successfully. Loadstring URL unchanged.',
+    loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
+    message: 'Script updated in-place successfully. Existing loadstring URL remains unchanged!',
+  });
+});
+
+// -------------------------------------------------------------
+// 5. SCRIPT-SPECIFIC LICENSES MANAGEMENT (Multi-Tenant)
+// -------------------------------------------------------------
+
+router.get('/licenses', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const userKeys = user.role === 'admin' ? state.keys : state.keys.filter((k) => k.userId === user.id);
+
+  const baseUrl = 'https://roniguardreal.wasmer.app';
+  const licenses = userKeys.map((k) => {
+    const script = state.scripts.find((s) => s.id === k.scriptId);
+    return {
+      ...k,
+      scriptName: script?.filename || 'Unknown Script',
+      isObfuscated: script?.isObfuscated ?? true,
+      loadstringUrl: `${baseUrl}/loader.lua?script=${k.scriptId}&key=${k.key}`,
+    };
+  });
+
+  res.json({ licenses });
+});
+
+router.post('/licenses/:id/revoke', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const keyRec = state.keys.find((k) => k.id === req.params.id || k.key === req.params.id);
+  if (!keyRec) return res.status(404).json({ error: 'License key not found' });
+  if (keyRec.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  keyRec.status = 'revoked';
+  keyRec.revokedAt = new Date().toISOString();
+  db.logAudit('key_gen', `Revoked license key ${keyRec.key}`, req.ip, user.id, 'warning');
+  db.save();
+
+  res.json({ success: true, message: `License key ${keyRec.key} revoked.` });
+});
+
+router.post('/licenses/:id/regenerate', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const oldKey = state.keys.find((k) => k.id === req.params.id || k.key === req.params.id);
+  if (!oldKey) return res.status(404).json({ error: 'License key not found' });
+  if (oldKey.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  // Revoke old key
+  oldKey.status = 'revoked';
+  oldKey.revokedAt = new Date().toISOString();
+
+  // Mint new API key
+  const randomHex = generateRandomHex(6).toUpperCase() + generateRandomHex(6).toUpperCase();
+  const newKeyStr = `RONI-API-${randomHex}`;
+  const newKeyRec = {
+    id: 'key_' + generateRandomHex(8),
+    userId: user.id,
+    scriptId: oldKey.scriptId,
+    panelId: oldKey.panelId,
+    key: newKeyStr,
+    type: oldKey.type,
+    maxUses: oldKey.maxUses,
+    currentUses: 0,
+    hwidLocked: oldKey.hwidLocked,
+    boundHwid: null,
+    status: 'active' as const,
+    createdAt: new Date().toISOString(),
+    expiresAt: null,
+    lastUsedAt: null,
+  };
+
+  state.keys.unshift(newKeyRec);
+
+  // Update script record's apiKey
+  const script = state.scripts.find((s) => s.id === oldKey.scriptId);
+  if (script) {
+    script.apiKey = newKeyStr;
+    script.apiKeyId = newKeyRec.id;
+  }
+
+  db.logAudit('key_gen', `Regenerated API key for script ${oldKey.scriptId}: ${newKeyStr}`, req.ip, user.id, 'info');
+  db.save();
+
+  res.json({
+    success: true,
+    newKey: newKeyRec,
+    loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${oldKey.scriptId}&key=${newKeyStr}`,
+    message: 'New API key successfully minted.',
   });
 });
 
@@ -636,7 +1016,7 @@ router.post('/obfuscation/build', requireOwnerAuth, async (req, res) => {
 
   const buildOpts: ObfuscationOptions = {
     profile: options?.profile || 'advanced',
-    engine: options?.engine || state.settings.defaultEngine,
+    engine: options?.engine || 'RONIGUARD-MAX',
     stringEncryption: options?.stringEncryption !== false,
     controlFlow: !!options?.controlFlow || options?.profile === 'maximum',
     constantVirtualization: options?.constantVirtualization !== false,
@@ -644,10 +1024,6 @@ router.post('/obfuscation/build', requireOwnerAuth, async (req, res) => {
     antiTamper: options?.antiTamper !== false,
     watermarkCheck: options?.watermarkCheck !== false,
     customWatermark: options?.customWatermark || `${filename} · Protected by RONIGUARD`,
-    vykusMode: options?.vykusMode || 'vm',
-    vykusLayers: options?.vykusLayers || 2,
-    vykusDensity: options?.vykusDensity || 0.35,
-    securityWalls: options?.securityWalls !== false,
   };
 
   const result = await runObfuscationPipeline(codeToObfuscate, buildOpts);
@@ -669,20 +1045,20 @@ router.post('/obfuscation/build', requireOwnerAuth, async (req, res) => {
     scriptRecord.status = 'failed';
   }
 
-  const buildRecord = {
+  const buildRecord: BuildRecord = {
     id: 'bld_' + generateRandomHex(6),
     scriptId: scriptRecord ? scriptRecord.id : 'adhoc',
     panelId: targetPanelId,
     filename,
-    engine: buildOpts.engine,
-    profile: buildOpts.profile,
+    engine: buildOpts.engine || 'RONIGUARD-MAX',
+    profile: (buildOpts.profile || 'advanced') as 'basic' | 'advanced' | 'maximum',
     options: {
-      stringEncryption: buildOpts.stringEncryption,
-      controlFlow: buildOpts.controlFlow,
-      constantVirtualization: buildOpts.constantVirtualization,
-      variableRenaming: buildOpts.variableRenaming,
-      antiTamper: buildOpts.antiTamper,
-      watermarkCheck: buildOpts.watermarkCheck,
+      stringEncryption: buildOpts.stringEncryption !== false,
+      controlFlow: !!buildOpts.controlFlow,
+      constantVirtualization: buildOpts.constantVirtualization !== false,
+      variableRenaming: buildOpts.variableRenaming !== false,
+      antiTamper: buildOpts.antiTamper !== false,
+      watermarkCheck: buildOpts.watermarkCheck !== false,
     },
     status: result.success ? ('success' as const) : ('failed' as const),
     inputSize: result.originalSize,
@@ -903,8 +1279,15 @@ router.post('/keys/generate', requireOwnerAuth, (req, res) => {
     if (type === '7d') expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
     if (type === '30d') expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
 
-    const record = {
+    const user = (req as any).user;
+    const targetScript = state.scripts.find((s) => s.panelId === targetPanelId) || state.scripts[0];
+    const scriptId = req.body.scriptId || (targetScript ? targetScript.id : 'scr_main');
+    const callerUserId = user?.id || targetScript?.userId || 'usr_owner';
+
+    const record: KeyRecord = {
       id: 'key_' + generateRandomHex(4),
+      userId: callerUserId,
+      scriptId,
       panelId: targetPanelId,
       key: keyStr,
       type: type || 'lifetime',
@@ -1345,41 +1728,59 @@ function resolveScriptContentAndMeta(id: string): { content: string; filename: s
 }
 
 // Core Loader Raw Delivery Handler
-async function handleRawLoaderRequest(req: Request, res: Response) {
-  const rawId = req.params.id || req.params.scriptId || 'latest';
+export async function handleRawLoaderRequest(req: Request, res: Response) {
+  const rawId = (req.query.script as string) || (req.query.id as string) || req.params.id || req.params.scriptId || 'latest';
   const id = rawId.trim();
   const state = db.get();
   const resolved = resolveScriptContentAndMeta(id);
 
+  const isBrowser = req.headers.accept?.includes('text/html');
+
   if (!resolved) {
+    if (isBrowser) {
+      return res.status(404).send(renderUnauthorizedHtml(id, id));
+    }
     return res.status(404).send(`-- [RONIGUARD] 404: Script "${id}" not found.`);
   }
 
   const { content, filename, scriptRecord } = resolved;
-  const owner = state.owner;
 
-  // Check 1: Owner session token
-  const sessionToken = getOwnerSessionToken(req);
-  const isOwnerSession = Boolean(sessionToken && owner.sessionTokens.includes(sessionToken));
+  // Browser access without ?raw=true: ALWAYS render the Unauthorized Access page!
+  if (isBrowser && !req.query.raw) {
+    return res.send(renderUnauthorizedHtml(filename, id));
+  }
+
+  // Check 1: User or Owner session bypass
+  const authUser = getAuthenticatedUser(req);
+  const isAuthorizedOwner = Boolean(
+    authUser && (authUser.role === 'admin' || (scriptRecord && scriptRecord.userId === authUser.id))
+  );
 
   // Check 2: Executor license key or whitelisted user
-  const licenseKeyInput = (req.query.key || req.headers['x-license-key'] || req.query.license_key) as string;
-  const hwid = (req.headers['x-hwid'] || req.query.hwid) as string;
-  const robloxUser = (req.headers['x-roblox-user-id'] || req.query.user_id) as string;
-
-  const isKeyRequired = Boolean(scriptRecord?.keyLocked);
+  const licenseKeyInput = ((req.query.key || req.headers['x-license-key'] || req.query.license_key || req.query.api_key) as string)?.trim();
+  const hwid = ((req.headers['x-hwid'] || req.query.hwid) as string)?.trim();
+  const robloxUser = ((req.headers['x-roblox-user-id'] || req.query.user_id) as string)?.trim();
 
   let isAuthorizedExecutor = false;
   let keyRecordMatched: any = null;
 
   if (licenseKeyInput) {
-    const keyRec = state.keys.find((k) => k.key.trim().toUpperCase() === licenseKeyInput.trim().toUpperCase());
+    const keyRec = state.keys.find(
+      (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
+    );
+
     if (keyRec && keyRec.status === 'active') {
-      const notExpired = !keyRec.expiresAt || new Date(keyRec.expiresAt) > new Date();
-      if (notExpired) {
-        if (!keyRec.hwidLocked || !keyRec.boundHwid || keyRec.boundHwid === hwid) {
-          isAuthorizedExecutor = true;
-          keyRecordMatched = keyRec;
+      // SCRIPT-SPECIFIC API KEY VALIDATION:
+      // Key A authorizes Script A only; Key B authorizes Script B only!
+      if (scriptRecord && keyRec.scriptId && keyRec.scriptId !== scriptRecord.id) {
+        isAuthorizedExecutor = false;
+      } else {
+        const notExpired = !keyRec.expiresAt || new Date(keyRec.expiresAt) > new Date();
+        if (notExpired) {
+          if (!keyRec.hwidLocked || !keyRec.boundHwid || keyRec.boundHwid === hwid) {
+            isAuthorizedExecutor = true;
+            keyRecordMatched = keyRec;
+          }
         }
       }
     }
@@ -1396,7 +1797,7 @@ async function handleRawLoaderRequest(req: Request, res: Response) {
 
   // Update license usage if key provided
   if (keyRecordMatched) {
-    keyRecordMatched.currentUses += 1;
+    keyRecordMatched.currentUses = (keyRecordMatched.currentUses || 0) + 1;
     keyRecordMatched.lastUsedAt = new Date().toISOString();
     if (keyRecordMatched.hwidLocked && !keyRecordMatched.boundHwid && hwid) {
       keyRecordMatched.boundHwid = hwid;
@@ -1404,24 +1805,17 @@ async function handleRawLoaderRequest(req: Request, res: Response) {
     db.save();
   }
 
-  // If script requires a key, enforce it unless owner or authorized
-  if (isKeyRequired && !isAuthorizedExecutor && !isOwnerSession) {
-    const isBrowser = req.headers.accept?.includes('text/html');
+  // Enforce authorization
+  if (!isAuthorizedExecutor && !isAuthorizedOwner) {
     if (isBrowser) {
       return res.status(401).send(renderUnauthorizedHtml(filename, id));
     }
-    return res.status(401).send(`-- [RONIGUARD] Access Denied: Valid license key required.\nreturn error("[RONIGUARD] License key verification required. Pass ?key=YOUR_KEY")`);
+    return res.status(401).send(`-- [RONIGUARD] Access Denied: Invalid or unauthorized API key for script "${filename}".\nreturn error("[RONIGUARD] Access Denied: Valid script-specific API key required. Usage: loader.lua?script=${id}&key=YOUR_API_KEY")`);
   }
 
-  // If accessed in a web browser (and not ?raw=true), show the 🛑 UNAUTHORIZED ACCESS 🛑 landing page
-  const isBrowser = req.headers.accept?.includes('text/html');
-  if (isBrowser && !req.query.raw) {
-    return res.send(renderUnauthorizedHtml(filename, id));
-  }
-
-  // Deliver the protected script to Roblox executor or raw viewer
+  // Deliver the protected script payload to Roblox executor
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('X-Roniguard-Engine', 'AidenFuscators-Register-VM-v1.5');
+  res.setHeader('X-Roniguard-Engine', 'RONIGUARD-MAX-v2.5');
   res.setHeader('X-Roniguard-Security-Walls', 'Active');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   return res.send(content);

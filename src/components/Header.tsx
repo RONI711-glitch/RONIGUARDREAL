@@ -5,7 +5,8 @@ interface HeaderProps {
   currentSectionTitle: string;
   botConnected: boolean;
   botUsername?: string;
-  ownerEmail: string;
+  userLabel?: string;
+  userRole?: 'user' | 'admin';
   onToggleMobileNav: () => void;
   onLogout: () => void;
 }
@@ -14,7 +15,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentSectionTitle,
   botConnected,
   botUsername,
-  ownerEmail,
+  userLabel = 'Discord User',
+  userRole = 'user',
   onToggleMobileNav,
   onLogout,
 }) => {
@@ -42,32 +44,34 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Zone 2: Contextual section breadcrumb & metadata */}
       <div className="hidden sm:flex items-center gap-3 text-xs text-neutral-400 min-w-0">
-        <span className="text-neutral-500 font-medium">Console</span>
+        <span className="text-neutral-500 font-medium">Platform</span>
         <span aria-hidden="true" className="text-neutral-600">/</span>
         <span className="font-semibold text-neutral-200 truncate">{currentSectionTitle}</span>
         <span aria-hidden="true" className="text-neutral-600">·</span>
         <div className="flex items-center gap-1.5 text-neutral-300">
           <Radio className={`w-3.5 h-3.5 ${botConnected ? 'text-emerald-400 animate-pulse' : 'text-neutral-500'}`} />
           <span className="truncate">
-            {botConnected ? (botUsername ? `@${botUsername}` : 'Bot Linked') : 'Bot Offline'}
+            {botConnected ? (botUsername ? `@${botUsername}` : 'Bot Online') : 'Bot Gateway Active'}
           </span>
         </div>
       </div>
 
-      {/* Zone 3: Primary action / Owner identity & Logout */}
+      {/* Zone 3: Primary action / User identity & Logout */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="hidden md:flex flex-col items-end text-right">
-          <span className="text-xs font-semibold text-white tracking-tight">{ownerEmail}</span>
-          <span className="text-[11px] text-purple-400 font-medium">Sole Authenticated Owner</span>
+          <span className="text-xs font-semibold text-white tracking-tight">@{userLabel}</span>
+          <span className="text-[11px] text-purple-400 font-medium">
+            {userRole === 'admin' ? 'Administrator' : 'Verified Developer'}
+          </span>
         </div>
 
         <button
           onClick={onLogout}
-          title="Sign out of owner vault"
+          title="Sign out of session"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-900/40 bg-purple-950/30 hover:bg-purple-900/40 text-neutral-300 hover:text-white text-xs font-medium transition-all"
         >
           <LogOut className="w-3.5 h-3.5 text-neutral-400" />
-          <span className="hidden sm:inline">Lock Session</span>
+          <span className="hidden sm:inline">Sign Out</span>
         </button>
       </div>
     </header>

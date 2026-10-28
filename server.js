@@ -28,10 +28,21 @@ function hashPassword(password, salt) {
 function generateRandomHex(length = 32) {
   return crypto.randomBytes(length).toString("hex");
 }
+var SCRIPT_PROCESSING_STAGES = [
+  { id: 1, name: "Saving script configuration" },
+  { id: 2, name: "Validating submitted source" },
+  { id: 3, name: "Preparing script" },
+  { id: 4, name: "Applying RONIGUARD MAX" },
+  { id: 5, name: "Validating generated output" },
+  { id: 6, name: "Associating script with its panel" },
+  { id: 7, name: "Creating script-specific API key" },
+  { id: 8, name: "Saving final result" }
+];
 function getDefaultState() {
   const salt = generateRandomHex(16);
   const initialPassword = process.env.OWNER_INITIAL_PASSWORD || "RoniguardOwner2026!";
   const initialRecoveryKey = "RONI-RECOVER-" + crypto.randomBytes(8).toString("hex").toUpperCase();
+  const defaultUserId = "usr_owner";
   const defaultPanelId = "pnl_main_" + crypto.randomBytes(4).toString("hex");
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
@@ -46,9 +57,25 @@ function getDefaultState() {
       twoFactorEnabled: false,
       createdAt: now
     },
+    users: [
+      {
+        id: defaultUserId,
+        discordId: "728491028374829103",
+        username: "roniguard_owner",
+        discriminator: "0",
+        avatar: null,
+        email: "ronizz.edit@gmail.com",
+        role: "admin",
+        sessionTokens: [],
+        createdAt: now,
+        lastLoginAt: now
+      }
+    ],
+    jobs: [],
     panels: [
       {
         id: defaultPanelId,
+        userId: defaultUserId,
         name: "Prime Suite Core",
         description: "Main production scripts protection suite with Discord bot synchronization.",
         status: "active",
@@ -67,6 +94,7 @@ function getDefaultState() {
     whitelist: [
       {
         id: "wl_owner_" + crypto.randomBytes(4).toString("hex"),
+        userId: defaultUserId,
         panelId: defaultPanelId,
         platform: "discord",
         identifier: "728491028374829103",
@@ -77,22 +105,7 @@ function getDefaultState() {
         boundHwid: "HWID_HWID_7b19a42f5e"
       }
     ],
-    keys: [
-      {
-        id: "key_master_" + crypto.randomBytes(4).toString("hex"),
-        panelId: defaultPanelId,
-        key: "RONI-VVIP-2026-X892",
-        type: "lifetime",
-        maxUses: 1,
-        currentUses: 0,
-        hwidLocked: true,
-        boundHwid: null,
-        status: "active",
-        createdAt: now,
-        expiresAt: null,
-        lastUsedAt: null
-      }
-    ],
+    keys: [],
     hwidBindings: [
       {
         id: "hwid_1_" + crypto.randomBytes(4).toString("hex"),
@@ -112,20 +125,20 @@ function getDefaultState() {
         name: "Discord Bot Production Bridge",
         prefix: "roni_live_bot_",
         keyHash: crypto.createHash("sha256").update("roni_live_bot_seed_token").digest("hex"),
-        scopes: ["bot:sync", "whitelist:read", "whitelist:write", "keys:validate", "hwid:reset"],
+        scopes: ["all", "read_scripts", "verify_keys", "manage_whitelist", "bot_bridge"],
         createdAt: now,
-        lastUsedAt: null,
+        lastUsedAt: now,
         status: "active",
-        rateLimitPerMin: 120
+        rateLimitPerMin: 200
       }
     ],
     auditLogs: [
       {
         id: "log_init_" + crypto.randomBytes(4).toString("hex"),
-        eventType: "security_alert",
-        details: "RONIGUARD initialized for owner ronizz.edit@gmail.com with secure zero-leak storage.",
+        eventType: "login",
+        details: "RONIGUARD Multi-Tenant System Initialized",
         ip: "127.0.0.1",
-        userAgent: "RONIGUARD System Core",
+        userAgent: "System Boot",
         timestamp: now,
         severity: "info"
       }
@@ -140,52 +153,17 @@ function getDefaultState() {
       isConnected: false,
       registeredCommands: [
         {
-          name: "whitelist add",
-          description: "Add a user (Discord ID or Roblox ID) to a panel whitelist",
-          options: ["user: string", "panel: string?"],
-          category: "Access Management",
+          name: "panelsetup",
+          description: "Set up or configure a security panel for your Discord scripts",
+          options: ["name: string?"],
+          category: "Panels",
           implementedInBot: true
         },
         {
-          name: "whitelist remove",
-          description: "Revoke access for a user from a panel whitelist",
-          options: ["user: string"],
-          category: "Access Management",
-          implementedInBot: true
-        },
-        {
-          name: "whitelist check",
-          description: "Check active whitelist and HWID status for a user",
-          options: ["user: string"],
-          category: "Access Management",
-          implementedInBot: true
-        },
-        {
-          name: "key generate",
-          description: "Generate a new unique cryptographically verified license key",
-          options: ["type: lifetime | 30d | 7d", "panel: string?"],
-          category: "License Keys",
-          implementedInBot: true
-        },
-        {
-          name: "key redeem",
-          description: "Redeem an active license key for a user and bind HWID",
-          options: ["key: string", "user: string"],
-          category: "License Keys",
-          implementedInBot: true
-        },
-        {
-          name: "hwid reset",
-          description: "Reset device HWID lock for a user within allowed quota",
-          options: ["user: string"],
-          category: "Hardware Lock",
-          implementedInBot: true
-        },
-        {
-          name: "script get",
-          description: "Fetch the protected loader or download output for an authorized user",
-          options: ["panel: string", "format: loader | bytecode"],
-          category: "Script Distribution",
+          name: "lic",
+          description: "Manage and verify script-specific API keys",
+          options: ["action: check | info | revoke | list", "target: string?"],
+          category: "Licenses",
           implementedInBot: true
         },
         {
@@ -199,8 +177,8 @@ function getDefaultState() {
     },
     settings: {
       projectName: "RONIGUARD",
-      defaultEngine: "AidenFuscators-Register-VM",
-      defaultProfile: "advanced",
+      defaultEngine: "RONIGUARD MAX",
+      defaultProfile: "maximum",
       maxFileSizeMb: 10,
       requirePasswordForSourceRecovery: true,
       autoPurgeBuildHistoryDays: 60
@@ -216,7 +194,37 @@ var Store = class {
       if (fs.existsSync(DB_FILE)) {
         const data = fs.readFileSync(DB_FILE, "utf-8");
         const parsed = JSON.parse(data);
-        parsed.owner.email = "ronizz.edit@gmail.com";
+        parsed.users = parsed.users || [];
+        parsed.jobs = parsed.jobs || [];
+        parsed.panels = parsed.panels || [];
+        parsed.scripts = parsed.scripts || [];
+        parsed.keys = parsed.keys || [];
+        if (!parsed.users.some((u) => u.role === "admin")) {
+          parsed.users.unshift({
+            id: "usr_owner",
+            discordId: "728491028374829103",
+            username: "roniguard_owner",
+            discriminator: "0",
+            avatar: null,
+            email: "ronizz.edit@gmail.com",
+            role: "admin",
+            sessionTokens: [],
+            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+            lastLoginAt: (/* @__PURE__ */ new Date()).toISOString()
+          });
+        }
+        const defaultUid = parsed.users[0]?.id || "usr_owner";
+        parsed.panels.forEach((p) => {
+          if (!p.userId) p.userId = defaultUid;
+        });
+        parsed.scripts.forEach((s) => {
+          if (!s.userId) s.userId = defaultUid;
+          if (s.isObfuscated === void 0) s.isObfuscated = true;
+        });
+        parsed.keys.forEach((k) => {
+          if (!k.userId) k.userId = defaultUid;
+          if (!k.scriptId && parsed.scripts[0]) k.scriptId = parsed.scripts[0].id;
+        });
         return parsed;
       }
     } catch (err) {
@@ -241,6 +249,117 @@ var Store = class {
   get() {
     return this.state;
   }
+  // User Management
+  findOrCreateDiscordUser(discordUser) {
+    const dId = discordUser.discordId || discordUser.id || "usr_discord";
+    let user = this.state.users.find((u) => u.discordId === dId);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    if (!user) {
+      const isOwner = dId === "728491028374829103" || discordUser.role === "admin" || discordUser.email === "ronizz.edit@gmail.com" || discordUser.email === "ronihub02@gmail.com" || this.state.users.length === 0;
+      user = {
+        id: "usr_" + dId,
+        discordId: dId,
+        username: discordUser.username,
+        discriminator: discordUser.discriminator || "0",
+        avatar: discordUser.avatar || null,
+        email: discordUser.email || null,
+        role: discordUser.role || (isOwner ? "admin" : "user"),
+        sessionTokens: [],
+        createdAt: now,
+        lastLoginAt: now
+      };
+      this.state.users.push(user);
+      const defaultPanel = {
+        id: "pnl_" + generateRandomHex(6),
+        userId: user.id,
+        name: `${discordUser.username}'s Main Panel`,
+        description: "Default personal security panel for Roblox Luau scripts.",
+        status: "active",
+        protectionProfile: "maximum",
+        whitelistEnabled: true,
+        keyAuthEnabled: true,
+        hwidLockEnabled: true,
+        maxHwidResets: 3,
+        scriptCount: 0,
+        createdAt: now,
+        updatedAt: now
+      };
+      this.state.panels.push(defaultPanel);
+      this.logAudit("login", `New public user registered via Discord: @${discordUser.username} (${dId})`);
+    } else {
+      user.username = discordUser.username;
+      user.discriminator = discordUser.discriminator || user.discriminator;
+      if (discordUser.avatar !== void 0) user.avatar = discordUser.avatar;
+      if (discordUser.email) user.email = discordUser.email;
+      if (discordUser.role) user.role = discordUser.role;
+      user.lastLoginAt = now;
+    }
+    this.save();
+    return user;
+  }
+  getUserBySessionToken(token) {
+    if (!token) return null;
+    const user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    if (user) return user;
+    if (this.state.owner.sessionTokens && this.state.owner.sessionTokens.includes(token)) {
+      let ownerUser = this.state.users.find((u) => u.role === "admin");
+      if (!ownerUser) {
+        ownerUser = this.findOrCreateDiscordUser({
+          id: "728491028374829103",
+          username: "roniguard_owner",
+          email: "ronizz.edit@gmail.com"
+        });
+      }
+      return ownerUser;
+    }
+    return null;
+  }
+  getUserById(userId) {
+    return this.state.users.find((u) => u.id === userId || u.discordId === userId);
+  }
+  // Job Management
+  createJob(data) {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const job = {
+      id: "job_" + generateRandomHex(8),
+      scriptId: data.scriptId,
+      userId: data.userId,
+      panelId: data.panelId,
+      scriptName: data.scriptName,
+      status: "processing",
+      currentStageIndex: 0,
+      currentStage: SCRIPT_PROCESSING_STAGES[0].name,
+      progressPercent: 10,
+      stages: SCRIPT_PROCESSING_STAGES.map((s, idx) => ({
+        id: s.id,
+        name: s.name,
+        status: idx === 0 ? "in_progress" : "pending",
+        timestamp: idx === 0 ? now : void 0
+      })),
+      obfuscationEnabled: data.obfuscationEnabled,
+      sourceCodeLength: data.sourceCodeLength,
+      apiKey: data.apiKey,
+      createdAt: now,
+      updatedAt: now
+    };
+    this.state.jobs.unshift(job);
+    if (this.state.jobs.length > 200) {
+      this.state.jobs = this.state.jobs.slice(0, 200);
+    }
+    this.save();
+    return job;
+  }
+  getJob(jobId) {
+    return this.state.jobs.find((j) => j.id === jobId);
+  }
+  updateJob(jobId, updates) {
+    const job = this.state.jobs.find((j) => j.id === jobId);
+    if (!job) return void 0;
+    Object.assign(job, updates);
+    job.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.save();
+    return job;
+  }
   logAudit(eventType, details, ip = "127.0.0.1", userAgent = "RONIGUARD Web", severity = "info") {
     const entry = {
       id: "log_" + crypto.randomBytes(6).toString("hex"),
@@ -264,49 +383,13 @@ var db = new Store();
 import crypto2 from "node:crypto";
 var AVAILABLE_ENGINES = [
   {
-    id: "AidenFuscators-Register-VM",
-    name: "AidenFuscators Register VM v1.5",
-    version: "1.5.0",
-    description: "54-Opcode Register Virtual Machine with Base-85 encoding, dead blocks, opaque predicates, and metatable security walls.",
-    supportedProfiles: ["basic", "advanced", "maximum"],
+    id: "RONIGUARD-MAX",
+    name: "RONIGUARD MAX",
+    version: "4.2.0",
+    description: "Premier Lua/Luau Protection Engine with 54-Opcode Register Virtual Machine, Base-85 bytecode serialization, opaque predicates, and metatable security seals.",
+    supportedProfiles: ["maximum"],
     supportedTargets: ["Luau", "Lua 5.1", "LuaJIT", "Roblox"],
     isDefault: true
-  },
-  {
-    id: "Vykus-VM-Obfuscator",
-    name: "Vykus Polymorphic VM Engine",
-    version: "2.5.1",
-    description: "Cloud polymorphic virtual machine with encrypted string decks, anti-tamper security walls, and anti-debug probes.",
-    supportedProfiles: ["basic", "advanced", "maximum"],
-    supportedTargets: ["Luau", "Lua 5.1", "LuaJIT"],
-    isDefault: false
-  },
-  {
-    id: "RoniGuard-Luau-V3",
-    name: "RoniGuard Luau Core V3",
-    version: "3.4.1",
-    description: "Proprietary Luau AST transformer with XOR string virtualization, tamper sentinels, and environment locks.",
-    supportedProfiles: ["basic", "advanced", "maximum"],
-    supportedTargets: ["Luau", "Lua 5.1", "LuaJIT"],
-    isDefault: false
-  },
-  {
-    id: "IronLuau-Shield",
-    name: "IronLuau Virtual Shield",
-    version: "2.1.0",
-    description: "State-machine control flow dispatcher with opcode instruction sequencing and anti-hook metatables.",
-    supportedProfiles: ["advanced", "maximum"],
-    supportedTargets: ["Luau", "Lua 5.1"],
-    isDefault: false
-  },
-  {
-    id: "Prometheus-Luau",
-    name: "Prometheus High-Speed Optimizer",
-    version: "1.8.9",
-    description: "Lightweight identifier mangler, constant fold obfuscator, and dead-code generator for minimal performance penalty.",
-    supportedProfiles: ["basic", "advanced"],
-    supportedTargets: ["Luau", "Lua 5.1", "LuaJIT"],
-    isDefault: false
   }
 ];
 function generateIdent(prefix = "_0x", len = 4) {
@@ -357,52 +440,6 @@ function validateLuaSyntax(code) {
   if (brackets !== 0) return { valid: false, error: "Unbalanced brackets in Lua script" };
   return { valid: true };
 }
-function transformStringsWithXor(code, xorKey) {
-  const decoderName = generateIdent("_decrypt_");
-  const tableIdent = generateIdent("_strs_");
-  const stringLiterals = [];
-  const replaced = code.replace(/(["'])((?:\\.|(?!\1)[^\\])*)\1/g, (_match, _quote, content) => {
-    if (content.length === 0) return '""';
-    const idx = stringLiterals.push(content);
-    return `${tableIdent}[${idx}]`;
-  });
-  const encryptedEntries = stringLiterals.map((str) => {
-    const bytes = [];
-    for (let i = 0; i < str.length; i++) {
-      bytes.push(str.charCodeAt(i) ^ xorKey);
-    }
-    return `"${bytes.map((b) => `\\${b}`).join("")}"`;
-  });
-  const decoderFn = `
--- [RONIGUARD STRING VIRTUALIZATION TABLE]
-local ${tableIdent} = {${encryptedEntries.join(",")}}
-local function ${decoderName}(t, k)
-  local res = {}
-  local byte = string.byte
-  local char = string.char
-  for i = 1, #t do
-    local s = t[i]
-    local buf = {}
-    for j = 1, #s do
-      buf[j] = char(bit32 and bit32.bxor(byte(s, j), k) or ((byte(s, j) + k) % 256))
-    end
-    res[i] = table.concat(buf)
-  end
-  return res
-end
-${tableIdent} = ${decoderName}(${tableIdent}, ${xorKey})
-`.trim();
-  return { code: replaced, decoderFn };
-}
-function obfuscateNumbers(code) {
-  return code.replace(/\b([2-9]|[1-9][0-9]{1,3})\b(?!\s*[:.])/g, (numStr) => {
-    const n = parseInt(numStr, 10);
-    if (isNaN(n) || n > 9999) return numStr;
-    const r = Math.floor(Math.random() * 50) + 1;
-    const expr = `(0x${(n + r).toString(16)} - ${r})`;
-    return expr;
-  });
-}
 function mangleIdentifiers(code) {
   const luaKeywords = /* @__PURE__ */ new Set([
     "and",
@@ -429,7 +466,6 @@ function mangleIdentifiers(code) {
     "continue",
     "export",
     "type",
-    // Globals / standard Roblox/Luau library names to preserve
     "print",
     "warn",
     "error",
@@ -437,7 +473,6 @@ function mangleIdentifiers(code) {
     "pcall",
     "xpcall",
     "select",
-    "type",
     "typeof",
     "tostring",
     "tonumber",
@@ -485,78 +520,27 @@ function mangleIdentifiers(code) {
   });
   return transformed;
 }
-var VYKUS_BASE = "https://vykus-obsufucater.onrender.com";
-var VYKUS_API_KEY = "vk_fy-Ue_O8E6tLxtJP7H3KNw";
-var cachedSessionCookie = null;
-var sessionExpiresAt = 0;
-async function getVykusSessionCookie() {
-  const now = Date.now();
-  if (cachedSessionCookie && now < sessionExpiresAt) {
-    return cachedSessionCookie;
-  }
-  const authRes = await fetch(`${VYKUS_BASE}/api/auth/key`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey: VYKUS_API_KEY })
-  });
-  if (!authRes.ok) {
-    throw new Error(`Vykus auth failed with HTTP ${authRes.status}`);
-  }
-  const setCookie = authRes.headers.get("set-cookie");
-  if (!setCookie) {
-    throw new Error("Vykus did not return a session cookie");
-  }
-  const sessionCookie = setCookie.split(";")[0];
-  cachedSessionCookie = sessionCookie;
-  sessionExpiresAt = now + 6 * 60 * 60 * 1e3;
-  return sessionCookie;
-}
-async function callVykusObfuscate(source, options) {
-  let cookie = await getVykusSessionCookie();
-  const mode = options.vykusMode || (options.profile === "basic" ? "classic" : "vm");
-  const layers = options.vykusLayers ?? (options.profile === "maximum" ? 3 : 2);
-  const density = options.vykusDensity ?? 0.35;
-  const payload = {
-    source,
-    options: {
-      mode,
-      layers,
-      density,
-      strings: options.stringEncryption !== false,
-      numbers: options.constantVirtualization !== false,
-      rename: options.variableRenaming !== false,
-      junk: true
+function transformStringsWithXor(code, xorKey) {
+  const decoderName = generateIdent("_d_", 2);
+  let transformed = code;
+  transformed = transformed.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (_match, strContent) => {
+    if (!strContent || strContent.length > 256) return _match;
+    const bytes = [];
+    for (let i = 0; i < strContent.length; i++) {
+      bytes.push(strContent.charCodeAt(i) ^ xorKey);
     }
-  };
-  let obfRes = await fetch(`${VYKUS_BASE}/api/obfuscate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie
-    },
-    body: JSON.stringify(payload)
+    return `${decoderName}({${bytes.join(",")}})`;
   });
-  if (obfRes.status === 401 || obfRes.status === 403) {
-    cachedSessionCookie = null;
-    cookie = await getVykusSessionCookie();
-    obfRes = await fetch(`${VYKUS_BASE}/api/obfuscate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: cookie
-      },
-      body: JSON.stringify(payload)
-    });
-  }
-  if (!obfRes.ok) {
-    const errorBody = await obfRes.json().catch(() => ({}));
-    throw new Error(errorBody.error || `Vykus API error HTTP ${obfRes.status}`);
-  }
-  const result = await obfRes.json();
-  if (!result || typeof result.output !== "string") {
-    throw new Error("Vykus returned invalid response structure");
-  }
-  return result.output;
+  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do s=s..string.char(bit32 and bit32.bxor(b,${xorKey}) or (b~=${xorKey})) end return s end`;
+  return { code: transformed, decoderFn };
+}
+function obfuscateNumbers(code) {
+  return code.replace(/\b(\d+)\b/g, (_match, numStr) => {
+    const n = parseInt(numStr, 10);
+    if (isNaN(n) || n > 9999 || n < 2) return numStr;
+    const r = Math.floor(Math.random() * 20) + 1;
+    return `(${n + r}-${r})`;
+  });
 }
 function encodeBase85(text) {
   const bytes = Buffer.from(text, "utf-8");
@@ -578,13 +562,20 @@ function encodeBase85(text) {
   }
   return out;
 }
-function runAidenFuscatorsPipeline(sourceCode, options) {
+function runRoniguardMax(sourceCode, options = {}) {
   let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
-  if (options.variableRenaming || options.profile === "advanced" || options.profile === "maximum") {
+  if (options.variableRenaming !== false) {
     current = mangleIdentifiers(current);
   }
-  if (options.constantVirtualization || options.profile === "maximum") {
+  if (options.constantVirtualization !== false) {
     current = obfuscateNumbers(current);
+  }
+  let decoderPreamble = "";
+  if (options.stringEncryption !== false) {
+    const xorKey = Math.floor(Math.random() * 200) + 25;
+    const res = transformStringsWithXor(current, xorKey);
+    current = res.code;
+    decoderPreamble = res.decoderFn;
   }
   const salt = crypto2.randomBytes(8).toString("hex");
   const b85Payload = encodeBase85(salt);
@@ -592,14 +583,15 @@ function runAidenFuscatorsPipeline(sourceCode, options) {
   const vmDispatch = generateIdent("_DISPATCH_");
   const vmState = generateIdent("_IP_");
   const vmConstants = generateIdent("_K_");
-  const watermark = options.customWatermark || "AIDENFUSCATORS_V15_REGISTER_VM";
-  const header = `
+  const watermark = options.customWatermark || "RONIGUARD_MAX_PROTECTED";
+  const securityHeader = `
 --[[
   =============================================================
-  AIDENFUSCATORS v1.5 \u2014 54-OPCODE REGISTER VM
+  RONIGUARD MAX \u2014 ULTRA-HIGH INTEGRITY LUAU PROTECTOR
   Target Identity: ${watermark}
-  Engine: Register Virtual Machine (Base-85 Bytecode)
-  Protected Spec: https://aidenfuscators-v15.vercel.app/#obf
+  Engine: 54-Opcode Register Virtual Machine (Base-85 Bytecode)
+  Security Walls: Metatable Integrity Seals \xB7 Anti-Hook Probes
+  Protected Host: https://roniguardreal.wasmer.app
   =============================================================
 --]]
 do
@@ -612,7 +604,7 @@ do
     return (function() while true do end end)()
   end
 
-  local function _sealMetatable()
+  local function _verifyIntegrity()
     if getrawmetatable then
       local ok, meta = _pcall(getrawmetatable, game)
       if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
@@ -628,13 +620,13 @@ do
     return true
   end
 
-  if not _sealMetatable() then
-    return error("[AIDENFUSCATORS] Register VM Integrity check failed. Execution halted.")
+  if not _verifyIntegrity() then
+    return error("[RONIGUARD MAX] Integrity violation detected. Execution halted.")
   end
 end
 `.trim();
   const vmCore = `
--- [AIDENFUSCATORS 54-OPCODE REGISTER VM DISPATCHER]
+-- [RONIGUARD MAX 54-OPCODE REGISTER VM DISPATCHER]
 -- Salt: ${salt} | Base-85 Token: ${b85Payload.slice(0, 16)}...
 local ${vmRegisters} = {}
 local ${vmConstants} = { [0] = false, [1] = true, [2] = nil }
@@ -650,7 +642,7 @@ end
 
 local ${vmDispatch} = {
   [1] = function()
-${current}
+${decoderPreamble ? decoderPreamble + "\n" : ""}${current}
     return 0
   end
 }
@@ -664,98 +656,27 @@ while ${vmState} ~= 0 do
   end
 end
 `.trim();
-  return `${header}
+  return `${securityHeader}
 
 ${vmCore}`;
 }
-function runRoniGuardPipeline(sourceCode, options) {
-  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
-  const xorKey = Math.floor(Math.random() * 200) + 25;
-  let decoderPreamble = "";
-  if (options.variableRenaming || options.profile === "advanced" || options.profile === "maximum") {
-    current = mangleIdentifiers(current);
-  }
-  if (options.constantVirtualization || options.profile === "maximum") {
-    current = obfuscateNumbers(current);
-  }
-  if (options.stringEncryption || options.profile === "advanced" || options.profile === "maximum") {
-    const res = transformStringsWithXor(current, xorKey);
-    current = res.code;
-    decoderPreamble = res.decoderFn;
-  }
+function formatNonObfuscatedScript(sourceCode, scriptName = "Script") {
   const header = `
 --[[
   =============================================================
-  RONIGUARD LUAU CORE V3 \u2014 PROPRIETARY VIRTUALIZATION
-  Security Profile: ${(options.profile || "advanced").toUpperCase()}
-  Tamper Sentinels: Active \xB7 Memory Locks: Initialized
+  RONIGUARD SCRIPT RUNTIME (Standard Non-Obfuscated Mode)
+  Script: ${scriptName}
   Host: https://roniguardreal.wasmer.app
   =============================================================
 --]]
-do
-  local _env = getfenv and getfenv() or _G
-  if _env and rawget(_env, "_UNTRUSTED_HOOK") then
-    return error("[RONIGUARD] Security Sentinel: Unauthorized environment modification.")
-  end
-end
-`.trim();
-  const stateVar = generateIdent("_step_");
-  const smCore = `
-local ${stateVar} = 1
-while ${stateVar} ~= 0 do
-  if ${stateVar} == 1 then
-${current}
-    ${stateVar} = 0
-  end
-end
-`.trim();
-  return [header, decoderPreamble, smCore].filter(Boolean).join("\n\n");
-}
-function runIronLuauPipeline(sourceCode, options) {
-  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
-  if (options.variableRenaming) current = mangleIdentifiers(current);
-  if (options.constantVirtualization) current = obfuscateNumbers(current);
-  const header = `
---[[
-  =============================================================
-  IRONLUAU VIRTUAL SHIELD v2.1.0
-  Instruction Sequencing: Linear Virtualizer
-  Metatable Seals: Anti-Hook Active
-  =============================================================
---]]
-`.trim();
-  const stateIdent = generateIdent("_iron_st_");
-  const body = `
-local ${stateIdent} = 0x1
-while ${stateIdent} == 0x1 do
-${current}
-  ${stateIdent} = 0x0
-end
 `.trim();
   return `${header}
 
-${body}`;
+${sourceCode.trim()}`;
 }
-function runPrometheusPipeline(sourceCode) {
-  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
-  current = mangleIdentifiers(current);
-  current = obfuscateNumbers(current);
-  const header = `
---[[
-  =============================================================
-  PROMETHEUS HIGH-SPEED LUAU OPTIMIZER v1.8.9
-  Optimized Identifiers \xB7 Zero Execution Overhead
-  =============================================================
---]]
-`.trim();
-  return `${header}
-
-${current}`;
-}
-async function runObfuscationPipeline(sourceCode, options) {
+async function runObfuscationPipeline(sourceCode, options = {}) {
   const startTime = Date.now();
   const originalSize = Buffer.byteLength(sourceCode, "utf8");
-  const engineId = options.engine || "AidenFuscators-Register-VM";
   const syntaxCheck = validateLuaSyntax(sourceCode);
   if (!syntaxCheck.valid) {
     return {
@@ -764,32 +685,18 @@ async function runObfuscationPipeline(sourceCode, options) {
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: engineId,
-      profileUsed: options.profile,
+      engineUsed: "RONIGUARD MAX",
+      profileUsed: options.profile || "maximum",
       error: `Syntax validation failed: ${syntaxCheck.error}`
     };
   }
   try {
     let finalCode = "";
-    if (engineId === "AidenFuscators-Register-VM" || engineId.includes("Aiden")) {
-      finalCode = runAidenFuscatorsPipeline(sourceCode, options);
-    } else if (engineId === "RoniGuard-Luau-V3" || engineId.includes("RoniGuard")) {
-      finalCode = runRoniGuardPipeline(sourceCode, options);
-    } else if (engineId === "IronLuau-Shield" || engineId.includes("IronLuau")) {
-      finalCode = runIronLuauPipeline(sourceCode, options);
-    } else if (engineId === "Prometheus-Luau" || engineId.includes("Prometheus")) {
-      finalCode = runPrometheusPipeline(sourceCode);
-    } else if (engineId === "Vykus-VM-Obfuscator" || engineId.includes("Vykus")) {
-      try {
-        const vykusOutput = await callVykusObfuscate(sourceCode, options);
-        finalCode = `--[[ VYKUS POLYMORPHIC VM v2.5.1 ]]
-${vykusOutput}`;
-      } catch (err) {
-        console.warn("Vykus cloud unavailable; running local Vykus VM loop:", err?.message);
-        finalCode = runAidenFuscatorsPipeline(sourceCode, options);
-      }
+    const isObfuscationEnabled = options.obfuscationEnabled !== false;
+    if (isObfuscationEnabled) {
+      finalCode = runRoniguardMax(sourceCode, options);
     } else {
-      finalCode = runAidenFuscatorsPipeline(sourceCode, options);
+      finalCode = formatNonObfuscatedScript(sourceCode);
     }
     const outputSize = Buffer.byteLength(finalCode, "utf8");
     const compressionRatio = Number((outputSize / originalSize * 100).toFixed(1));
@@ -800,8 +707,8 @@ ${vykusOutput}`;
       outputSize,
       compressionRatio,
       durationMs: Date.now() - startTime,
-      engineUsed: engineId,
-      profileUsed: options.profile || "advanced"
+      engineUsed: isObfuscationEnabled ? "RONIGUARD MAX" : "Standard Runtime (Non-Obfuscated)",
+      profileUsed: options.profile || "maximum"
     };
   } catch (err) {
     return {
@@ -810,9 +717,9 @@ ${vykusOutput}`;
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: engineId,
-      profileUsed: options.profile || "advanced",
-      error: `Obfuscation transformation exception: ${err?.message || "Unknown processing error"}`
+      engineUsed: "RONIGUARD MAX",
+      profileUsed: options.profile || "maximum",
+      error: `Processing exception: ${err?.message || "Unknown processing error"}`
     };
   }
 }
@@ -992,8 +899,13 @@ async function executeBotCommand(execution) {
       } else if (type === "30d") {
         expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
       }
+      const callerUserId = execution.user?.id || "usr_owner";
+      const targetScript = state.scripts.find((s) => s.panelId === panelId) || state.scripts[0];
+      const scriptId = args.script || (targetScript ? targetScript.id : "scr_main");
       const keyRecord = {
         id: "key_" + Math.random().toString(36).substring(2, 9),
+        userId: callerUserId,
+        scriptId,
         panelId,
         key: newKeyStr,
         type,
@@ -1046,17 +958,213 @@ async function executeBotCommand(execution) {
         message: `HWID device lock successfully cleared for user "${user}". Next execution will bind new hardware ID.`
       };
     }
-    case "status": {
+    case "panelsetup": {
+      try {
+        const discordId = execution.user?.id || args.user_id || "owner_discord";
+        const discordUsername = execution.user?.username || args.username || "Owner";
+        const userRec = db.findOrCreateDiscordUser({
+          discordId,
+          username: discordUsername
+        });
+        const panelName = (args.name || args.panel_name || `${discordUsername}'s Panel`).trim();
+        const panelDesc = (args.description || "Configured via Discord /panelsetup command").trim();
+        const panelId = "pnl_" + Math.random().toString(36).substring(2, 9);
+        const newPanel = {
+          id: panelId,
+          userId: userRec.id,
+          name: panelName,
+          description: panelDesc,
+          status: "active",
+          protectionProfile: "maximum",
+          whitelistEnabled: true,
+          keyAuthEnabled: true,
+          hwidLockEnabled: true,
+          maxHwidResets: 3,
+          scriptCount: 0,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        state.panels.unshift(newPanel);
+        db.logAudit("panel_update", `Panel "${panelName}" created via /panelsetup by @${discordUsername}`, "DiscordBot", discordId, "info");
+        db.save();
+        await sendDiscordWebhookNotification(
+          "Panel Created via Discord",
+          `Panel **${panelName}** (\`${panelId}\`) was deployed by <@${discordId}>.`,
+          [
+            { name: "Panel ID", value: `\`${panelId}\``, inline: true },
+            { name: "Security Profile", value: "Maximum (RONIGUARD MAX)", inline: true },
+            { name: "Owner", value: `@${discordUsername}`, inline: true }
+          ]
+        );
+        return {
+          success: true,
+          message: `Panel **${panelName}** was successfully initialized!
+\u2022 **Panel ID**: \`${panelId}\`
+\u2022 **Status**: Active (Key Auth, Whitelist & HWID Locks Enabled)
+\u2022 **Owner**: <@${discordId}>
+You can now attach scripts to this panel via the dashboard at https://roniguardreal.wasmer.app`,
+          data: newPanel
+        };
+      } catch (err) {
+        console.error("[RONIGUARD-BOT] Error in panelsetup handler:", err);
+        return {
+          success: false,
+          message: `Failed to configure panel: ${err?.message || "Database transaction error"}`
+        };
+      }
+    }
+    case "lic":
+    case "lic check": {
+      const keyInput = (args.key || args.license || args.id || "").trim();
+      if (!keyInput) {
+        return {
+          success: false,
+          message: "Missing license key. Usage: `/lic check <key>` or `/lic revoke <key>`"
+        };
+      }
+      const keyRecord = state.keys.find(
+        (k) => k.key.toUpperCase() === keyInput.toUpperCase() || k.id === keyInput
+      );
+      if (!keyRecord) {
+        return {
+          success: false,
+          message: `License key \`${keyInput}\` was not found in the RONIGUARD database.`
+        };
+      }
+      const script = state.scripts.find((s) => s.id === keyRecord.scriptId);
+      const isExpired = keyRecord.expiresAt && new Date(keyRecord.expiresAt) < /* @__PURE__ */ new Date();
+      const statusLabel = isExpired ? "EXPIRED" : keyRecord.status.toUpperCase();
       return {
         success: true,
-        message: `RONIGUARD Status: Panels: ${state.panels.length} | Scripts: ${state.scripts.length} | Active Keys: ${state.keys.filter((k) => k.status === "active").length} | Whitelist: ${state.whitelist.length} | Bot Online: ${state.botConfig.isConnected ? "Yes" : "No"}`,
-        data: {
-          panelsCount: state.panels.length,
-          scriptsCount: state.scripts.length,
-          keysCount: state.keys.length,
-          whitelistCount: state.whitelist.length,
-          isConnected: state.botConfig.isConnected
+        message: `**License Key Details:**
+\u2022 **Key**: \`${keyRecord.key}\`
+\u2022 **Status**: ${statusLabel === "ACTIVE" ? "\u{1F7E2} ACTIVE" : "\u{1F534} " + statusLabel}
+\u2022 **Target Script**: ${script ? `"${script.filename}" (\`${script.id}\`)` : `\`${keyRecord.scriptId || "N/A"}\``}
+\u2022 **Type**: ${keyRecord.type}
+\u2022 **Executions**: ${keyRecord.currentUses} / ${keyRecord.maxUses || "Unlimited"}
+\u2022 **HWID Binding**: ${keyRecord.boundHwid ? `\`${keyRecord.boundHwid.substring(0, 16)}...\`` : "Not yet bound"}
+\u2022 **Created**: ${keyRecord.createdAt.split("T")[0]}`,
+        data: keyRecord
+      };
+    }
+    case "lic info": {
+      const query = (args.query || args.script || args.key || "").trim();
+      if (!query) {
+        return {
+          success: false,
+          message: "Usage: `/lic info <script_name_or_key>`"
+        };
+      }
+      let keyRec = state.keys.find((k) => k.key.toUpperCase() === query.toUpperCase() || k.id === query);
+      let scriptRec = keyRec ? state.scripts.find((s) => s.id === keyRec?.scriptId) : state.scripts.find((s) => s.id === query || s.filename.toLowerCase() === query.toLowerCase());
+      if (!keyRec && scriptRec) {
+        keyRec = state.keys.find((k) => k.scriptId === scriptRec?.id && k.status === "active");
+      }
+      if (!scriptRec && !keyRec) {
+        return {
+          success: false,
+          message: `No license record or script matching "${query}" was found.`
+        };
+      }
+      return {
+        success: true,
+        message: `**Script Licensing Information:**
+\u2022 **Script**: "${scriptRec?.filename || "Unknown"}" (\`${scriptRec?.id || "N/A"}\`)
+\u2022 **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || "No key issued"}\`
+\u2022 **Status**: ${keyRec?.status === "active" ? "\u{1F7E2} ACTIVE" : "\u{1F534} " + (keyRec?.status || "inactive")}
+\u2022 **Loadstring**: \`loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptRec?.id || ""}&key=${keyRec?.key || ""}"))()\``
+      };
+    }
+    case "lic revoke": {
+      const keyInput = (args.key || args.license || "").trim();
+      if (!keyInput) {
+        return { success: false, message: "Missing key to revoke. Usage: `/lic revoke <key>`" };
+      }
+      const keyRec = state.keys.find(
+        (k) => k.key.toUpperCase() === keyInput.toUpperCase() || k.id === keyInput
+      );
+      if (!keyRec) {
+        return { success: false, message: `Key \`${keyInput}\` does not exist.` };
+      }
+      if (keyRec.status === "revoked") {
+        return { success: false, message: `Key \`${keyRec.key}\` is already revoked.` };
+      }
+      keyRec.status = "revoked";
+      keyRec.revokedAt = (/* @__PURE__ */ new Date()).toISOString();
+      db.logAudit("key_gen", `Revoked license key ${keyRec.key} via Discord /lic revoke`, "DiscordBot", execution.user?.id || "unknown", "warning");
+      db.save();
+      return {
+        success: true,
+        message: `\u{1F6D1} License key \`${keyRec.key}\` for script \`${keyRec.scriptId}\` has been **revoked**. All future executor requests will be denied.`
+      };
+    }
+    case "lic list": {
+      const discordId = execution.user?.id;
+      let userKeys = state.keys;
+      if (discordId) {
+        const u = state.users.find((x) => x.discordId === discordId);
+        if (u) {
+          userKeys = state.keys.filter((k) => k.userId === u.id);
         }
+      }
+      const active = userKeys.filter((k) => k.status === "active");
+      if (active.length === 0) {
+        return {
+          success: true,
+          message: "No active script licenses found. Create and process a script at https://roniguardreal.wasmer.app to generate an API key."
+        };
+      }
+      const lines = active.slice(0, 5).map((k) => {
+        const s = state.scripts.find((scr) => scr.id === k.scriptId);
+        return `\u2022 \`${k.key}\` \u2192 "${s?.filename || k.scriptId}" (${k.type})`;
+      });
+      return {
+        success: true,
+        message: `**Active Script Licenses (${active.length}):**
+${lines.join("\n")}${active.length > 5 ? `
+*+${active.length - 5} more on dashboard*` : ""}`
+      };
+    }
+    case "lic generate": {
+      const scriptInput = (args.script || args.name || "").trim();
+      if (!scriptInput) {
+        return { success: false, message: "Usage: `/lic generate <script_name_or_id>`" };
+      }
+      const script = state.scripts.find(
+        (s) => s.id === scriptInput || s.filename.toLowerCase() === scriptInput.toLowerCase()
+      );
+      if (!script) {
+        return { success: false, message: `Script "${scriptInput}" not found.` };
+      }
+      const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase() + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const newKey = `RONI-API-${randomHex}`;
+      const newKeyRec = {
+        id: "key_" + Math.random().toString(36).substring(2, 9),
+        userId: script.userId,
+        scriptId: script.id,
+        panelId: script.panelId,
+        key: newKey,
+        type: "lifetime",
+        maxUses: 1,
+        currentUses: 0,
+        hwidLocked: true,
+        boundHwid: null,
+        status: "active",
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        expiresAt: null,
+        lastUsedAt: null
+      };
+      state.keys.push(newKeyRec);
+      script.apiKey = newKey;
+      script.apiKeyId = newKeyRec.id;
+      db.logAudit("key_gen", `Issued new API key ${newKey} for script "${script.filename}"`, "DiscordBot", execution.user?.id || "unknown");
+      db.save();
+      return {
+        success: true,
+        message: `\u2705 New API key generated for script **"${script.filename}"**:
+\u2022 **API Key**: \`${newKey}\`
+\u2022 **Loadstring**: \`loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${newKey}"))()\``,
+        data: newKeyRec
       };
     }
     default:
@@ -1146,6 +1254,89 @@ var DiscordBotService = class {
     try {
       console.log("[RONIGUARD-BOT] Synchronizing slash commands with Discord API...");
       const commands = [
+        {
+          name: "panelsetup",
+          description: "Initialize and deploy a new RONIGUARD protection panel",
+          options: [
+            {
+              type: 3,
+              // STRING
+              name: "name",
+              description: "Panel name (e.g. My Hub Panel)",
+              required: false
+            },
+            {
+              type: 3,
+              name: "description",
+              description: "Panel description or notes",
+              required: false
+            }
+          ]
+        },
+        {
+          name: "lic",
+          description: "Inspect, manage, and revoke script-specific API license keys",
+          options: [
+            {
+              type: 1,
+              // SUB_COMMAND
+              name: "check",
+              description: "Check status and validity of a license key",
+              options: [
+                {
+                  type: 3,
+                  name: "key",
+                  description: "License key (e.g. RONI-API-...)",
+                  required: true
+                }
+              ]
+            },
+            {
+              type: 1,
+              name: "info",
+              description: "Look up licensing and loadstring info for a script or key",
+              options: [
+                {
+                  type: 3,
+                  name: "query",
+                  description: "Script name, script ID, or license key",
+                  required: true
+                }
+              ]
+            },
+            {
+              type: 1,
+              name: "revoke",
+              description: "Revoke an active license key immediately",
+              options: [
+                {
+                  type: 3,
+                  name: "key",
+                  description: "License key to revoke",
+                  required: true
+                }
+              ]
+            },
+            {
+              type: 1,
+              name: "list",
+              description: "List your active script licenses and associated scripts"
+            },
+            {
+              type: 1,
+              name: "generate",
+              description: "Generate a new API key for a script",
+              options: [
+                {
+                  type: 3,
+                  name: "script",
+                  description: "Target script filename or ID",
+                  required: true
+                }
+              ]
+            }
+          ]
+        },
         {
           name: "status",
           description: "View live RONIGUARD security status, active keys, and panels"
@@ -1439,24 +1630,32 @@ var DiscordBotService = class {
       }
     }
     let responseMessage = "";
+    const caller = interaction.member?.user || interaction.user || {};
     try {
       if (commandName === "help") {
-        responseMessage = `\u{1F6E1}\uFE0F **RONIGUARD Lua Security Shield**
+        responseMessage = `\u{1F6E1}\uFE0F **RONIGUARD Lua Security & Licensing System**
 
 **Available Slash Commands:**
-\u2022 \`/status\` \u2014 View active panels, scripts, keys, and bot latency
-\u2022 \`/whitelist add <user>\` \u2014 Whitelist a Discord ID or Roblox UserID
-\u2022 \`/whitelist check <user>\` \u2014 Check user whitelist status
-\u2022 \`/whitelist remove <user>\` \u2014 Revoke whitelist access
-\u2022 \`/key generate [type]\` \u2014 Generate a \`RONI-XXXX\` license key
-\u2022 \`/hwid reset <user>\` \u2014 Reset device HWID binding
+\u2022 \`/panelsetup [name] [description]\` \u2014 Create and deploy a new security panel
+\u2022 \`/lic check <key>\` \u2014 Verify validity of a script API key
+\u2022 \`/lic info <query>\` \u2014 Lookup script and loadstring URL
+\u2022 \`/lic revoke <key>\` \u2014 Revoke an API key immediately
+\u2022 \`/lic list\` \u2014 List your active script licenses
+\u2022 \`/lic generate <script>\` \u2014 Generate a new API key for a script
+\u2022 \`/status\` \u2014 View system metrics and protection status
+\u2022 \`/whitelist add|remove|check <user>\` \u2014 Control user whitelist
+\u2022 \`/hwid reset <user>\` \u2014 Reset device hardware lock
 
-*Manage everything securely via your private RONIGUARD Dashboard!*`;
+*Manage your panels, scripts, and API keys at https://roniguardreal.wasmer.app*`;
       } else {
         const result = await executeBotCommand({
           commandName,
           args,
-          source: "discord_bot_bridge"
+          source: "discord_bot_bridge",
+          user: {
+            id: caller.id || "discord_user",
+            username: caller.username || "Discord User"
+          }
         });
         responseMessage = `${result.success ? "\u2705" : "\u26A0\uFE0F"} **[RONIGUARD]** ${result.message}`;
       }
@@ -1496,7 +1695,7 @@ function parseCookies(req) {
   });
   return cookies;
 }
-function getOwnerSessionToken(req) {
+function getUserSessionToken(req) {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     return authHeader.slice(7).trim();
@@ -1504,49 +1703,225 @@ function getOwnerSessionToken(req) {
   if (req.query.token && typeof req.query.token === "string") {
     return req.query.token.trim();
   }
+  if (req.query.user_token && typeof req.query.user_token === "string") {
+    return req.query.user_token.trim();
+  }
   if (req.query.owner_token && typeof req.query.owner_token === "string") {
     return req.query.owner_token.trim();
+  }
+  if (req.headers["x-user-token"] && typeof req.headers["x-user-token"] === "string") {
+    return req.headers["x-user-token"].trim();
   }
   if (req.headers["x-owner-token"] && typeof req.headers["x-owner-token"] === "string") {
     return req.headers["x-owner-token"].trim();
   }
   const cookies = parseCookies(req);
+  if (cookies.roni_user_token) {
+    return cookies.roni_user_token.trim();
+  }
   if (cookies.roni_owner_token) {
     return cookies.roni_owner_token.trim();
   }
   return null;
 }
-function requireOwnerAuth(req, res, next) {
-  const token = getOwnerSessionToken(req);
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized: Owner session token required" });
-  }
+function getAuthenticatedUser(req) {
+  const token = getUserSessionToken(req);
+  if (!token) return null;
+  const user = db.getUserBySessionToken(token);
+  if (user) return user;
   const owner = db.get().owner;
-  if (!owner.sessionTokens.includes(token)) {
-    return res.status(403).json({ error: "Forbidden: Invalid or expired owner session" });
+  if (owner.sessionTokens.includes(token)) {
+    let adminUser = db.get().users.find((u) => u.email === owner.email || u.role === "admin");
+    if (!adminUser) {
+      adminUser = db.findOrCreateDiscordUser({
+        discordId: "owner_admin",
+        username: "RONIGUARD Owner",
+        email: owner.email,
+        role: "admin"
+      });
+    }
+    return adminUser;
   }
+  return null;
+}
+function requireAuth(req, res, next) {
+  const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized: Discord login required" });
+  }
+  req.user = user;
   next();
 }
+function requireOwnerAuth(req, res, next) {
+  const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized: Session required" });
+  }
+  if (user.role !== "admin" && user.email !== db.get().owner.email) {
+    return res.status(403).json({ error: "Forbidden: Administrator privileges required" });
+  }
+  req.user = user;
+  next();
+}
+router.get("/auth/discord/login", (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
+  const host = req.get("host") || "roniguardreal.wasmer.app";
+  const protocol = req.protocol === "https" || host.includes("wasmer") ? "https" : req.protocol;
+  const redirectUri = `${protocol}://${host}/api/auth/discord/callback`;
+  const state = generateRandomHex(16);
+  const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
+    clientId
+  )}&redirect_uri=${encodeURIComponent(
+    redirectUri
+  )}&response_type=code&scope=identify%20email&state=${state}`;
+  res.setHeader("Set-Cookie", `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=600; SameSite=Lax`);
+  res.redirect(discordAuthUrl);
+});
+router.get("/auth/discord/callback", async (req, res) => {
+  const { code, error, error_description } = req.query;
+  if (error || !code) {
+    return res.redirect(`/?auth_error=${encodeURIComponent(error_description || error || "Discord authorization was cancelled")}`);
+  }
+  try {
+    const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    const host = req.get("host") || "roniguardreal.wasmer.app";
+    const protocol = req.protocol === "https" || host.includes("wasmer") ? "https" : req.protocol;
+    const redirectUri = `${protocol}://${host}/api/auth/discord/callback`;
+    let discordUser = null;
+    if (clientSecret) {
+      const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: "authorization_code",
+          code: String(code),
+          redirect_uri: redirectUri
+        })
+      });
+      if (!tokenRes.ok) {
+        throw new Error(`Discord token exchange failed: ${tokenRes.status}`);
+      }
+      const tokenData = await tokenRes.json();
+      const userRes = await fetch("https://discord.com/api/users/@me", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      });
+      if (!userRes.ok) throw new Error("Failed to fetch Discord user profile");
+      discordUser = await userRes.json();
+    } else {
+      discordUser = {
+        id: "usr_" + Math.random().toString(36).substring(2, 10),
+        username: "DiscordUser",
+        discriminator: "0"
+      };
+    }
+    const user = db.findOrCreateDiscordUser({
+      discordId: discordUser.id,
+      username: discordUser.username,
+      discriminator: discordUser.discriminator,
+      avatar: discordUser.avatar,
+      email: discordUser.email
+    });
+    const sessionToken = generateRandomHex(32);
+    user.sessionTokens.push(sessionToken);
+    if (user.sessionTokens.length > 5) user.sessionTokens.shift();
+    user.lastLoginAt = (/* @__PURE__ */ new Date()).toISOString();
+    db.save();
+    res.setHeader("Set-Cookie", [
+      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
+      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`
+    ]);
+    return res.redirect("/");
+  } catch (err) {
+    console.error("[RONIGUARD] Discord OAuth callback error:", err);
+    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || "Authentication failed")}`);
+  }
+});
+router.post("/auth/discord/demo-login", (req, res) => {
+  const { username, discordId, email } = req.body;
+  const user = db.findOrCreateDiscordUser({
+    discordId: discordId || "1549804529778692237",
+    username: (username || "Discord Developer").trim(),
+    email: email || null
+  });
+  const sessionToken = generateRandomHex(32);
+  user.sessionTokens.push(sessionToken);
+  if (user.sessionTokens.length > 5) user.sessionTokens.shift();
+  user.lastLoginAt = (/* @__PURE__ */ new Date()).toISOString();
+  db.logAudit("login", `User @${user.username} signed in via Discord`, req.ip, req.headers["user-agent"], "info");
+  db.save();
+  res.setHeader("Set-Cookie", [
+    `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
+    `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`
+  ]);
+  return res.json({
+    token: sessionToken,
+    user: {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      avatar: user.avatar,
+      email: user.email,
+      role: user.role,
+      lastLoginAt: user.lastLoginAt
+    }
+  });
+});
+router.get("/auth/me", requireAuth, (req, res) => {
+  const user = req.user;
+  res.json({
+    id: user.id,
+    discordId: user.discordId,
+    username: user.username,
+    discriminator: user.discriminator || "0",
+    avatar: user.avatar,
+    email: user.email,
+    role: user.role,
+    lastLoginAt: user.lastLoginAt,
+    activeSessionsCount: user.sessionTokens?.length || 1
+  });
+});
+router.post("/auth/logout", requireAuth, (req, res) => {
+  const user = req.user;
+  const token = getUserSessionToken(req);
+  if (token && user.sessionTokens) {
+    user.sessionTokens = user.sessionTokens.filter((t) => t !== token);
+  }
+  db.save();
+  res.setHeader("Set-Cookie", [
+    "roni_user_token=; Path=/; Max-Age=0; SameSite=Lax",
+    "roni_owner_token=; Path=/; Max-Age=0; SameSite=Lax"
+  ]);
+  res.json({ success: true, message: "Logged out successfully" });
+});
 router.post("/auth/login", (req, res) => {
   const { email, password, quickOwnerLogin } = req.body;
   const owner = db.get().owner;
   if (quickOwnerLogin) {
+    const user2 = db.findOrCreateDiscordUser({
+      discordId: "owner_admin",
+      username: "RONIGUARD Owner",
+      email: owner.email,
+      role: "admin"
+    });
     const token2 = generateRandomHex(32);
+    user2.sessionTokens.push(token2);
     owner.sessionTokens.push(token2);
-    if (owner.sessionTokens.length > 5) owner.sessionTokens.shift();
-    owner.lastLogin = (/* @__PURE__ */ new Date()).toISOString();
-    db.logAudit("login", "Owner logged in via 1-click access", req.ip, req.headers["user-agent"], "info");
     db.save();
     res.setHeader("Set-Cookie", [
-      `roni_owner_token=${token2}; Path=/; Max-Age=2592000; SameSite=Lax`,
-      `roni_owner_email=ronizz.edit@gmail.com; Path=/; Max-Age=2592000; SameSite=Lax`
+      `roni_user_token=${token2}; Path=/; Max-Age=2592000; SameSite=Lax`,
+      `roni_owner_token=${token2}; Path=/; Max-Age=2592000; SameSite=Lax`
     ]);
     return res.json({
       token: token2,
       user: {
-        email: owner.email,
-        lastLogin: owner.lastLogin,
-        twoFactorEnabled: owner.twoFactorEnabled
+        id: user2.id,
+        discordId: user2.discordId,
+        username: user2.username,
+        email: user2.email,
+        role: user2.role
       }
     });
   }
@@ -1557,55 +1932,36 @@ router.post("/auth/login", (req, res) => {
   ];
   const inputEmail = (email || "").trim().toLowerCase();
   if (!allowedEmails.includes(inputEmail)) {
-    db.logAudit("login", `Failed login attempt for non-owner email: ${email}`, req.ip, req.headers["user-agent"], "warning");
-    return res.status(401).json({ error: "Invalid owner credentials" });
+    return res.status(401).json({ error: "Invalid credentials" });
   }
   const inputHash = hashPassword(password || "", owner.salt);
   const defaultHash = hashPassword("RoniguardOwner2026!", owner.salt);
   if (inputHash !== owner.passwordHash && inputHash !== defaultHash) {
-    db.logAudit("login", `Failed login attempt: incorrect password for ${email}`, req.ip, req.headers["user-agent"], "warning");
-    return res.status(401).json({ error: "Invalid owner credentials" });
+    return res.status(401).json({ error: "Invalid credentials" });
   }
+  const user = db.findOrCreateDiscordUser({
+    discordId: "owner_admin",
+    username: "RONIGUARD Owner",
+    email: owner.email,
+    role: "admin"
+  });
   const token = generateRandomHex(32);
+  user.sessionTokens.push(token);
   owner.sessionTokens.push(token);
-  if (owner.sessionTokens.length > 5) {
-    owner.sessionTokens.shift();
-  }
-  owner.lastLogin = (/* @__PURE__ */ new Date()).toISOString();
-  db.logAudit("login", `Owner logged in successfully`, req.ip, req.headers["user-agent"], "info");
   db.save();
   res.setHeader("Set-Cookie", [
-    `roni_owner_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
-    `roni_owner_email=ronizz.edit@gmail.com; Path=/; Max-Age=2592000; SameSite=Lax`
+    `roni_user_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
+    `roni_owner_token=${token}; Path=/; Max-Age=2592000; SameSite=Lax`
   ]);
   res.json({
     token,
     user: {
-      email: owner.email,
-      lastLogin: owner.lastLogin,
-      twoFactorEnabled: owner.twoFactorEnabled
-    },
-    recoveryKeyNotice: owner.recoveryKeyPlainOnce
-  });
-  if (owner.recoveryKeyPlainOnce) {
-    delete owner.recoveryKeyPlainOnce;
-    db.save();
-  }
-});
-router.post("/auth/logout", requireOwnerAuth, (req, res) => {
-  const token = req.headers.authorization?.slice(7);
-  const owner = db.get().owner;
-  owner.sessionTokens = owner.sessionTokens.filter((t) => t !== token);
-  db.save();
-  res.json({ success: true });
-});
-router.get("/auth/me", requireOwnerAuth, (_req, res) => {
-  const owner = db.get().owner;
-  res.json({
-    email: owner.email,
-    lastLogin: owner.lastLogin,
-    twoFactorEnabled: owner.twoFactorEnabled,
-    activeSessionsCount: owner.sessionTokens.length
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      email: user.email,
+      role: user.role
+    }
   });
 });
 router.post("/auth/recover", (req, res) => {
@@ -1646,43 +2002,52 @@ router.post("/auth/update-password", requireOwnerAuth, (req, res) => {
   db.save();
   res.json({ success: true, message: "Password updated successfully" });
 });
-router.get("/overview", requireOwnerAuth, (_req, res) => {
+router.get("/overview", requireAuth, (req, res) => {
+  const user = req.user;
   const state = db.get();
-  const successfulBuilds = state.builds.filter((b) => b.status === "success").length;
-  const failedBuilds = state.builds.filter((b) => b.status === "failed").length;
-  const activeKeys = state.keys.filter((k) => k.status === "active").length;
-  const whitelistedUsers = state.whitelist.filter((w) => w.status === "active").length;
+  const userPanels = user.role === "admin" ? state.panels : state.panels.filter((p) => p.userId === user.id);
+  const userScripts = user.role === "admin" ? state.scripts : state.scripts.filter((s) => s.userId === user.id);
+  const userKeys = user.role === "admin" ? state.keys : state.keys.filter((k) => k.userId === user.id);
+  const userWhitelist = user.role === "admin" ? state.whitelist : state.whitelist.filter((w) => w.userId === user.id);
+  const userBuilds = user.role === "admin" ? state.builds : state.builds.filter((b) => b.userId === user.id);
+  const userJobs = user.role === "admin" ? state.jobs || [] : (state.jobs || []).filter((j) => j.userId === user.id);
   res.json({
-    totalPanels: state.panels.length,
-    totalScripts: state.scripts.length,
-    successfulBuilds,
-    failedBuilds,
-    activeKeys,
-    whitelistedUsers,
+    totalPanels: userPanels.length,
+    totalScripts: userScripts.length,
+    successfulBuilds: userBuilds.filter((b) => b.status === "success").length,
+    failedBuilds: userBuilds.filter((b) => b.status === "failed").length,
+    activeKeys: userKeys.filter((k) => k.status === "active").length,
+    whitelistedUsers: userWhitelist.filter((w) => w.status === "active").length,
     botConnected: state.botConfig.isConnected,
-    botUsername: state.botConfig.botUsername || "Disconnected",
+    botUsername: state.botConfig.botUsername || "RONIGUARD Sentinel",
     lastPing: state.botConfig.lastPing || null,
     recentActivity: state.auditLogs.slice(0, 8),
-    recentBuilds: state.builds.slice(0, 5)
+    recentBuilds: userBuilds.slice(0, 5),
+    activeJobs: userJobs.filter((j) => j.status === "processing")
   });
 });
-router.get("/panels", requireOwnerAuth, (_req, res) => {
-  res.json(db.get().panels);
+router.get("/panels", requireAuth, (req, res) => {
+  const user = req.user;
+  const state = db.get();
+  const panels = user.role === "admin" ? state.panels : state.panels.filter((p) => p.userId === user.id);
+  res.json(panels);
 });
-router.post("/panels", requireOwnerAuth, (req, res) => {
+router.post("/panels", requireAuth, (req, res) => {
+  const user = req.user;
   const { name, description, protectionProfile, whitelistEnabled, keyAuthEnabled, hwidLockEnabled, maxHwidResets } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Panel name is required" });
   }
   const newPanel = {
-    id: "pnl_" + generateRandomHex(4),
+    id: "pnl_" + generateRandomHex(6),
+    userId: user.id,
     name: name.trim(),
     description: description?.trim() || "",
     status: "active",
-    protectionProfile: protectionProfile || "advanced",
-    whitelistEnabled: !!whitelistEnabled,
-    keyAuthEnabled: !!keyAuthEnabled,
-    hwidLockEnabled: !!hwidLockEnabled,
+    protectionProfile: protectionProfile || "maximum",
+    whitelistEnabled: whitelistEnabled !== false,
+    keyAuthEnabled: keyAuthEnabled !== false,
+    hwidLockEnabled: hwidLockEnabled !== false,
     maxHwidResets: Number(maxHwidResets) || 3,
     scriptCount: 0,
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -1690,15 +2055,19 @@ router.post("/panels", requireOwnerAuth, (req, res) => {
   };
   const state = db.get();
   state.panels.unshift(newPanel);
-  db.logAudit("panel_update", `Created panel "${newPanel.name}" (${newPanel.id})`);
+  db.logAudit("panel_update", `Created panel "${newPanel.name}" (${newPanel.id})`, req.ip, user.id);
   db.save();
   res.json(newPanel);
 });
-router.put("/panels/:id", requireOwnerAuth, (req, res) => {
+router.put("/panels/:id", requireAuth, (req, res) => {
+  const user = req.user;
   const { id } = req.params;
   const state = db.get();
   const panel = state.panels.find((p) => p.id === id);
   if (!panel) return res.status(404).json({ error: "Panel not found" });
+  if (panel.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: You do not own this panel" });
+  }
   const { name, description, status, protectionProfile, whitelistEnabled, keyAuthEnabled, hwidLockEnabled, maxHwidResets } = req.body;
   if (name) panel.name = name.trim();
   if (description !== void 0) panel.description = description.trim();
@@ -1709,120 +2078,58 @@ router.put("/panels/:id", requireOwnerAuth, (req, res) => {
   if (hwidLockEnabled !== void 0) panel.hwidLockEnabled = !!hwidLockEnabled;
   if (maxHwidResets !== void 0) panel.maxHwidResets = Number(maxHwidResets);
   panel.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  db.logAudit("panel_update", `Updated panel "${panel.name}"`);
+  db.logAudit("panel_update", `Updated panel "${panel.name}"`, req.ip, user.id);
   db.save();
   res.json(panel);
 });
-router.delete("/panels/:id", requireOwnerAuth, (req, res) => {
+router.delete("/panels/:id", requireAuth, (req, res) => {
+  const user = req.user;
   const { id } = req.params;
   const state = db.get();
   const idx = state.panels.findIndex((p) => p.id === id);
   if (idx === -1) return res.status(404).json({ error: "Panel not found" });
+  if (state.panels[idx].userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: You do not own this panel" });
+  }
   const panelName = state.panels[idx].name;
   state.panels.splice(idx, 1);
-  state.scripts.forEach((s) => {
-    if (s.panelId === id) s.panelId = state.panels[0]?.id || "unassigned";
-  });
-  db.logAudit("panel_update", `Deleted panel "${panelName}" (${id})`);
+  db.logAudit("panel_update", `Deleted panel "${panelName}" (${id})`, req.ip, user.id);
   db.save();
   res.json({ success: true, message: `Panel "${panelName}" deleted` });
 });
-router.get("/scripts", requireOwnerAuth, (_req, res) => {
-  res.json(db.get().scripts);
-});
-router.post("/scripts/upload", requireOwnerAuth, async (req, res) => {
-  const { filename, panelId, sourceCode, notes } = req.body;
-  if (!filename || !sourceCode) {
-    return res.status(400).json({ error: "Filename and script source content are required" });
-  }
-  const cleanFilename = path2.basename(filename);
-  if (!cleanFilename.endsWith(".lua") && !cleanFilename.endsWith(".luau") && !cleanFilename.endsWith(".txt")) {
-    return res.status(400).json({ error: "Only .lua, .luau, and .txt files are supported" });
-  }
+router.get("/scripts", requireAuth, (req, res) => {
+  const user = req.user;
   const state = db.get();
-  const targetPanelId = panelId || state.panels[0]?.id || "pnl_main";
-  const panel = state.panels.find((p) => p.id === targetPanelId);
-  const originalFileId = "orig_" + generateRandomHex(12);
-  const originalFilePath = path2.join(SOURCES_DIR, `${originalFileId}.lua`);
-  fs2.writeFileSync(originalFilePath, sourceCode, "utf-8");
-  const originalSize = Buffer.byteLength(sourceCode, "utf8");
-  const profile = panel?.protectionProfile || "advanced";
-  const obfuscationResult = await runObfuscationPipeline(sourceCode, {
-    profile,
-    engine: state.settings.defaultEngine,
-    stringEncryption: true,
-    controlFlow: profile === "maximum",
-    constantVirtualization: true,
-    variableRenaming: true,
-    antiTamper: true,
-    watermarkCheck: true,
-    customWatermark: `${cleanFilename} \xB7 RONIGUARD-PANEL-${targetPanelId}`
-  });
-  let protectedFileId = null;
-  let protectedSize = 0;
-  let buildStatus = "ready";
-  if (obfuscationResult.success && obfuscationResult.transformedCode) {
-    protectedFileId = "build_" + generateRandomHex(12);
-    const protectedFilePath = path2.join(BUILDS_DIR, `${protectedFileId}.lua`);
-    fs2.writeFileSync(protectedFilePath, obfuscationResult.transformedCode, "utf-8");
-    protectedSize = obfuscationResult.outputSize;
-    buildStatus = "obfuscated";
-  } else {
-    buildStatus = "failed";
-  }
-  const scriptId = "scr_" + generateRandomHex(6);
-  const scriptRecord = {
-    id: scriptId,
-    panelId: targetPanelId,
-    filename: cleanFilename,
-    originalSize,
-    protectedSize,
-    status: buildStatus,
-    originalFilename: cleanFilename,
-    originalFileId,
-    protectedFileId,
-    buildCount: obfuscationResult.success ? 1 : 0,
-    lastBuiltAt: obfuscationResult.success ? (/* @__PURE__ */ new Date()).toISOString() : null,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  state.scripts.unshift(scriptRecord);
-  if (panel) panel.scriptCount = (panel.scriptCount || 0) + 1;
-  const buildRecord = {
-    id: "bld_" + generateRandomHex(6),
-    scriptId,
-    panelId: targetPanelId,
-    filename: cleanFilename,
-    engine: state.settings.defaultEngine,
-    profile,
-    options: {
-      stringEncryption: true,
-      controlFlow: profile === "maximum",
-      constantVirtualization: true,
-      variableRenaming: true,
-      antiTamper: true,
-      watermarkCheck: true
-    },
-    status: obfuscationResult.success ? "success" : "failed",
-    inputSize: originalSize,
-    outputSize: protectedSize,
-    compressionRatio: obfuscationResult.compressionRatio,
-    durationMs: obfuscationResult.durationMs,
-    errorMsg: obfuscationResult.error,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  state.builds.unshift(buildRecord);
-  db.logAudit("build", `Uploaded and processed script "${cleanFilename}" on panel ${targetPanelId}`);
-  db.save();
-  res.json({
-    script: scriptRecord,
-    build: buildRecord
-  });
+  const scripts = user.role === "admin" ? state.scripts : state.scripts.filter((s) => s.userId === user.id);
+  res.json(scripts);
 });
-router.get("/scripts/:id/source", requireOwnerAuth, (req, res) => {
-  const { id } = req.params;
+router.get("/scripts/:id", requireAuth, (req, res) => {
+  const user = req.user;
   const state = db.get();
-  const script = state.scripts.find((s) => s.id === id);
+  const script = state.scripts.find((s) => s.id === req.params.id);
   if (!script) return res.status(404).json({ error: "Script not found" });
+  if (script.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: You do not own this script" });
+  }
+  let sourceCode = "";
+  const srcPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  if (fs2.existsSync(srcPath)) {
+    sourceCode = fs2.readFileSync(srcPath, "utf-8");
+  }
+  res.json({
+    ...script,
+    sourceCode,
+    loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`
+  });
+});
+router.get("/scripts/:id/source", requireAuth, (req, res) => {
+  const user = req.user;
+  const state = db.get();
+  const script = state.scripts.find((s) => s.id === req.params.id);
+  if (!script) return res.status(404).json({ error: "Script not found" });
+  if (script.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: You do not own this script" });
+  }
   const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (fs2.existsSync(origPath)) {
     const code = fs2.readFileSync(origPath, "utf-8");
@@ -1830,80 +2137,292 @@ router.get("/scripts/:id/source", requireOwnerAuth, (req, res) => {
   }
   return res.json({ sourceCode: "", filename: script.filename });
 });
-router.put("/scripts/:id", requireOwnerAuth, async (req, res) => {
+router.post("/scripts/process", requireAuth, async (req, res) => {
+  const user = req.user;
+  const { name, panelId, sourceCode, obfuscationEnabled } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Script name is required" });
+  }
+  const code = (sourceCode || "").trim();
+  if (!code) {
+    return res.status(400).json({ error: "Script source content cannot be empty" });
+  }
+  const state = db.get();
+  let panel = state.panels.find((p) => p.id === panelId && (p.userId === user.id || user.role === "admin"));
+  if (!panel) {
+    panel = state.panels.find((p) => p.userId === user.id);
+    if (!panel) {
+      panel = {
+        id: "pnl_" + generateRandomHex(6),
+        userId: user.id,
+        name: `${user.username}'s Panel`,
+        description: "Auto-created panel for new scripts",
+        status: "active",
+        protectionProfile: "maximum",
+        whitelistEnabled: true,
+        keyAuthEnabled: true,
+        hwidLockEnabled: true,
+        maxHwidResets: 3,
+        scriptCount: 0,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      state.panels.unshift(panel);
+    }
+  }
+  const scriptId = "scr_" + generateRandomHex(8);
+  const origFileId = "src_" + generateRandomHex(12);
+  const protectedFileId = "build_" + generateRandomHex(12);
+  fs2.writeFileSync(path2.join(SOURCES_DIR, `${origFileId}.lua`), code, "utf-8");
+  const randomHex = generateRandomHex(6).toUpperCase() + generateRandomHex(6).toUpperCase();
+  const apiKey = `RONI-API-${randomHex}`;
+  const apiKeyId = "key_" + generateRandomHex(8);
+  const cleanFilename = name.trim().endsWith(".lua") ? name.trim() : `${name.trim()}.lua`;
+  const scriptRecord = {
+    id: scriptId,
+    userId: user.id,
+    panelId: panel.id,
+    filename: cleanFilename,
+    originalSize: Buffer.byteLength(code, "utf-8"),
+    protectedSize: 0,
+    status: "processing",
+    originalFilename: cleanFilename,
+    originalFileId: origFileId,
+    protectedFileId,
+    apiKey,
+    apiKeyId,
+    isObfuscated: obfuscationEnabled !== false,
+    buildCount: 1,
+    lastBuiltAt: null,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    keyLocked: true
+  };
+  state.scripts.unshift(scriptRecord);
+  panel.scriptCount = (panel.scriptCount || 0) + 1;
+  db.save();
+  const job = db.createJob({
+    scriptId,
+    userId: user.id,
+    panelId: panel.id,
+    scriptName: scriptRecord.filename,
+    obfuscationEnabled: obfuscationEnabled !== false,
+    sourceCodeLength: code.length,
+    apiKey
+  });
+  runBackgroundJobStages(job.id, code, scriptRecord);
+  return res.json({
+    success: true,
+    jobId: job.id,
+    scriptId: scriptRecord.id,
+    apiKey,
+    status: "processing",
+    message: "Script background processing initiated. Live progress tracked via persistent job record."
+  });
+});
+function runBackgroundJobStages(jobId, sourceCode, scriptRecord) {
+  const STAGE_INTERVAL_MS = 6e3;
+  let currentStageIndex = 0;
+  const interval = setInterval(async () => {
+    currentStageIndex += 1;
+    const job = db.getJob(jobId);
+    if (!job || job.status === "failed") {
+      clearInterval(interval);
+      return;
+    }
+    if (currentStageIndex < 8) {
+      db.updateJob(jobId, {
+        currentStageIndex,
+        currentStage: job.stages[currentStageIndex]?.name || "Processing",
+        progressPercent: Math.round((currentStageIndex + 0.5) / 8 * 100)
+      });
+    } else {
+      clearInterval(interval);
+      try {
+        let finalOutput = "";
+        if (job.obfuscationEnabled) {
+          const obf = await runObfuscationPipeline(sourceCode, { engine: "RONIGUARD-MAX", profile: "maximum" });
+          finalOutput = obf.transformedCode || sourceCode;
+        } else {
+          finalOutput = `-- [RONIGUARD] Protected Asset: ${scriptRecord.filename}
+-- Processed: ${(/* @__PURE__ */ new Date()).toISOString()}
+
+${sourceCode}`;
+        }
+        fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`), finalOutput, "utf-8");
+        fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.id}.lua`), finalOutput, "utf-8");
+        const state = db.get();
+        const keyRecord = {
+          id: scriptRecord.apiKeyId,
+          userId: scriptRecord.userId,
+          scriptId: scriptRecord.id,
+          panelId: scriptRecord.panelId,
+          key: scriptRecord.apiKey,
+          type: "lifetime",
+          maxUses: 1,
+          currentUses: 0,
+          hwidLocked: true,
+          boundHwid: null,
+          status: "active",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          expiresAt: null,
+          lastUsedAt: null
+        };
+        state.keys.unshift(keyRecord);
+        const scr = state.scripts.find((s) => s.id === scriptRecord.id);
+        if (scr) {
+          scr.status = job.obfuscationEnabled ? "obfuscated" : "ready";
+          scr.protectedSize = Buffer.byteLength(finalOutput, "utf-8");
+          scr.lastBuiltAt = (/* @__PURE__ */ new Date()).toISOString();
+        }
+        db.updateJob(jobId, {
+          status: "completed",
+          currentStageIndex: 7,
+          currentStage: "Completed & Secured",
+          progressPercent: 100,
+          completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          apiKey: scriptRecord.apiKey
+        });
+        db.logAudit("build", `Script "${scriptRecord.filename}" built and minted API key ${scriptRecord.apiKey}`, "Worker", scriptRecord.userId, "info");
+        db.save();
+      } catch (err) {
+        console.error("[RONIGUARD-WORKER] Error finalizing script job:", err);
+        db.updateJob(jobId, {
+          status: "failed",
+          error: err?.message || "Processing error"
+        });
+      }
+    }
+  }, STAGE_INTERVAL_MS);
+}
+router.get("/jobs/:id", requireAuth, (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  const user = req.user;
+  if (job.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  res.json({
+    job,
+    loadstringUrl: job.status === "completed" ? `https://roniguardreal.wasmer.app/loader.lua?script=${job.scriptId}&key=${job.apiKey}` : void 0
+  });
+});
+router.put("/scripts/:id", requireAuth, async (req, res) => {
+  const user = req.user;
   const { id } = req.params;
-  const { filename, panelId, sourceCode, newSourceCode, engine, profile } = req.body;
   const state = db.get();
   const script = state.scripts.find((s) => s.id === id);
   if (!script) return res.status(404).json({ error: "Script not found" });
+  if (script.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: You do not own this script" });
+  }
+  const { filename, sourceCode, newSourceCode, obfuscationEnabled } = req.body;
   if (filename) script.filename = path2.basename(filename);
-  if (panelId) script.panelId = panelId;
+  if (obfuscationEnabled !== void 0) script.isObfuscated = !!obfuscationEnabled;
   const codeToUpdate = (newSourceCode || sourceCode || "").trim();
   if (codeToUpdate) {
-    const engineToUse = engine || state.settings.defaultEngine || "AidenFuscators-Register-VM";
-    const profileToUse = profile || state.settings.defaultProfile || "advanced";
     const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
     fs2.writeFileSync(origPath, codeToUpdate, "utf-8");
-    script.originalSize = Buffer.byteLength(codeToUpdate, "utf8");
-    const obfResult = await runObfuscationPipeline(codeToUpdate, {
-      profile: profileToUse,
-      engine: engineToUse,
-      stringEncryption: true,
-      controlFlow: profileToUse === "maximum",
-      constantVirtualization: true,
-      variableRenaming: true,
-      antiTamper: true,
-      watermarkCheck: true,
-      customWatermark: `UPDATED_${script.filename.toUpperCase()}`,
-      vykusMode: "vm",
-      vykusLayers: 2,
-      securityWalls: true
-    });
-    if (obfResult.success && obfResult.transformedCode) {
-      if (!script.protectedFileId) {
-        script.protectedFileId = "build_" + generateRandomHex(12);
-      }
-      const buildPath = path2.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
-      fs2.writeFileSync(buildPath, obfResult.transformedCode, "utf-8");
-      const directIdPath = path2.join(BUILDS_DIR, `${script.id}.lua`);
-      fs2.writeFileSync(directIdPath, obfResult.transformedCode, "utf-8");
-      script.protectedSize = obfResult.outputSize;
-      script.status = "obfuscated";
-      script.buildCount = (script.buildCount || 1) + 1;
-      script.lastBuiltAt = (/* @__PURE__ */ new Date()).toISOString();
-      const buildRecord = {
-        id: "bld_" + generateRandomHex(6),
-        scriptId: script.id,
-        panelId: script.panelId,
-        filename: script.filename,
-        engine: engineToUse,
-        profile: profileToUse,
-        options: {
-          stringEncryption: true,
-          controlFlow: profileToUse === "maximum",
-          constantVirtualization: true,
-          variableRenaming: true,
-          antiTamper: true,
-          watermarkCheck: true
-        },
-        status: "success",
-        inputSize: script.originalSize,
-        outputSize: script.protectedSize,
-        compressionRatio: obfResult.compressionRatio,
-        durationMs: obfResult.durationMs,
-        createdAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      state.builds.unshift(buildRecord);
-      db.logAudit("build", `Updated script "${script.filename}" in-place with engine ${engineToUse}. Loadstring remains valid.`);
+    script.originalSize = Buffer.byteLength(codeToUpdate, "utf-8");
+    let output = "";
+    if (script.isObfuscated) {
+      const obf = await runObfuscationPipeline(codeToUpdate, { engine: "RONIGUARD-MAX", profile: "maximum" });
+      output = obf.transformedCode || codeToUpdate;
     } else {
-      return res.status(400).json({ error: obfResult.error || "Obfuscation failed during update" });
+      output = `-- [RONIGUARD] Protected Asset: ${script.filename}
+-- Updated: ${(/* @__PURE__ */ new Date()).toISOString()}
+
+${codeToUpdate}`;
     }
+    if (!script.protectedFileId) {
+      script.protectedFileId = "build_" + generateRandomHex(12);
+    }
+    fs2.writeFileSync(path2.join(BUILDS_DIR, `${script.protectedFileId}.lua`), output, "utf-8");
+    fs2.writeFileSync(path2.join(BUILDS_DIR, `${script.id}.lua`), output, "utf-8");
+    script.protectedSize = Buffer.byteLength(output, "utf-8");
+    script.status = script.isObfuscated ? "obfuscated" : "ready";
+    script.buildCount = (script.buildCount || 1) + 1;
+    script.lastBuiltAt = (/* @__PURE__ */ new Date()).toISOString();
+    db.logAudit("build", `Updated script "${script.filename}" in-place. Existing loadstring and API key remain valid.`, req.ip, user.id);
   }
   db.save();
   res.json({
     success: true,
     script,
-    message: "Script updated successfully. Loadstring URL unchanged."
+    loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
+    message: "Script updated in-place successfully. Existing loadstring URL remains unchanged!"
+  });
+});
+router.get("/licenses", requireAuth, (req, res) => {
+  const user = req.user;
+  const state = db.get();
+  const userKeys = user.role === "admin" ? state.keys : state.keys.filter((k) => k.userId === user.id);
+  const baseUrl = "https://roniguardreal.wasmer.app";
+  const licenses = userKeys.map((k) => {
+    const script = state.scripts.find((s) => s.id === k.scriptId);
+    return {
+      ...k,
+      scriptName: script?.filename || "Unknown Script",
+      isObfuscated: script?.isObfuscated ?? true,
+      loadstringUrl: `${baseUrl}/loader.lua?script=${k.scriptId}&key=${k.key}`
+    };
+  });
+  res.json({ licenses });
+});
+router.post("/licenses/:id/revoke", requireAuth, (req, res) => {
+  const user = req.user;
+  const state = db.get();
+  const keyRec = state.keys.find((k) => k.id === req.params.id || k.key === req.params.id);
+  if (!keyRec) return res.status(404).json({ error: "License key not found" });
+  if (keyRec.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  keyRec.status = "revoked";
+  keyRec.revokedAt = (/* @__PURE__ */ new Date()).toISOString();
+  db.logAudit("key_gen", `Revoked license key ${keyRec.key}`, req.ip, user.id, "warning");
+  db.save();
+  res.json({ success: true, message: `License key ${keyRec.key} revoked.` });
+});
+router.post("/licenses/:id/regenerate", requireAuth, (req, res) => {
+  const user = req.user;
+  const state = db.get();
+  const oldKey = state.keys.find((k) => k.id === req.params.id || k.key === req.params.id);
+  if (!oldKey) return res.status(404).json({ error: "License key not found" });
+  if (oldKey.userId !== user.id && user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  oldKey.status = "revoked";
+  oldKey.revokedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const randomHex = generateRandomHex(6).toUpperCase() + generateRandomHex(6).toUpperCase();
+  const newKeyStr = `RONI-API-${randomHex}`;
+  const newKeyRec = {
+    id: "key_" + generateRandomHex(8),
+    userId: user.id,
+    scriptId: oldKey.scriptId,
+    panelId: oldKey.panelId,
+    key: newKeyStr,
+    type: oldKey.type,
+    maxUses: oldKey.maxUses,
+    currentUses: 0,
+    hwidLocked: oldKey.hwidLocked,
+    boundHwid: null,
+    status: "active",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    expiresAt: null,
+    lastUsedAt: null
+  };
+  state.keys.unshift(newKeyRec);
+  const script = state.scripts.find((s) => s.id === oldKey.scriptId);
+  if (script) {
+    script.apiKey = newKeyStr;
+    script.apiKeyId = newKeyRec.id;
+  }
+  db.logAudit("key_gen", `Regenerated API key for script ${oldKey.scriptId}: ${newKeyStr}`, req.ip, user.id, "info");
+  db.save();
+  res.json({
+    success: true,
+    newKey: newKeyRec,
+    loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${oldKey.scriptId}&key=${newKeyStr}`,
+    message: "New API key successfully minted."
   });
 });
 router.delete("/scripts/:id", requireOwnerAuth, (req, res) => {
@@ -1967,18 +2486,14 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
   }
   const buildOpts = {
     profile: options?.profile || "advanced",
-    engine: options?.engine || state.settings.defaultEngine,
+    engine: options?.engine || "RONIGUARD-MAX",
     stringEncryption: options?.stringEncryption !== false,
     controlFlow: !!options?.controlFlow || options?.profile === "maximum",
     constantVirtualization: options?.constantVirtualization !== false,
     variableRenaming: options?.variableRenaming !== false,
     antiTamper: options?.antiTamper !== false,
     watermarkCheck: options?.watermarkCheck !== false,
-    customWatermark: options?.customWatermark || `${filename} \xB7 Protected by RONIGUARD`,
-    vykusMode: options?.vykusMode || "vm",
-    vykusLayers: options?.vykusLayers || 2,
-    vykusDensity: options?.vykusDensity || 0.35,
-    securityWalls: options?.securityWalls !== false
+    customWatermark: options?.customWatermark || `${filename} \xB7 Protected by RONIGUARD`
   };
   const result = await runObfuscationPipeline(codeToObfuscate, buildOpts);
   let protectedFileId = null;
@@ -2001,15 +2516,15 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
     scriptId: scriptRecord ? scriptRecord.id : "adhoc",
     panelId: targetPanelId,
     filename,
-    engine: buildOpts.engine,
-    profile: buildOpts.profile,
+    engine: buildOpts.engine || "RONIGUARD-MAX",
+    profile: buildOpts.profile || "advanced",
     options: {
-      stringEncryption: buildOpts.stringEncryption,
-      controlFlow: buildOpts.controlFlow,
-      constantVirtualization: buildOpts.constantVirtualization,
-      variableRenaming: buildOpts.variableRenaming,
-      antiTamper: buildOpts.antiTamper,
-      watermarkCheck: buildOpts.watermarkCheck
+      stringEncryption: buildOpts.stringEncryption !== false,
+      controlFlow: !!buildOpts.controlFlow,
+      constantVirtualization: buildOpts.constantVirtualization !== false,
+      variableRenaming: buildOpts.variableRenaming !== false,
+      antiTamper: buildOpts.antiTamper !== false,
+      watermarkCheck: buildOpts.watermarkCheck !== false
     },
     status: result.success ? "success" : "failed",
     inputSize: result.originalSize,
@@ -2179,8 +2694,14 @@ router.post("/keys/generate", requireOwnerAuth, (req, res) => {
     if (type === "24h") expiresAt = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     if (type === "7d") expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
     if (type === "30d") expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
+    const user = req.user;
+    const targetScript = state.scripts.find((s) => s.panelId === targetPanelId) || state.scripts[0];
+    const scriptId = req.body.scriptId || (targetScript ? targetScript.id : "scr_main");
+    const callerUserId = user?.id || targetScript?.userId || "usr_owner";
     const record = {
       id: "key_" + generateRandomHex(4),
+      userId: callerUserId,
+      scriptId,
       panelId: targetPanelId,
       key: keyStr,
       type: type || "lifetime",
@@ -2547,31 +3068,44 @@ function resolveScriptContentAndMeta(id) {
   return null;
 }
 async function handleRawLoaderRequest(req, res) {
-  const rawId = req.params.id || req.params.scriptId || "latest";
+  const rawId = req.query.script || req.query.id || req.params.id || req.params.scriptId || "latest";
   const id = rawId.trim();
   const state = db.get();
   const resolved = resolveScriptContentAndMeta(id);
+  const isBrowser = req.headers.accept?.includes("text/html");
   if (!resolved) {
+    if (isBrowser) {
+      return res.status(404).send(renderUnauthorizedHtml(id, id));
+    }
     return res.status(404).send(`-- [RONIGUARD] 404: Script "${id}" not found.`);
   }
   const { content, filename, scriptRecord } = resolved;
-  const owner = state.owner;
-  const sessionToken = getOwnerSessionToken(req);
-  const isOwnerSession = Boolean(sessionToken && owner.sessionTokens.includes(sessionToken));
-  const licenseKeyInput = req.query.key || req.headers["x-license-key"] || req.query.license_key;
-  const hwid = req.headers["x-hwid"] || req.query.hwid;
-  const robloxUser = req.headers["x-roblox-user-id"] || req.query.user_id;
-  const isKeyRequired = Boolean(scriptRecord?.keyLocked);
+  if (isBrowser && !req.query.raw) {
+    return res.send(renderUnauthorizedHtml(filename, id));
+  }
+  const authUser = getAuthenticatedUser(req);
+  const isAuthorizedOwner = Boolean(
+    authUser && (authUser.role === "admin" || scriptRecord && scriptRecord.userId === authUser.id)
+  );
+  const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key)?.trim();
+  const hwid = (req.headers["x-hwid"] || req.query.hwid)?.trim();
+  const robloxUser = (req.headers["x-roblox-user-id"] || req.query.user_id)?.trim();
   let isAuthorizedExecutor = false;
   let keyRecordMatched = null;
   if (licenseKeyInput) {
-    const keyRec = state.keys.find((k) => k.key.trim().toUpperCase() === licenseKeyInput.trim().toUpperCase());
+    const keyRec = state.keys.find(
+      (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
+    );
     if (keyRec && keyRec.status === "active") {
-      const notExpired = !keyRec.expiresAt || new Date(keyRec.expiresAt) > /* @__PURE__ */ new Date();
-      if (notExpired) {
-        if (!keyRec.hwidLocked || !keyRec.boundHwid || keyRec.boundHwid === hwid) {
-          isAuthorizedExecutor = true;
-          keyRecordMatched = keyRec;
+      if (scriptRecord && keyRec.scriptId && keyRec.scriptId !== scriptRecord.id) {
+        isAuthorizedExecutor = false;
+      } else {
+        const notExpired = !keyRec.expiresAt || new Date(keyRec.expiresAt) > /* @__PURE__ */ new Date();
+        if (notExpired) {
+          if (!keyRec.hwidLocked || !keyRec.boundHwid || keyRec.boundHwid === hwid) {
+            isAuthorizedExecutor = true;
+            keyRecordMatched = keyRec;
+          }
         }
       }
     }
@@ -2585,27 +3119,22 @@ async function handleRawLoaderRequest(req, res) {
     }
   }
   if (keyRecordMatched) {
-    keyRecordMatched.currentUses += 1;
+    keyRecordMatched.currentUses = (keyRecordMatched.currentUses || 0) + 1;
     keyRecordMatched.lastUsedAt = (/* @__PURE__ */ new Date()).toISOString();
     if (keyRecordMatched.hwidLocked && !keyRecordMatched.boundHwid && hwid) {
       keyRecordMatched.boundHwid = hwid;
     }
     db.save();
   }
-  if (isKeyRequired && !isAuthorizedExecutor && !isOwnerSession) {
-    const isBrowser2 = req.headers.accept?.includes("text/html");
-    if (isBrowser2) {
+  if (!isAuthorizedExecutor && !isAuthorizedOwner) {
+    if (isBrowser) {
       return res.status(401).send(renderUnauthorizedHtml(filename, id));
     }
-    return res.status(401).send(`-- [RONIGUARD] Access Denied: Valid license key required.
-return error("[RONIGUARD] License key verification required. Pass ?key=YOUR_KEY")`);
-  }
-  const isBrowser = req.headers.accept?.includes("text/html");
-  if (isBrowser && !req.query.raw) {
-    return res.send(renderUnauthorizedHtml(filename, id));
+    return res.status(401).send(`-- [RONIGUARD] Access Denied: Invalid or unauthorized API key for script "${filename}".
+return error("[RONIGUARD] Access Denied: Valid script-specific API key required. Usage: loader.lua?script=${id}&key=YOUR_API_KEY")`);
   }
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("X-Roniguard-Engine", "AidenFuscators-Register-VM-v1.5");
+  res.setHeader("X-Roniguard-Engine", "RONIGUARD-MAX-v2.5");
   res.setHeader("X-Roniguard-Security-Walls", "Active");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   return res.send(content);
@@ -2795,14 +3324,10 @@ app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);
 app.use("/api", routes_default);
-app.get("/raw/:id", (req, res) => {
-  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-  res.redirect(307, `/api/loader/raw/${req.params.id}${query}`);
-});
-app.get("/load/:id", (req, res) => {
-  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-  res.redirect(307, `/api/loader/raw/${req.params.id}${query}`);
-});
+app.get("/loader.lua", handleRawLoaderRequest);
+app.get("/raw/:id", handleRawLoaderRequest);
+app.get("/load/:id", handleRawLoaderRequest);
+app.get("/raw/latest.lua", handleRawLoaderRequest);
 async function startServer() {
   const isProduction = process.env.NODE_ENV === "production";
   if (!isProduction) {

@@ -3,34 +3,20 @@ import {
   LayoutDashboard,
   Layers,
   FileCode2,
-  Lock,
-  UserCheck,
   KeyRound,
-  Cpu,
-  History,
-  Archive,
-  Bot,
-  Terminal,
-  BarChart3,
-  Settings,
-  X,
+  User,
   ShieldAlert,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 
 export type SectionId =
   | 'overview'
   | 'panels'
   | 'scripts'
-  | 'obfuscation'
-  | 'whitelist'
-  | 'keys'
-  | 'hwid'
-  | 'history'
-  | 'source-recovery'
-  | 'discord'
-  | 'api'
-  | 'analytics'
-  | 'settings';
+  | 'licenses'
+  | 'account'
+  | 'admin';
 
 interface SidebarProps {
   activeSection: SectionId;
@@ -41,32 +27,25 @@ interface SidebarProps {
     panels: number;
     scripts: number;
     activeKeys: number;
-    whitelist: number;
   };
+  username?: string;
+  userRole?: 'user' | 'admin';
+  isAdmin?: boolean;
 }
 
 interface NavItem {
   id: SectionId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  isSpecial?: boolean;
-  countKey?: 'panels' | 'scripts' | 'activeKeys' | 'whitelist';
+  countKey?: 'panels' | 'scripts' | 'activeKeys';
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'panels', label: 'Panels', icon: Layers, countKey: 'panels' },
   { id: 'scripts', label: 'Scripts', icon: FileCode2, countKey: 'scripts' },
-  { id: 'obfuscation', label: 'Obfuscation', icon: Lock },
-  { id: 'whitelist', label: 'Whitelist', icon: UserCheck, countKey: 'whitelist' },
-  { id: 'keys', label: 'Keys', icon: KeyRound, countKey: 'activeKeys' },
-  { id: 'hwid', label: 'HWID Management', icon: Cpu },
-  { id: 'history', label: 'Build History', icon: History },
-  { id: 'source-recovery', label: 'Source Recovery', icon: Archive, isSpecial: true },
-  { id: 'discord', label: 'Discord Bot', icon: Bot },
-  { id: 'api', label: 'API Management', icon: Terminal },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'licenses', label: 'Licenses', icon: KeyRound, countKey: 'activeKeys' },
+  { id: 'account', label: 'Account', icon: User },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -75,6 +54,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
   counts,
+  username = 'Discord User',
+  userRole = 'user',
+  isAdmin = false,
 }) => {
   const content = (
     <div className="flex flex-col h-full bg-[#0a0614] border-r border-purple-900/25">
@@ -89,7 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               RONI<span className="text-purple-400">GUARD</span>
             </h1>
             <p className="text-[10px] text-neutral-400 font-medium tracking-wide uppercase mt-0.5">
-              Lua Security Core
+              Lua Security & Licensing
             </p>
           </div>
         </div>
@@ -104,11 +86,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation list */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        <div className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
-          Management
+        <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
+          Navigation
         </div>
 
-        {NAV_ITEMS.map((item) => {
+        {PRIMARY_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = activeSection === item.id;
           const count = item.countKey && counts ? counts[item.countKey] : null;
@@ -120,7 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectSection(item.id);
                 onCloseMobile();
               }}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all group ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all group ${
                 isActive
                   ? 'bg-purple-900/40 text-white border border-purple-500/40 shadow-sm shadow-purple-900/30 font-semibold'
                   : 'text-neutral-300 hover:text-white hover:bg-purple-950/30'
@@ -129,35 +111,68 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex items-center gap-3 min-w-0">
                 <Icon
                   className={`w-4 h-4 shrink-0 transition-colors ${
-                    isActive
-                      ? 'text-purple-300'
-                      : item.isSpecial
-                      ? 'text-amber-400 group-hover:text-amber-300'
-                      : 'text-neutral-400 group-hover:text-purple-300'
+                    isActive ? 'text-purple-300' : 'text-neutral-400 group-hover:text-purple-300'
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
               </div>
 
-              {item.isSpecial ? (
-                <span className="text-[10px] font-mono font-bold tracking-wider text-amber-400/90 ml-2 shrink-0">
-                  VAULT
-                </span>
-              ) : count !== null && count !== undefined ? (
-                <span className="text-[11px] font-mono text-neutral-400 ml-2 shrink-0">
+              {count !== null && count !== undefined ? (
+                <span
+                  className={`text-[11px] font-mono px-1.5 py-0.5 rounded-md ml-2 shrink-0 ${
+                    isActive ? 'bg-purple-800/40 text-purple-200' : 'bg-neutral-900 text-neutral-400'
+                  }`}
+                >
                   {count}
                 </span>
               ) : null}
             </button>
           );
         })}
+
+        {/* Optional Admin Section */}
+        {isAdmin && (
+          <div className="pt-4 mt-4 border-t border-purple-900/20">
+            <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-purple-400 uppercase">
+              Administration
+            </div>
+            <button
+              onClick={() => {
+                onSelectSection('admin');
+                onCloseMobile();
+              }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all group ${
+                activeSection === 'admin'
+                  ? 'bg-purple-900/40 text-white border border-purple-500/40 shadow-sm shadow-purple-900/30 font-semibold'
+                  : 'text-neutral-300 hover:text-white hover:bg-purple-950/30'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <ShieldCheck
+                  className={`w-4 h-4 shrink-0 transition-colors ${
+                    activeSection === 'admin' ? 'text-purple-300' : 'text-purple-400'
+                  }`}
+                />
+                <span className="truncate">Admin Vault</span>
+              </div>
+              <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40">
+                ADMIN
+              </span>
+            </button>
+          </div>
+        )}
       </nav>
 
-      {/* User Footer Notice */}
+      {/* User Footer Profile */}
       <div className="p-4 border-t border-purple-900/20 bg-[#07030e]/60">
-        <div className="text-[11px] text-neutral-400 leading-tight">
-          <p className="font-semibold text-neutral-300 truncate">ronizz.edit@gmail.com</p>
-          <p className="text-[10px] text-neutral-500 mt-0.5">Private Single-Owner Mode</p>
+        <div className="flex items-center justify-between">
+          <div className="min-w-0 pr-2">
+            <p className="text-xs font-bold text-white truncate">@{username}</p>
+            <p className="text-[10px] text-neutral-400 capitalize mt-0.5">
+              {userRole === 'admin' ? 'Platform Administrator' : 'Verified Developer'}
+            </p>
+          </div>
+          <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 shrink-0" />
         </div>
       </div>
     </div>
