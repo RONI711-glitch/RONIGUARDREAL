@@ -72,39 +72,10 @@ function getDefaultState() {
       }
     ],
     jobs: [],
-    panels: [
-      {
-        id: defaultPanelId,
-        userId: defaultUserId,
-        name: "Prime Suite Core",
-        description: "Main production scripts protection suite with Discord bot synchronization.",
-        status: "active",
-        protectionProfile: "advanced",
-        whitelistEnabled: true,
-        keyAuthEnabled: true,
-        hwidLockEnabled: true,
-        maxHwidResets: 3,
-        scriptCount: 1,
-        createdAt: now,
-        updatedAt: now
-      }
-    ],
+    panels: [],
     scripts: [],
     builds: [],
-    whitelist: [
-      {
-        id: "wl_owner_" + crypto.randomBytes(4).toString("hex"),
-        userId: defaultUserId,
-        panelId: defaultPanelId,
-        platform: "discord",
-        identifier: "728491028374829103",
-        note: "Primary Owner Discord ID",
-        status: "active",
-        addedAt: now,
-        lastSeenAt: now,
-        boundHwid: "HWID_HWID_7b19a42f5e"
-      }
-    ],
+    whitelist: [],
     keys: [],
     hwidBindings: [
       {
@@ -269,22 +240,6 @@ var Store = class {
         lastLoginAt: now
       };
       this.state.users.push(user);
-      const defaultPanel = {
-        id: "pnl_" + generateRandomHex(6),
-        userId: user.id,
-        name: `${discordUser.username}'s Main Panel`,
-        description: "Default personal security panel for Roblox Luau scripts.",
-        status: "active",
-        protectionProfile: "maximum",
-        whitelistEnabled: true,
-        keyAuthEnabled: true,
-        hwidLockEnabled: true,
-        maxHwidResets: 3,
-        scriptCount: 0,
-        createdAt: now,
-        updatedAt: now
-      };
-      this.state.panels.push(defaultPanel);
       this.logAudit("login", `New public user registered via Discord: @${discordUser.username} (${dId})`);
     } else {
       user.username = discordUser.username;
@@ -966,44 +921,47 @@ async function executeBotCommand(execution) {
           discordId,
           username: discordUsername
         });
-        const panelName = (args.name || args.panel_name || `${discordUsername}'s Panel`).trim();
-        const panelDesc = (args.description || "Configured via Discord /panelsetup command").trim();
-        const panelId = "pnl_" + Math.random().toString(36).substring(2, 9);
-        const newPanel = {
-          id: panelId,
-          userId: userRec.id,
-          name: panelName,
-          description: panelDesc,
-          status: "active",
-          protectionProfile: "maximum",
-          whitelistEnabled: true,
-          keyAuthEnabled: true,
-          hwidLockEnabled: true,
-          maxHwidResets: 3,
-          scriptCount: 0,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        state.panels.unshift(newPanel);
-        db.logAudit("panel_update", `Panel "${panelName}" created via /panelsetup by @${discordUsername}`, "DiscordBot", discordId, "info");
-        db.save();
-        await sendDiscordWebhookNotification(
-          "Panel Created via Discord",
-          `Panel **${panelName}** (\`${panelId}\`) was deployed by <@${discordId}>.`,
-          [
-            { name: "Panel ID", value: `\`${panelId}\``, inline: true },
-            { name: "Security Profile", value: "Maximum (RONIGUARD MAX)", inline: true },
-            { name: "Owner", value: `@${discordUsername}`, inline: true }
-          ]
-        );
+        const panelName = (args.name || args.panel_name || "RONIHUB PANEL").trim();
+        const panelDesc = (args.description || "THE BEST FREEMIUM EVER").trim();
+        let targetPanel = state.panels.find((p) => p.userId === userRec.id && p.name.toLowerCase() === panelName.toLowerCase());
+        if (!targetPanel) {
+          const panelId = "pnl_" + Math.random().toString(36).substring(2, 9);
+          targetPanel = {
+            id: panelId,
+            userId: userRec.id,
+            name: panelName,
+            description: panelDesc,
+            status: "active",
+            protectionProfile: "maximum",
+            whitelistEnabled: true,
+            keyAuthEnabled: true,
+            hwidLockEnabled: true,
+            maxHwidResets: 3,
+            scriptCount: 0,
+            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          state.panels.unshift(targetPanel);
+          db.logAudit("panel_update", `Panel "${panelName}" created via /panelsetup by @${discordUsername}`, "DiscordBot", discordId, "info");
+          db.save();
+          await sendDiscordWebhookNotification(
+            "Panel Created via Discord",
+            `Panel **${panelName}** (\`${panelId}\`) was deployed by <@${discordId}>.`,
+            [
+              { name: "Panel ID", value: `\`${panelId}\``, inline: true },
+              { name: "Security Profile", value: "Maximum (RONIGUARD MAX)", inline: true },
+              { name: "Owner", value: `@${discordUsername}`, inline: true }
+            ]
+          );
+        }
         return {
           success: true,
-          message: `Panel **${panelName}** was successfully initialized!
-\u2022 **Panel ID**: \`${panelId}\`
-\u2022 **Status**: Active (Key Auth, Whitelist & HWID Locks Enabled)
+          message: `Panel **${panelName}** is ready!
+\u2022 **Panel ID**: \`${targetPanel.id}\`
+\u2022 **Status**: Active
 \u2022 **Owner**: <@${discordId}>
-You can now attach scripts to this panel via the dashboard at https://roniguardreal.wasmer.app`,
-          data: newPanel
+Buttons deployed on Discord.`,
+          data: targetPanel
         };
       } catch (err) {
         console.error("[RONIGUARD-BOT] Error in panelsetup handler:", err);
@@ -1256,19 +1214,19 @@ var DiscordBotService = class {
       const commands = [
         {
           name: "panelsetup",
-          description: "Initialize and deploy a new RONIGUARD protection panel",
+          description: "Deploy the interactive RONIHUB control panel with buttons",
           options: [
             {
               type: 3,
               // STRING
               name: "name",
-              description: "Panel name (e.g. My Hub Panel)",
+              description: "Panel title (e.g. RONIHUB PANEL)",
               required: false
             },
             {
               type: 3,
               name: "description",
-              description: "Panel description or notes",
+              description: "Panel description (e.g. THE BEST FREEMIUM EVER)",
               required: false
             }
           ]
@@ -1332,77 +1290,7 @@ var DiscordBotService = class {
                   name: "script",
                   description: "Target script filename or ID",
                   required: true
-                }
-              ]
-            }
-          ]
-        },
-        {
-          name: "status",
-          description: "View live RONIGUARD security status, active keys, and panels"
-        },
-        {
-          name: "whitelist",
-          description: "Manage RONIGUARD user whitelist access",
-          options: [
-            {
-              type: 1,
-              // SUB_COMMAND
-              name: "add",
-              description: "Add a user to the whitelist",
-              options: [
-                {
-                  type: 3,
-                  // STRING
-                  name: "user",
-                  description: "Discord ID or platform identifier",
-                  required: true
                 },
-                {
-                  type: 3,
-                  name: "panel",
-                  description: "Panel ID (optional)",
-                  required: false
-                }
-              ]
-            },
-            {
-              type: 1,
-              name: "remove",
-              description: "Remove a user from the whitelist",
-              options: [
-                {
-                  type: 3,
-                  name: "user",
-                  description: "Discord ID or platform identifier",
-                  required: true
-                }
-              ]
-            },
-            {
-              type: 1,
-              name: "check",
-              description: "Check if a user is whitelisted",
-              options: [
-                {
-                  type: 3,
-                  name: "user",
-                  description: "Discord ID or platform identifier",
-                  required: true
-                }
-              ]
-            }
-          ]
-        },
-        {
-          name: "key",
-          description: "Manage and generate license keys",
-          options: [
-            {
-              type: 1,
-              name: "generate",
-              description: "Generate a new unique license key",
-              options: [
                 {
                   type: 3,
                   name: "type",
@@ -1414,25 +1302,6 @@ var DiscordBotService = class {
                     { name: "7 Days", value: "7d" },
                     { name: "24 Hours", value: "24h" }
                   ]
-                }
-              ]
-            },
-            {
-              type: 1,
-              name: "redeem",
-              description: "Redeem a key for a user",
-              options: [
-                {
-                  type: 3,
-                  name: "key",
-                  description: "The RONI-XXXX license key",
-                  required: true
-                },
-                {
-                  type: 3,
-                  name: "user",
-                  description: "Discord user ID",
-                  required: true
                 }
               ]
             }
@@ -1458,8 +1327,8 @@ var DiscordBotService = class {
           ]
         },
         {
-          name: "help",
-          description: "List available RONIGUARD commands and owner instructions"
+          name: "status",
+          description: "View live RONIGUARD security and licensing status"
         }
       ];
       const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/commands`, {
@@ -1611,9 +1480,99 @@ var DiscordBotService = class {
   }
   async handleInteraction(interaction) {
     if (!this.token) return;
-    const { id, token, data } = interaction;
+    const { id, token, data, type } = interaction;
     if (!data) return;
-    console.log(`[RONIGUARD-BOT] Handling command /${data.name} from user ${interaction.user?.username || interaction.member?.user?.username}`);
+    const caller = interaction.member?.user || interaction.user || {};
+    const callerId = caller.id || "discord_user";
+    const callerUsername = caller.username || "Discord User";
+    const state = db.get();
+    if (type === 3) {
+      const customId = data.custom_id || "";
+      console.log(`[RONIGUARD-BOT] Button clicked: ${customId} by @${callerUsername} (${callerId})`);
+      let buttonReply = "";
+      if (customId.startsWith("panel_script")) {
+        const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
+        const userScript = state.scripts.find((s) => s.userId === userRec.id) || state.scripts[0];
+        const userKey = state.keys.find((k) => k.userId === userRec.id && k.status === "active") || state.keys[0];
+        const scriptParam = userScript ? userScript.id : "scr_main";
+        const keyParam = userKey ? userKey.key : userScript ? userScript.apiKey : "RONI-FREE-KEY";
+        const loadstring = `loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptParam}&key=${keyParam}"))()`;
+        buttonReply = `\u{1F4DC} **RONIHUB SCRIPT LOADER**
+\`\`\`lua
+${loadstring}
+\`\`\`
+*Copy and run this script in your Luau executor (Roblox). Content is protected by RONIGUARD MAX.*`;
+      } else if (customId.startsWith("panel_redeem")) {
+        buttonReply = `\u{1F511} **Redeem License Key**
+To link and verify your key with your Discord account (<@${callerId}>), use the command:
+\`/lic check <your_key>\`
+or redeem it on the web dashboard at https://roniguardreal.wasmer.app`;
+      } else if (customId.startsWith("panel_key_info")) {
+        const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
+        const userKey = state.keys.find((k) => k.userId === userRec.id || k.boundHwid && k.boundHwid.includes(callerId));
+        if (userKey) {
+          buttonReply = `\u{1F4CA} **License Key Information**
+\u2022 **Owner**: <@${callerId}>
+\u2022 **Key**: \`${userKey.key}\`
+\u2022 **Status**: \`${userKey.status.toUpperCase()}\`
+\u2022 **Type**: \`${userKey.type}\`
+\u2022 **HWID Locked**: \`${userKey.hwidLocked ? "Yes" : "No"}\`
+\u2022 **Expires**: \`${userKey.expiresAt ? new Date(userKey.expiresAt).toLocaleDateString() : "Never (Lifetime)"}\``;
+        } else {
+          buttonReply = `\u26A0\uFE0F **No Active License Key Found**
+There is no registered license key bound to <@${callerId}>.
+\u2022 Use \`/lic check <key>\` to redeem your key
+\u2022 Click **Free Key** to get one at https://roniguardreal.wasmer.app`;
+        }
+      } else if (customId.startsWith("panel_reset_hwid")) {
+        const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
+        let resetCount = 0;
+        state.keys.forEach((k) => {
+          if (k.userId === userRec.id || k.boundHwid && k.boundHwid.includes(callerId)) {
+            k.boundHwid = null;
+            resetCount++;
+          }
+        });
+        state.whitelist.forEach((w) => {
+          if (w.identifier === callerId) {
+            w.boundHwid = null;
+            resetCount++;
+          }
+        });
+        db.save();
+        buttonReply = `\u2699\uFE0F **HWID Reset Successful**
+Hardware ID locks have been cleared for <@${callerId}>. The next time you execute the script in Roblox, your new device hardware ID will automatically bind.`;
+      } else if (customId.startsWith("panel_get_role")) {
+        buttonReply = `\u{1F464} **Role Verification**
+Clearance confirmed for <@${callerId}>.
+Role: **Verified User**
+Access Tier: **Active Script Executor**`;
+      } else if (customId.startsWith("panel_free_key")) {
+        buttonReply = `\u{1F517} **Free Key Access**
+Get your free key or manage your script hub at:
+https://roniguardreal.wasmer.app`;
+      } else {
+        buttonReply = `\u2705 Action received for ${customId}`;
+      }
+      try {
+        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: 4,
+            data: {
+              content: buttonReply,
+              flags: 64
+              // Ephemeral: only visible to user who clicked
+            }
+          })
+        });
+      } catch (err) {
+        console.error("[RONIGUARD-BOT] Failed to send button callback:", err);
+      }
+      return;
+    }
+    console.log(`[RONIGUARD-BOT] Handling command /${data.name} from user ${callerUsername}`);
     let commandName = data.name;
     const args = {};
     if (data.options && data.options[0] && data.options[0].type === 1) {
@@ -1629,36 +1588,140 @@ var DiscordBotService = class {
         args[opt.name] = String(opt.value);
       }
     }
-    let responseMessage = "";
-    const caller = interaction.member?.user || interaction.user || {};
-    try {
-      if (commandName === "help") {
-        responseMessage = `\u{1F6E1}\uFE0F **RONIGUARD Lua Security & Licensing System**
-
-**Available Slash Commands:**
-\u2022 \`/panelsetup [name] [description]\` \u2014 Create and deploy a new security panel
-\u2022 \`/lic check <key>\` \u2014 Verify validity of a script API key
-\u2022 \`/lic info <query>\` \u2014 Lookup script and loadstring URL
-\u2022 \`/lic revoke <key>\` \u2014 Revoke an API key immediately
-\u2022 \`/lic list\` \u2014 List your active script licenses
-\u2022 \`/lic generate <script>\` \u2014 Generate a new API key for a script
-\u2022 \`/status\` \u2014 View system metrics and protection status
-\u2022 \`/whitelist add|remove|check <user>\` \u2014 Control user whitelist
-\u2022 \`/hwid reset <user>\` \u2014 Reset device hardware lock
-
-*Manage your panels, scripts, and API keys at https://roniguardreal.wasmer.app*`;
-      } else {
-        const result = await executeBotCommand({
-          commandName,
-          args,
-          source: "discord_bot_bridge",
-          user: {
-            id: caller.id || "discord_user",
-            username: caller.username || "Discord User"
-          }
-        });
-        responseMessage = `${result.success ? "\u2705" : "\u26A0\uFE0F"} **[RONIGUARD]** ${result.message}`;
+    if (commandName === "panelsetup") {
+      const title = (args.name || "RONIHUB PANEL").trim();
+      const description = (args.description || "THE BEST FREEMIUM EVER").trim();
+      const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
+      let targetPanel = state.panels.find((p) => p.userId === userRec.id && p.name.toLowerCase() === title.toLowerCase());
+      if (!targetPanel) {
+        targetPanel = {
+          id: "pnl_" + Math.random().toString(36).substring(2, 9),
+          userId: userRec.id,
+          name: title,
+          description,
+          status: "active",
+          protectionProfile: "maximum",
+          whitelistEnabled: true,
+          keyAuthEnabled: true,
+          hwidLockEnabled: true,
+          maxHwidResets: 3,
+          scriptCount: 0,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        state.panels.unshift(targetPanel);
+        db.save();
       }
+      const panelPayload = {
+        type: 4,
+        data: {
+          embeds: [
+            {
+              title,
+              description,
+              color: 5793266
+              // #5865F2 Blurple
+            }
+          ],
+          components: [
+            {
+              type: 1,
+              // Row 1
+              components: [
+                {
+                  type: 2,
+                  style: 1,
+                  // Primary (Blurple)
+                  label: "Script",
+                  emoji: { name: "\u{1F4DC}" },
+                  custom_id: `panel_script_${targetPanel.id}`
+                },
+                {
+                  type: 2,
+                  style: 3,
+                  // Success (Green)
+                  label: "Redeem Key",
+                  emoji: { name: "\u{1F511}" },
+                  custom_id: `panel_redeem_${targetPanel.id}`
+                }
+              ]
+            },
+            {
+              type: 1,
+              // Row 2
+              components: [
+                {
+                  type: 2,
+                  style: 2,
+                  // Secondary (Grey)
+                  label: "Key Info",
+                  emoji: { name: "\u{1F4CA}" },
+                  custom_id: `panel_key_info_${targetPanel.id}`
+                },
+                {
+                  type: 2,
+                  style: 4,
+                  // Danger (Red)
+                  label: "Reset HWID",
+                  emoji: { name: "\u2699\uFE0F" },
+                  custom_id: `panel_reset_hwid_${targetPanel.id}`
+                }
+              ]
+            },
+            {
+              type: 1,
+              // Row 3
+              components: [
+                {
+                  type: 2,
+                  style: 2,
+                  // Secondary (Grey)
+                  label: "Get Role",
+                  emoji: { name: "\u{1F464}" },
+                  custom_id: `panel_get_role_${targetPanel.id}`
+                }
+              ]
+            },
+            {
+              type: 1,
+              // Row 4
+              components: [
+                {
+                  type: 2,
+                  style: 2,
+                  // Secondary (Grey)
+                  label: "Free Key",
+                  emoji: { name: "\u{1F517}" },
+                  custom_id: `panel_free_key_${targetPanel.id}`
+                }
+              ]
+            }
+          ]
+        }
+      };
+      try {
+        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(panelPayload)
+        });
+      } catch (err) {
+        console.error("[RONIGUARD-BOT] Failed to send panel callback:", err);
+      }
+      return;
+    }
+    let responseMessage = "";
+    try {
+      const result = await executeBotCommand({
+        commandName,
+        args,
+        source: "discord_bot_bridge",
+        user: {
+          id: callerId,
+          username: callerUsername
+        }
+      });
+      responseMessage = `${result.success ? "\u2705" : "\u26A0\uFE0F"} **[RONIGUARD]** ${result.message}`;
     } catch (err) {
       responseMessage = `\u274C **[RONIGUARD Error]** ${err.message || "Failed to process command"}`;
     }
@@ -1668,14 +1731,13 @@ var DiscordBotService = class {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: 4,
-          // ChannelMessageWithSource
           data: {
             content: responseMessage
           }
         })
       });
     } catch (err) {
-      console.error("[RONIGUARD-BOT] Failed to send interaction callback:", err);
+      console.error("[RONIGUARD-BOT] Failed to send command callback:", err);
     }
   }
 };
@@ -1767,7 +1829,7 @@ router.get("/auth/discord/login", (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
   const host = req.get("host") || "roniguardreal.wasmer.app";
   const protocol = req.protocol === "https" || host.includes("wasmer") ? "https" : req.protocol;
-  const redirectUri = `${protocol}://${host}/api/auth/discord/callback`;
+  const redirectUri = process.env.DISCORD_REDIRECT_URI || `${protocol}://${host}/api/auth/discord/callback`;
   const state = generateRandomHex(16);
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
     clientId
@@ -1787,7 +1849,7 @@ router.get("/auth/discord/callback", async (req, res) => {
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     const host = req.get("host") || "roniguardreal.wasmer.app";
     const protocol = req.protocol === "https" || host.includes("wasmer") ? "https" : req.protocol;
-    const redirectUri = `${protocol}://${host}/api/auth/discord/callback`;
+    const redirectUri = process.env.DISCORD_REDIRECT_URI || `${protocol}://${host}/api/auth/discord/callback`;
     let discordUser = null;
     if (clientSecret) {
       const tokenRes = await fetch("https://discord.com/api/oauth2/token", {

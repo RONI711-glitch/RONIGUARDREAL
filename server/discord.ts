@@ -315,44 +315,47 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
           username: discordUsername,
         });
 
-        const panelName = (args.name || args.panel_name || `${discordUsername}'s Panel`).trim();
-        const panelDesc = (args.description || 'Configured via Discord /panelsetup command').trim();
+        const panelName = (args.name || args.panel_name || 'RONIHUB PANEL').trim();
+        const panelDesc = (args.description || 'THE BEST FREEMIUM EVER').trim();
 
-        const panelId = 'pnl_' + Math.random().toString(36).substring(2, 9);
-        const newPanel = {
-          id: panelId,
-          userId: userRec.id,
-          name: panelName,
-          description: panelDesc,
-          status: 'active' as const,
-          protectionProfile: 'maximum' as const,
-          whitelistEnabled: true,
-          keyAuthEnabled: true,
-          hwidLockEnabled: true,
-          maxHwidResets: 3,
-          scriptCount: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
+        let targetPanel = state.panels.find((p) => p.userId === userRec.id && p.name.toLowerCase() === panelName.toLowerCase());
+        if (!targetPanel) {
+          const panelId = 'pnl_' + Math.random().toString(36).substring(2, 9);
+          targetPanel = {
+            id: panelId,
+            userId: userRec.id,
+            name: panelName,
+            description: panelDesc,
+            status: 'active' as const,
+            protectionProfile: 'maximum' as const,
+            whitelistEnabled: true,
+            keyAuthEnabled: true,
+            hwidLockEnabled: true,
+            maxHwidResets: 3,
+            scriptCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
 
-        state.panels.unshift(newPanel);
-        db.logAudit('panel_update', `Panel "${panelName}" created via /panelsetup by @${discordUsername}`, 'DiscordBot', discordId, 'info');
-        db.save();
+          state.panels.unshift(targetPanel);
+          db.logAudit('panel_update', `Panel "${panelName}" created via /panelsetup by @${discordUsername}`, 'DiscordBot', discordId, 'info');
+          db.save();
 
-        await sendDiscordWebhookNotification(
-          'Panel Created via Discord',
-          `Panel **${panelName}** (\`${panelId}\`) was deployed by <@${discordId}>.`,
-          [
-            { name: 'Panel ID', value: `\`${panelId}\``, inline: true },
-            { name: 'Security Profile', value: 'Maximum (RONIGUARD MAX)', inline: true },
-            { name: 'Owner', value: `@${discordUsername}`, inline: true },
-          ]
-        );
+          await sendDiscordWebhookNotification(
+            'Panel Created via Discord',
+            `Panel **${panelName}** (\`${panelId}\`) was deployed by <@${discordId}>.`,
+            [
+              { name: 'Panel ID', value: `\`${panelId}\``, inline: true },
+              { name: 'Security Profile', value: 'Maximum (RONIGUARD MAX)', inline: true },
+              { name: 'Owner', value: `@${discordUsername}`, inline: true },
+            ]
+          );
+        }
 
         return {
           success: true,
-          message: `Panel **${panelName}** was successfully initialized!\n• **Panel ID**: \`${panelId}\`\n• **Status**: Active (Key Auth, Whitelist & HWID Locks Enabled)\n• **Owner**: <@${discordId}>\nYou can now attach scripts to this panel via the dashboard at https://roniguardreal.wasmer.app`,
-          data: newPanel,
+          message: `Panel **${panelName}** is ready!\n• **Panel ID**: \`${targetPanel.id}\`\n• **Status**: Active\n• **Owner**: <@${discordId}>\nButtons deployed on Discord.`,
+          data: targetPanel,
         };
       } catch (err: any) {
         console.error('[RONIGUARD-BOT] Error in panelsetup handler:', err);

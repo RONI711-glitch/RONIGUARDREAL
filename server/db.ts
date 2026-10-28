@@ -291,39 +291,10 @@ function getDefaultState(): RoniguardState {
       },
     ],
     jobs: [],
-    panels: [
-      {
-        id: defaultPanelId,
-        userId: defaultUserId,
-        name: 'Prime Suite Core',
-        description: 'Main production scripts protection suite with Discord bot synchronization.',
-        status: 'active',
-        protectionProfile: 'advanced',
-        whitelistEnabled: true,
-        keyAuthEnabled: true,
-        hwidLockEnabled: true,
-        maxHwidResets: 3,
-        scriptCount: 1,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
+    panels: [],
     scripts: [],
     builds: [],
-    whitelist: [
-      {
-        id: 'wl_owner_' + crypto.randomBytes(4).toString('hex'),
-        userId: defaultUserId,
-        panelId: defaultPanelId,
-        platform: 'discord',
-        identifier: '728491028374829103',
-        note: 'Primary Owner Discord ID',
-        status: 'active',
-        addedAt: now,
-        lastSeenAt: now,
-        boundHwid: 'HWID_HWID_7b19a42f5e',
-      },
-    ],
+    whitelist: [],
     keys: [],
     hwidBindings: [
       {
@@ -516,25 +487,6 @@ class Store {
         lastLoginAt: now,
       };
       this.state.users.push(user);
-
-      // Create a default initial panel for the new user
-      const defaultPanel: PanelRecord = {
-        id: 'pnl_' + generateRandomHex(6),
-        userId: user.id,
-        name: `${discordUser.username}'s Main Panel`,
-        description: 'Default personal security panel for Roblox Luau scripts.',
-        status: 'active',
-        protectionProfile: 'maximum',
-        whitelistEnabled: true,
-        keyAuthEnabled: true,
-        hwidLockEnabled: true,
-        maxHwidResets: 3,
-        scriptCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.state.panels.push(defaultPanel);
-
       this.logAudit('login', `New public user registered via Discord: @${discordUser.username} (${dId})`);
     } else {
       user.username = discordUser.username;
