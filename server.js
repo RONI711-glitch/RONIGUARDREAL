@@ -264,6 +264,7 @@ var Store = class {
             lastLoginAt: (/* @__PURE__ */ new Date()).toISOString()
           });
         }
+        const defaultUid = parsed.users[0]?.id || "usr_owner";
         const nowStr = (/* @__PURE__ */ new Date()).toISOString();
         if (parsed.panels.length === 0) {
           parsed.panels.push({
@@ -2007,6 +2008,12 @@ function getUserSessionToken(req) {
   if (req.query.token && typeof req.query.token === "string") {
     return req.query.token.trim();
   }
+  if (req.query.auth_token && typeof req.query.auth_token === "string") {
+    return req.query.auth_token.trim();
+  }
+  if (req.query.token && typeof req.query.token === "string") {
+    return req.query.token.trim();
+  }
   if (req.query.user_token && typeof req.query.user_token === "string") {
     return req.query.user_token.trim();
   }
@@ -2137,7 +2144,7 @@ router.get("/auth/discord/callback", async (req, res) => {
       `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
       `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`
     ]);
-    return res.redirect("/");
+    return res.redirect(`/?auth_token=${encodeURIComponent(sessionToken)}&username=${encodeURIComponent(user.username)}`);
   } catch (err) {
     console.error("[RONIGUARD] Discord OAuth callback error:", err);
     return res.redirect(`/?auth_error=${encodeURIComponent(err.message || "Authentication failed")}`);

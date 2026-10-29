@@ -493,6 +493,7 @@ class Store {
         }
 
         // Auto-seed initial panel, script, and key if database has 0 scripts
+        const defaultUid = parsed.users[0]?.id || 'usr_owner';
         const nowStr = new Date().toISOString();
         if (parsed.panels.length === 0) {
           parsed.panels.push({

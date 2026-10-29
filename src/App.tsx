@@ -89,18 +89,23 @@ export default function App() {
   useEffect(() => {
     const checkAuth = async () => {
       const token = getStoredToken();
-      if (!token) {
-        setIsAuthenticated(false);
-        return;
-      }
 
       try {
         const user = await api.getMe();
-        setCurrentUser(user);
+        if (user && user.id) {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+          refreshTelemetry();
+          return;
+        }
+      } catch (err) {
+        console.warn('Initial session verification note:', err);
+      }
+
+      if (token) {
         setIsAuthenticated(true);
         refreshTelemetry();
-      } catch {
-        clearStoredToken();
+      } else {
         setIsAuthenticated(false);
       }
     };

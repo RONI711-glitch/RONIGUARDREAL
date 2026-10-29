@@ -25,23 +25,60 @@ export const WASMER_APP_URL = 'https://roniguardreal.wasmer.app';
 export const generateLocalId = () => Math.random().toString(36).substring(2, 9);
 
 export function getStoredToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  // 1. Check URL parameters (e.g. redirected from Discord OAuth callback)
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('auth_token') || params.get('token') || params.get('user_token');
+    if (urlToken) {
+      setStoredToken(urlToken);
+      // Clean auth_token query parameter from URL bar without reloading
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      return urlToken;
+    }
+  }
+
+  // 2. Check localStorage
+  const local = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+  if (local) return local;
+
+  // 3. Check document.cookie
+  if (typeof document !== 'undefined') {
+    const match = document.cookie.match(/(?:^|;\s*)(?:roni_user_token|roni_owner_token)=([^;]+)/);
+    if (match && match[1]) {
+      const tok = decodeURIComponent(match[1]);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(TOKEN_KEY, tok);
+      }
+      return tok;
+    }
+  }
+
+  return null;
 }
 
 export function setStoredToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-  try {
-    document.cookie = `roni_owner_token=${encodeURIComponent(token)}; path=/; max-age=2592000; SameSite=Lax`;
-    document.cookie = `roni_owner_email=ronizz.edit@gmail.com; path=/; max-age=2592000; SameSite=Lax`;
-  } catch {}
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+  if (typeof document !== 'undefined') {
+    try {
+      document.cookie = `roni_user_token=${encodeURIComponent(token)}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `roni_owner_token=${encodeURIComponent(token)}; path=/; max-age=2592000; SameSite=Lax`;
+    } catch {}
+  }
 }
 
 export function clearStoredToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  try {
-    document.cookie = 'roni_owner_token=; path=/; max-age=0; SameSite=Lax';
-    document.cookie = 'roni_owner_email=; path=/; max-age=0; SameSite=Lax';
-  } catch {}
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+  if (typeof document !== 'undefined') {
+    try {
+      document.cookie = 'roni_user_token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'roni_owner_token=; path=/; max-age=0; SameSite=Lax';
+    } catch {}
+  }
 }
 
 // -------------------------------------------------------------
@@ -125,8 +162,8 @@ function saveLocalStore(state: LocalStoreState): void {
   } catch {}
 }
 
-// If running on Wasmer Edge static host, default to client store to prevent 405 Method Not Allowed on POST
-let backendOfflineMode = typeof window !== 'undefined' && window.location.hostname.includes('wasmer.app');
+// Hybrid live server + resilient client store
+let backendOfflineMode = false;
 
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<any> {
   const token = getStoredToken();
@@ -148,6 +185,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
     const response = await fetch(endpoint, {
       ...options,
       headers,
+      credentials: 'include',
     });
 
     // Detect Wasmer static server (404 Not Found, 405 Method Not Allowed, or HTML error page on API)

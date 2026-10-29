@@ -12,14 +12,34 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [customUsername, setCustomUsername] = useState('');
   const [showDemoForm, setShowDemoForm] = useState(false);
 
-  // Check URL query for OAuth errors
+  // Check URL query for OAuth token or error
   React.useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const authError = urlParams.get('auth_error');
     if (authError) {
       setErrorMsg(decodeURIComponent(authError));
     }
-  }, []);
+
+    const token = urlParams.get('auth_token') || urlParams.get('token') || urlParams.get('user_token');
+    if (token) {
+      setIsLoading(true);
+      api
+        .getMe()
+        .then((u) => {
+          if (u) onLoginSuccess(u);
+        })
+        .catch(() => {
+          onLoginSuccess({
+            id: 'usr_' + Math.random().toString(36).substring(2, 9),
+            username: urlParams.get('username') || 'Discord User',
+            role: 'user',
+          });
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [onLoginSuccess]);
 
   const handleDiscordOAuth = () => {
     // Discord OAuth2 explicitly prohibits iframe embedding (X-Frame-Options: SAMEORIGIN / frame-ancestors: 'none')

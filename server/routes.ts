@@ -48,6 +48,12 @@ export function getUserSessionToken(req: Request): string | null {
   if (req.query.token && typeof req.query.token === 'string') {
     return req.query.token.trim();
   }
+  if (req.query.auth_token && typeof req.query.auth_token === 'string') {
+    return req.query.auth_token.trim();
+  }
+  if (req.query.token && typeof req.query.token === 'string') {
+    return req.query.token.trim();
+  }
   if (req.query.user_token && typeof req.query.user_token === 'string') {
     return req.query.user_token.trim();
   }
@@ -211,7 +217,7 @@ router.get('/auth/discord/callback', async (req, res) => {
       `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`,
     ]);
 
-    return res.redirect('/');
+    return res.redirect(`/?auth_token=${encodeURIComponent(sessionToken)}&username=${encodeURIComponent(user.username)}`);
   } catch (err: any) {
     console.error('[RONIGUARD] Discord OAuth callback error:', err);
     return res.redirect(`/?auth_error=${encodeURIComponent(err.message || 'Authentication failed')}`);
