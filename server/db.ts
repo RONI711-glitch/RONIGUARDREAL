@@ -263,7 +263,23 @@ function getDefaultState(): RoniguardState {
 
   const defaultUserId = 'usr_owner';
   const defaultPanelId = 'pnl_main_' + crypto.randomBytes(4).toString('hex');
+  const defaultScriptId = 'scr_main_default';
+  const defaultKeyStr = 'RONI-API-DEFAULT-KEY';
   const now = new Date().toISOString();
+
+  const sampleLua = `-- [RONIGUARD] Universal Roblox Script
+print("[RONIGUARD] Executing Protected Script Payload...")
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    print("[RONIGUARD] Active Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
+end
+print("[RONIGUARD] Successfully authenticated and running!")`;
+
+  try {
+    const srcFile = path.join(SOURCES_DIR, `src_${defaultScriptId}.lua`);
+    const bldFile = path.join(BUILDS_DIR, `bld_${defaultScriptId}.lua`);
+    if (!fs.existsSync(srcFile)) fs.writeFileSync(srcFile, sampleLua, 'utf-8');
+    if (!fs.existsSync(bldFile)) fs.writeFileSync(bldFile, sampleLua, 'utf-8');
+  } catch {}
 
   return {
     owner: {
@@ -292,11 +308,76 @@ function getDefaultState(): RoniguardState {
       },
     ],
     jobs: [],
-    panels: [],
-    scripts: [],
+    panels: [
+      {
+        id: defaultPanelId,
+        userId: defaultUserId,
+        name: 'RONIHUB PANEL',
+        description: 'THE BEST FREEMIUM EVER',
+        status: 'active',
+        protectionProfile: 'maximum',
+        whitelistEnabled: true,
+        keyAuthEnabled: true,
+        hwidLockEnabled: true,
+        maxHwidResets: 3,
+        scriptCount: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    scripts: [
+      {
+        id: defaultScriptId,
+        userId: defaultUserId,
+        panelId: defaultPanelId,
+        filename: 'main.lua',
+        originalFilename: 'main.lua',
+        originalFileId: `src_${defaultScriptId}`,
+        protectedFileId: `bld_${defaultScriptId}`,
+        originalSize: sampleLua.length,
+        protectedSize: sampleLua.length,
+        status: 'ready',
+        apiKey: defaultKeyStr,
+        apiKeyId: 'key_default',
+        isObfuscated: false,
+        trialEnabled: true,
+        buildCount: 1,
+        lastBuiltAt: now,
+        createdAt: now,
+      },
+    ],
     builds: [],
-    whitelist: [],
-    keys: [],
+    whitelist: [
+      {
+        id: 'wl_owner',
+        panelId: defaultPanelId,
+        platform: 'discord',
+        identifier: '728491028374829103',
+        note: 'Default Owner Whitelist',
+        status: 'active',
+        addedAt: now,
+        lastSeenAt: null,
+        boundHwid: null,
+      },
+    ],
+    keys: [
+      {
+        id: 'key_default',
+        userId: defaultUserId,
+        scriptId: defaultScriptId,
+        panelId: defaultPanelId,
+        key: defaultKeyStr,
+        type: 'lifetime',
+        maxUses: 99999,
+        currentUses: 0,
+        hwidLocked: false,
+        boundHwid: null,
+        status: 'active',
+        createdAt: now,
+        expiresAt: null,
+        lastUsedAt: null,
+      },
+    ],
     hwidBindings: [
       {
         id: 'hwid_1_' + crypto.randomBytes(4).toString('hex'),
