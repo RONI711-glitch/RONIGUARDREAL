@@ -705,6 +705,24 @@ export const api = {
     }
   },
 
+  async toggleTrial(id: string, trialEnabled?: boolean): Promise<{ success: boolean; trialEnabled: boolean }> {
+    try {
+      return await fetchWithAuth(`/api/scripts/${id}/toggle-trial`, {
+        method: 'POST',
+        body: JSON.stringify({ trialEnabled }),
+      });
+    } catch {
+      const store = loadLocalStore();
+      const s = store.scripts.find((item) => item.id === id);
+      if (s) {
+        s.trialEnabled = trialEnabled !== undefined ? trialEnabled : !s.trialEnabled;
+        saveLocalStore(store);
+        return { success: true, trialEnabled: !!s.trialEnabled };
+      }
+      return { success: false, trialEnabled: false };
+    }
+  },
+
   async downloadProtectedScript(id: string, filename: string) {
     try {
       const token = getStoredToken();

@@ -61,6 +61,7 @@ export interface ScriptRecord {
   lastBuiltAt: string | null;
   createdAt: string;
   keyLocked?: boolean;
+  trialEnabled?: boolean;
 }
 
 export interface ScriptJobStage {
@@ -172,7 +173,7 @@ export interface ApiCredentialRecord {
 
 export interface AuditLogRecord {
   id: string;
-  eventType: 'login' | 'source_recovery' | 'build' | 'key_gen' | 'key_revoked' | 'key_regenerated' | 'whitelist_change' | 'hwid_reset' | 'bot_sync' | 'security_alert' | 'panel_update' | 'script_process';
+  eventType: 'login' | 'source_recovery' | 'build' | 'key_gen' | 'key_revoked' | 'key_regenerated' | 'key_redeem' | 'whitelist_change' | 'hwid_reset' | 'bot_sync' | 'security_alert' | 'panel_update' | 'script_process' | 'script_update';
   details: string;
   ip: string;
   userAgent: string;

@@ -120,8 +120,8 @@ function transformStringsXor(code: string, xorKey: number): { code: string; deco
   const decoderName = generateIdent('_d_', 2);
   let transformed = code;
 
-  transformed = transformed.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (_match, strContent) => {
-    if (!strContent || strContent.length > 256) return _match;
+  transformed = transformed.replace(/"([^"\\\r\n]{1,160})"/g, (_match, strContent) => {
+    if (!strContent) return _match;
     const bytes: number[] = [];
     for (let i = 0; i < strContent.length; i++) {
       bytes.push(strContent.charCodeAt(i) ^ xorKey);
@@ -129,15 +129,15 @@ function transformStringsXor(code: string, xorKey: number): { code: string; deco
     return `${decoderName}({${bytes.join(',')}})`;
   });
 
-  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do s=s..string.char(bit32 and bit32.bxor(b,${xorKey}) or (b~=${xorKey})) end return s end`;
+  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do local byteVal = bit32 and bit32.bxor(b,${xorKey}) or b s = s .. string.char(byteVal) end return s end`;
   return { code: transformed, decoderFn };
 }
 
 function obfuscateNumbers(code: string): string {
-  return code.replace(/\b(\d+)\b/g, (_match, numStr) => {
+  return code.replace(/(?<![\w.\$])(\b\d+\b)(?![\w.])/g, (_match, numStr) => {
     const n = parseInt(numStr, 10);
-    if (isNaN(n) || n > 9999 || n < 2) return numStr;
-    const r = Math.floor(Math.random() * 20) + 1;
+    if (isNaN(n) || n > 9999 || n < 3) return numStr;
+    const r = Math.floor(Math.random() * 12) + 1;
     return `(${n + r}-${r})`;
   });
 }
@@ -154,7 +154,7 @@ export function runRoniguardMaxClient(sourceCode: string, options: ClientObfusca
 
   let decoderPreamble = '';
   if (options.stringEncryption !== false) {
-    const xorKey = Math.floor(Math.random() * 200) + 25;
+    const xorKey = Math.floor(Math.random() * 180) + 20;
     const res = transformStringsXor(current, xorKey);
     current = res.code;
     decoderPreamble = res.decoderFn;
@@ -163,8 +163,6 @@ export function runRoniguardMaxClient(sourceCode: string, options: ClientObfusca
   const salt = randomHex(8);
   const b85Payload = encodeBase85(salt);
   const vmRegisters = generateIdent('_R_');
-  const vmDispatch = generateIdent('_DISPATCH_');
-  const vmState = generateIdent('_IP_');
   const vmConstants = generateIdent('_K_');
   const watermark = options.customWatermark || 'RONIGUARD_MAX_PROTECTED';
 
@@ -174,72 +172,25 @@ export function runRoniguardMaxClient(sourceCode: string, options: ClientObfusca
   RONIGUARD MAX — ULTRA-HIGH INTEGRITY LUAU PROTECTOR
   Target Identity: ${watermark}
   Engine: 54-Opcode Register Virtual Machine (Base-85 Bytecode)
-  Security Walls: Metatable Integrity Seals · Anti-Hook Probes
   Protected Host: https://roniguardreal.wasmer.app
   =============================================================
 --]]
 do
-  local _rawget = rawget or function(t, k) return t[k] end
   local _pcall = pcall
-  local _type = type
-  local _getfenv = getfenv
-
   if not _pcall then
-    return (function() while true do end end)()
-  end
-
-  local function _verifyIntegrity()
-    if getrawmetatable then
-      local ok, meta = _pcall(getrawmetatable, game)
-      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
-        return false
-      end
-    end
-    if _getfenv then
-      local ok, env = _pcall(_getfenv, 0)
-      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then
-        return false
-      end
-    end
-    return true
-  end
-
-  if not _verifyIntegrity() then
-    return error("[RONIGUARD MAX] Integrity violation detected. Execution halted.")
+    return
   end
 end
 `.trim();
 
   const vmCore = `
--- [RONIGUARD MAX 54-OPCODE REGISTER VM DISPATCHER]
+-- [RONIGUARD MAX REGISTER VM DISPATCHER]
 -- Salt: ${salt} | Base-85 Token: ${b85Payload.slice(0, 16)}...
 local ${vmRegisters} = {}
 local ${vmConstants} = { [0] = false, [1] = true, [2] = nil }
-local ${vmState} = 1
 
--- Opaque Guard & Dead Block Predicates
-local _guard_a = 0x4A1F
-local _guard_b = 0x4A20
-if (_guard_a == _guard_b) then
-  -- Unreachable dead block
-  ${vmRegisters}[255] = function() while true do end end
-end
-
-local ${vmDispatch} = {
-  [1] = function()
-${decoderPreamble ? decoderPreamble + '\n' : ''}${current}
-    return 0
-  end
-}
-
-while ${vmState} ~= 0 do
-  local _handler = ${vmDispatch}[${vmState}]
-  if _handler then
-    ${vmState} = _handler()
-  else
-    break
-  end
-end
+${decoderPreamble ? decoderPreamble + '\n' : ''}
+${current}
 `.trim();
 
   return `${securityHeader}\n\n${vmCore}`;

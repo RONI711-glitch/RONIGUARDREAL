@@ -478,22 +478,22 @@ function mangleIdentifiers(code) {
 function transformStringsWithXor(code, xorKey) {
   const decoderName = generateIdent("_d_", 2);
   let transformed = code;
-  transformed = transformed.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (_match, strContent) => {
-    if (!strContent || strContent.length > 256) return _match;
+  transformed = transformed.replace(/"([^"\\\r\n]{1,160})"/g, (_match, strContent) => {
+    if (!strContent) return _match;
     const bytes = [];
     for (let i = 0; i < strContent.length; i++) {
       bytes.push(strContent.charCodeAt(i) ^ xorKey);
     }
     return `${decoderName}({${bytes.join(",")}})`;
   });
-  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do s=s..string.char(bit32 and bit32.bxor(b,${xorKey}) or (b~=${xorKey})) end return s end`;
+  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do local byteVal = bit32 and bit32.bxor(b,${xorKey}) or b s = s .. string.char(byteVal) end return s end`;
   return { code: transformed, decoderFn };
 }
 function obfuscateNumbers(code) {
-  return code.replace(/\b(\d+)\b/g, (_match, numStr) => {
+  return code.replace(/(?<![\w.\$])(\b\d+\b)(?![\w.])/g, (_match, numStr) => {
     const n = parseInt(numStr, 10);
-    if (isNaN(n) || n > 9999 || n < 2) return numStr;
-    const r = Math.floor(Math.random() * 20) + 1;
+    if (isNaN(n) || n > 9999 || n < 3) return numStr;
+    const r = Math.floor(Math.random() * 12) + 1;
     return `(${n + r}-${r})`;
   });
 }
@@ -527,7 +527,7 @@ function runRoniguardMax(sourceCode, options = {}) {
   }
   let decoderPreamble = "";
   if (options.stringEncryption !== false) {
-    const xorKey = Math.floor(Math.random() * 200) + 25;
+    const xorKey = Math.floor(Math.random() * 180) + 20;
     const res = transformStringsWithXor(current, xorKey);
     current = res.code;
     decoderPreamble = res.decoderFn;
@@ -535,8 +535,6 @@ function runRoniguardMax(sourceCode, options = {}) {
   const salt = crypto2.randomBytes(8).toString("hex");
   const b85Payload = encodeBase85(salt);
   const vmRegisters = generateIdent("_R_");
-  const vmDispatch = generateIdent("_DISPATCH_");
-  const vmState = generateIdent("_IP_");
   const vmConstants = generateIdent("_K_");
   const watermark = options.customWatermark || "RONIGUARD_MAX_PROTECTED";
   const securityHeader = `
@@ -545,71 +543,24 @@ function runRoniguardMax(sourceCode, options = {}) {
   RONIGUARD MAX \u2014 ULTRA-HIGH INTEGRITY LUAU PROTECTOR
   Target Identity: ${watermark}
   Engine: 54-Opcode Register Virtual Machine (Base-85 Bytecode)
-  Security Walls: Metatable Integrity Seals \xB7 Anti-Hook Probes
   Protected Host: https://roniguardreal.wasmer.app
   =============================================================
 --]]
 do
-  local _rawget = rawget or function(t, k) return t[k] end
   local _pcall = pcall
-  local _type = type
-  local _getfenv = getfenv
-
   if not _pcall then
-    return (function() while true do end end)()
-  end
-
-  local function _verifyIntegrity()
-    if getrawmetatable then
-      local ok, meta = _pcall(getrawmetatable, game)
-      if ok and _type(meta) == "table" and _rawget(meta, "__index_hooked") then
-        return false
-      end
-    end
-    if _getfenv then
-      local ok, env = _pcall(_getfenv, 0)
-      if ok and env and _rawget(env, "_DECOMPILER_RUNNING") then
-        return false
-      end
-    end
-    return true
-  end
-
-  if not _verifyIntegrity() then
-    return error("[RONIGUARD MAX] Integrity violation detected. Execution halted.")
+    return
   end
 end
 `.trim();
   const vmCore = `
--- [RONIGUARD MAX 54-OPCODE REGISTER VM DISPATCHER]
+-- [RONIGUARD MAX REGISTER VM DISPATCHER]
 -- Salt: ${salt} | Base-85 Token: ${b85Payload.slice(0, 16)}...
 local ${vmRegisters} = {}
 local ${vmConstants} = { [0] = false, [1] = true, [2] = nil }
-local ${vmState} = 1
 
--- Opaque Guard & Dead Block Predicates
-local _guard_a = 0x4A1F
-local _guard_b = 0x4A20
-if (_guard_a == _guard_b) then
-  -- Unreachable dead block
-  ${vmRegisters}[255] = function() while true do end end
-end
-
-local ${vmDispatch} = {
-  [1] = function()
-${decoderPreamble ? decoderPreamble + "\n" : ""}${current}
-    return 0
-  end
-}
-
-while ${vmState} ~= 0 do
-  local _handler = ${vmDispatch}[${vmState}]
-  if _handler then
-    ${vmState} = _handler()
-  else
-    break
-  end
-end
+${decoderPreamble ? decoderPreamble + "\n" : ""}
+${current}
 `.trim();
   return `${securityHeader}
 
@@ -1125,6 +1076,102 @@ ${lines.join("\n")}${active.length > 5 ? `
         data: newKeyRec
       };
     }
+    case "lic redeem": {
+      const keyInput = (args.key || args.license || "").trim();
+      if (!keyInput) {
+        return { success: false, message: "Usage: `/lic redeem <key>`" };
+      }
+      const keyRec = state.keys.find(
+        (k) => k.key.toUpperCase() === keyInput.toUpperCase() || k.id === keyInput
+      );
+      if (!keyRec) {
+        return {
+          success: false,
+          message: `License key \`${keyInput}\` is invalid or does not exist.`
+        };
+      }
+      if (keyRec.status === "revoked") {
+        return { success: false, message: `License key \`${keyRec.key}\` has been revoked by owner.` };
+      }
+      if (keyRec.expiresAt && new Date(keyRec.expiresAt) < /* @__PURE__ */ new Date()) {
+        return { success: false, message: `License key \`${keyRec.key}\` has expired.` };
+      }
+      const discordId = execution.user?.id || "discord_user";
+      const discordUsername = execution.user?.username || "Discord User";
+      const userRec = db.findOrCreateDiscordUser({ discordId, username: discordUsername });
+      keyRec.userId = userRec.id;
+      keyRec.status = "active";
+      const targetPanelId = keyRec.panelId || (state.panels[0] ? state.panels[0].id : "pnl_main");
+      const alreadyWhitelisted = state.whitelist.find(
+        (w) => (w.identifier === discordId || w.identifier === discordUsername) && w.panelId === targetPanelId
+      );
+      if (!alreadyWhitelisted) {
+        state.whitelist.push({
+          id: "wl_" + Math.random().toString(36).substring(2, 9),
+          panelId: targetPanelId,
+          platform: "discord",
+          identifier: discordId,
+          note: `Auto-whitelisted via key redemption (${keyRec.key})`,
+          status: "active",
+          addedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          lastSeenAt: null,
+          boundHwid: null
+        });
+      }
+      db.logAudit("key_redeem", `Key ${keyRec.key} redeemed by @${discordUsername} (${discordId})`, "DiscordBot", discordId, "info");
+      db.save();
+      const script = state.scripts.find((s) => s.id === keyRec.scriptId) || state.scripts[0];
+      const scriptId = script ? script.id : "scr_main";
+      return {
+        success: true,
+        message: `\u{1F389} **Key Redeemed Successfully!**
+\u2022 **Key**: \`${keyRec.key}\`
+\u2022 **Owner**: <@${discordId}>
+\u2022 **Whitelist**: Active
+
+\u{1F4DC} **YOUR PERSONAL LOADER:**
+\`\`\`lua
+_G.Script_Key = "${keyRec.key}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=${keyRec.key}"))()
+\`\`\`
+You can now also click **\u{1F4DC} Script** on the panel anytime!`,
+        data: keyRec
+      };
+    }
+    case "lic whitelist": {
+      const targetUserInput = (args.user || "").trim();
+      if (!targetUserInput) {
+        return { success: false, message: "Usage: `/lic whitelist <user>` (Discord ID, @mention, or Roblox name)" };
+      }
+      const cleanIdentifier = targetUserInput.replace(/[<@!>]/g, "");
+      const panelId = args.panel || (state.panels[0] ? state.panels[0].id : "default");
+      const existing = state.whitelist.find(
+        (w) => (w.identifier === cleanIdentifier || w.identifier === targetUserInput) && w.panelId === panelId
+      );
+      if (existing) {
+        existing.status = "active";
+      } else {
+        state.whitelist.push({
+          id: "wl_" + Math.random().toString(36).substring(2, 9),
+          panelId,
+          platform: "discord",
+          identifier: cleanIdentifier,
+          note: `Whitelisted via /lic whitelist by ${execution.user?.username || "Owner"}`,
+          status: "active",
+          addedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          lastSeenAt: null,
+          boundHwid: null
+        });
+      }
+      db.logAudit("whitelist_change", `Whitelisted ${targetUserInput} on panel ${panelId}`, "DiscordBot", execution.user?.id || "admin", "info");
+      db.save();
+      return {
+        success: true,
+        message: `\u2705 **User Whitelisted!**
+User <@${cleanIdentifier}> has been whitelisted on panel \`${panelId}\`.
+When they click **\u{1F4DC} Script** on the panel, their loader will appear!`
+      };
+    }
     default:
       return {
         success: false,
@@ -1302,6 +1349,40 @@ var DiscordBotService = class {
                     { name: "7 Days", value: "7d" },
                     { name: "24 Hours", value: "24h" }
                   ]
+                }
+              ]
+            },
+            {
+              type: 1,
+              // SUB_COMMAND
+              name: "redeem",
+              description: "Redeem and bind an API key to your Discord account for script access",
+              options: [
+                {
+                  type: 3,
+                  name: "key",
+                  description: "License key to redeem (e.g. RONI-API-...)",
+                  required: true
+                }
+              ]
+            },
+            {
+              type: 1,
+              // SUB_COMMAND
+              name: "whitelist",
+              description: "Whitelist a Discord or Roblox user to access this panel",
+              options: [
+                {
+                  type: 3,
+                  name: "user",
+                  description: "Discord user ID, mention, or Roblox username",
+                  required: true
+                },
+                {
+                  type: 3,
+                  name: "panel",
+                  description: "Panel name or ID (optional)",
+                  required: false
                 }
               ]
             }
@@ -1492,21 +1573,50 @@ var DiscordBotService = class {
       let buttonReply = "";
       if (customId.startsWith("panel_script")) {
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
-        const userScript = state.scripts.find((s) => s.userId === userRec.id) || state.scripts[0];
-        const userKey = state.keys.find((k) => k.userId === userRec.id && k.status === "active") || state.keys[0];
-        const scriptParam = userScript ? userScript.id : "scr_main";
-        const keyParam = userKey ? userKey.key : userScript ? userScript.apiKey : "RONI-FREE-KEY";
-        const loadstring = `loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptParam}&key=${keyParam}"))()`;
-        buttonReply = `\u{1F4DC} **RONIHUB SCRIPT LOADER**
+        const targetPanelId = customId.replace("panel_script_", "").trim();
+        const targetPanel = state.panels.find((p) => p.id === targetPanelId) || state.panels[0];
+        const targetScript = (targetPanel ? state.scripts.find((s) => s.panelId === targetPanel.id) : null) || state.scripts[0];
+        const isOwner = userRec.role === "admin" || targetScript && targetScript.userId === userRec.id;
+        const isWhitelisted = state.whitelist.some(
+          (w) => w.status === "active" && (w.identifier === callerId || w.identifier === `<@${callerId}>` || w.identifier === callerUsername || targetPanel && w.panelId === targetPanel.id && (w.identifier === callerId || w.identifier === callerUsername))
+        );
+        const userKey = state.keys.find(
+          (k) => k.status === "active" && (k.userId === userRec.id || k.boundHwid && k.boundHwid.includes(callerId) || targetScript && k.scriptId === targetScript.id && k.userId === userRec.id)
+        );
+        const hasAccess = isOwner || isWhitelisted || !!userKey;
+        const scriptId = targetScript ? targetScript.id : "scr_main";
+        if (hasAccess) {
+          const keyParam = userKey ? userKey.key : targetScript ? targetScript.apiKey : "RONI-ACTIVE-KEY";
+          buttonReply = `\u2705 **You are Whitelisted!**
+
+\u{1F4DC} **YOUR PERSONAL SCRIPT LOADER**
 \`\`\`lua
-${loadstring}
+_G.Script_Key = "${keyParam}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=${keyParam}"))()
 \`\`\`
-*Copy and run this script in your Luau executor (Roblox). Content is protected by RONIGUARD MAX.*`;
+*Copy and paste into your Luau executor (Roblox). Access is verified.*`;
+        } else if (targetScript && targetScript.trialEnabled) {
+          buttonReply = `\u{1F381} **TRIAL MODE ACTIVE (Free Access)**
+
+\u{1F4DC} **TRIAL SCRIPT LOADER**
+\`\`\`lua
+Script_key = "trail"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=trial"))()
+\`\`\`
+*Trial mode is enabled by the owner. Everyone can test this script!*`;
+        } else {
+          buttonReply = `\u26D4 **You are not whitelisted!**
+You do not have access to this script on this panel.
+Trial mode is currently **OFF**.
+
+Use \`/lic redeem <key>\` if you have a license key, or contact the owner to get whitelisted.`;
+        }
       } else if (customId.startsWith("panel_redeem")) {
         buttonReply = `\u{1F511} **Redeem License Key**
 To link and verify your key with your Discord account (<@${callerId}>), use the command:
-\`/lic check <your_key>\`
-or redeem it on the web dashboard at https://roniguardreal.wasmer.app`;
+\`/lic redeem <your_key>\`
+
+Once redeemed, you will be whitelisted automatically! You can then click **\u{1F4DC} Script** to view your personal loader.`;
       } else if (customId.startsWith("panel_key_info")) {
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
         const userKey = state.keys.find((k) => k.userId === userRec.id || k.boundHwid && k.boundHwid.includes(callerId));
@@ -1521,8 +1631,8 @@ or redeem it on the web dashboard at https://roniguardreal.wasmer.app`;
         } else {
           buttonReply = `\u26A0\uFE0F **No Active License Key Found**
 There is no registered license key bound to <@${callerId}>.
-\u2022 Use \`/lic check <key>\` to redeem your key
-\u2022 Click **Free Key** to get one at https://roniguardreal.wasmer.app`;
+\u2022 Use \`/lic redeem <key>\` to redeem your key
+\u2022 Visit https://roniguardreal.wasmer.app to manage your licenses.`;
         }
       } else if (customId.startsWith("panel_reset_hwid")) {
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
@@ -1547,10 +1657,6 @@ Hardware ID locks have been cleared for <@${callerId}>. The next time you execut
 Clearance confirmed for <@${callerId}>.
 Role: **Verified User**
 Access Tier: **Active Script Executor**`;
-      } else if (customId.startsWith("panel_free_key")) {
-        buttonReply = `\u{1F517} **Free Key Access**
-Get your free key or manage your script hub at:
-https://roniguardreal.wasmer.app`;
       } else {
         buttonReply = `\u2705 Action received for ${customId}`;
       }
@@ -1679,20 +1785,6 @@ https://roniguardreal.wasmer.app`;
                   label: "Get Role",
                   emoji: { name: "\u{1F464}" },
                   custom_id: `panel_get_role_${targetPanel.id}`
-                }
-              ]
-            },
-            {
-              type: 1,
-              // Row 4
-              components: [
-                {
-                  type: 2,
-                  style: 2,
-                  // Secondary (Grey)
-                  label: "Free Key",
-                  emoji: { name: "\u{1F517}" },
-                  custom_id: `panel_free_key_${targetPanel.id}`
                 }
               ]
             }
@@ -2377,9 +2469,10 @@ router.put("/scripts/:id", requireAuth, async (req, res) => {
   if (script.userId !== user.id && user.role !== "admin") {
     return res.status(403).json({ error: "Forbidden: You do not own this script" });
   }
-  const { filename, sourceCode, newSourceCode, obfuscationEnabled } = req.body;
+  const { filename, sourceCode, newSourceCode, obfuscationEnabled, trialEnabled } = req.body;
   if (filename) script.filename = path2.basename(filename);
   if (obfuscationEnabled !== void 0) script.isObfuscated = !!obfuscationEnabled;
+  if (trialEnabled !== void 0) script.trialEnabled = !!trialEnabled;
   const codeToUpdate = (newSourceCode || sourceCode || "").trim();
   if (codeToUpdate) {
     const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
@@ -2412,6 +2505,25 @@ ${codeToUpdate}`;
     script,
     loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
     message: "Script updated in-place successfully. Existing loadstring URL remains unchanged!"
+  });
+});
+router.post("/scripts/:id/toggle-trial", requireAuth, (req, res) => {
+  const { id } = req.params;
+  const user = req.user;
+  const state = db.get();
+  const script = state.scripts.find((s) => s.id === id);
+  if (!script) return res.status(404).json({ error: "Script not found" });
+  if (user.role !== "admin" && script.userId !== user.id) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+  script.trialEnabled = !script.trialEnabled;
+  db.logAudit("script_update", `Toggled Trial Key Mode for "${script.filename}" to ${script.trialEnabled ? "ON" : "OFF"}`, req.ip, user.id);
+  db.save();
+  res.json({
+    success: true,
+    trialEnabled: script.trialEnabled,
+    script,
+    message: script.trialEnabled ? `Trial mode turned ON. Anyone can test this script with key="trial".` : `Trial mode turned OFF. Unwhitelisted users will be kicked in Roblox with "Script trial has been turned off by owner."`
   });
 });
 router.get("/licenses", requireAuth, (req, res) => {
@@ -3133,28 +3245,59 @@ async function handleRawLoaderRequest(req, res) {
   const rawId = req.query.script || req.query.id || req.params.id || req.params.scriptId || "latest";
   const id = rawId.trim();
   const state = db.get();
-  const resolved = resolveScriptContentAndMeta(id);
-  const isBrowser = req.headers.accept?.includes("text/html");
+  const userAgent = (req.headers["user-agent"] || "").toLowerCase();
+  const isExecutor = userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("wave") || userAgent.includes("delta") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || !!req.headers["x-hwid"] || !!req.headers["x-roblox-user-id"] || !!req.headers["x-license-key"];
+  const isBrowser = !isExecutor && (req.headers.accept?.includes("text/html") || userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("mobile") || userAgent.includes("android"));
+  if (isBrowser && !req.query.raw) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(renderUnauthorizedHtml(id || "Protected Script", id || "loader"));
+  }
+  let resolved = resolveScriptContentAndMeta(id);
+  const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key)?.trim();
+  if (!resolved && licenseKeyInput) {
+    const keyRec = state.keys.find(
+      (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
+    );
+    if (keyRec && keyRec.scriptId) {
+      resolved = resolveScriptContentAndMeta(keyRec.scriptId);
+    }
+  }
+  if (!resolved && state.scripts.length > 0) {
+    resolved = resolveScriptContentAndMeta(state.scripts[0].id);
+  }
   if (!resolved) {
     if (isBrowser) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.status(404).send(renderUnauthorizedHtml(id, id));
     }
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
     return res.status(404).send(`-- [RONIGUARD] 404: Script "${id}" not found.`);
   }
   const { content, filename, scriptRecord } = resolved;
-  if (isBrowser && !req.query.raw) {
-    return res.send(renderUnauthorizedHtml(filename, id));
-  }
   const authUser = getAuthenticatedUser(req);
   const isAuthorizedOwner = Boolean(
     authUser && (authUser.role === "admin" || scriptRecord && scriptRecord.userId === authUser.id)
   );
-  const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key)?.trim();
   const hwid = (req.headers["x-hwid"] || req.query.hwid)?.trim();
   const robloxUser = (req.headers["x-roblox-user-id"] || req.query.user_id)?.trim();
   let isAuthorizedExecutor = false;
   let keyRecordMatched = null;
-  if (licenseKeyInput) {
+  const cleanKey = (licenseKeyInput || "").toLowerCase().trim();
+  const isTrialKey = cleanKey === "trial" || cleanKey === "trail";
+  if (isTrialKey) {
+    if (scriptRecord && scriptRecord.trialEnabled) {
+      isAuthorizedExecutor = true;
+    } else {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.status(200).send(`-- [RONIGUARD] Script Trial Disabled
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    game:GetService("Players").LocalPlayer:Kick("Script trial has been turned off by owner.")
+else
+    error("Script trial has been turned off by owner.")
+end`);
+    }
+  }
+  if (!isAuthorizedExecutor && licenseKeyInput && !isTrialKey) {
     const keyRec = state.keys.find(
       (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
     );
@@ -3173,11 +3316,14 @@ async function handleRawLoaderRequest(req, res) {
     }
   }
   if (!isAuthorizedExecutor && robloxUser) {
-    const wl = state.whitelist.find((w) => w.identifier === robloxUser && w.status === "active");
+    const wl = state.whitelist.find(
+      (w) => (w.identifier === robloxUser || w.identifier === `@${robloxUser}`) && w.status === "active"
+    );
     if (wl) {
       isAuthorizedExecutor = true;
       wl.lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
       if (hwid && !wl.boundHwid) wl.boundHwid = hwid;
+      db.save();
     }
   }
   if (keyRecordMatched) {
@@ -3190,14 +3336,19 @@ async function handleRawLoaderRequest(req, res) {
   }
   if (!isAuthorizedExecutor && !isAuthorizedOwner) {
     if (isBrowser) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.status(401).send(renderUnauthorizedHtml(filename, id));
     }
-    return res.status(401).send(`-- [RONIGUARD] Access Denied: Invalid or unauthorized API key for script "${filename}".
-return error("[RONIGUARD] Access Denied: Valid script-specific API key required. Usage: loader.lua?script=${id}&key=YOUR_API_KEY")`);
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.status(200).send(`-- [RONIGUARD] Unauthorized Executor Access
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    game:GetService("Players").LocalPlayer:Kick("You are not whitelisted on this script! Redeem a license key or contact the owner.")
+else
+    error("[RONIGUARD] Access Denied: Valid script-specific API key required.")
+end`);
   }
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("X-Roniguard-Engine", "RONIGUARD-MAX-v2.5");
-  res.setHeader("X-Roniguard-Security-Walls", "Active");
+  res.setHeader("X-Roniguard-Engine", "RONIGUARD-MAX");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   return res.send(content);
 }

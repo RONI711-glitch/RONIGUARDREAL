@@ -50,6 +50,7 @@ export interface ScriptItem {
   buildCount: number;
   lastBuiltAt: string | null;
   createdAt: string;
+  trialEnabled?: boolean;
 }
 
 export interface ScriptJobStage {

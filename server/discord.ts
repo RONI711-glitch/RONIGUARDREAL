@@ -534,6 +534,110 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
       };
     }
 
+    case 'lic redeem': {
+      const keyInput = (args.key || args.license || '').trim();
+      if (!keyInput) {
+        return { success: false, message: 'Usage: `/lic redeem <key>`' };
+      }
+
+      const keyRec = state.keys.find(
+        (k) => k.key.toUpperCase() === keyInput.toUpperCase() || k.id === keyInput
+      );
+
+      if (!keyRec) {
+        return {
+          success: false,
+          message: `License key \`${keyInput}\` is invalid or does not exist.`,
+        };
+      }
+
+      if (keyRec.status === 'revoked') {
+        return { success: false, message: `License key \`${keyRec.key}\` has been revoked by owner.` };
+      }
+
+      if (keyRec.expiresAt && new Date(keyRec.expiresAt) < new Date()) {
+        return { success: false, message: `License key \`${keyRec.key}\` has expired.` };
+      }
+
+      const discordId = execution.user?.id || 'discord_user';
+      const discordUsername = execution.user?.username || 'Discord User';
+      const userRec = db.findOrCreateDiscordUser({ discordId, username: discordUsername });
+
+      // Bind key to this user
+      keyRec.userId = userRec.id;
+      keyRec.status = 'active';
+
+      // Automatically whitelist user on the panel
+      const targetPanelId = keyRec.panelId || (state.panels[0] ? state.panels[0].id : 'pnl_main');
+      const alreadyWhitelisted = state.whitelist.find(
+        (w) => (w.identifier === discordId || w.identifier === discordUsername) && w.panelId === targetPanelId
+      );
+
+      if (!alreadyWhitelisted) {
+        state.whitelist.push({
+          id: 'wl_' + Math.random().toString(36).substring(2, 9),
+          panelId: targetPanelId,
+          platform: 'discord',
+          identifier: discordId,
+          note: `Auto-whitelisted via key redemption (${keyRec.key})`,
+          status: 'active',
+          addedAt: new Date().toISOString(),
+          lastSeenAt: null,
+          boundHwid: null,
+        });
+      }
+
+      db.logAudit('key_redeem', `Key ${keyRec.key} redeemed by @${discordUsername} (${discordId})`, 'DiscordBot', discordId, 'info');
+      db.save();
+
+      const script = state.scripts.find((s) => s.id === keyRec.scriptId) || state.scripts[0];
+      const scriptId = script ? script.id : 'scr_main';
+
+      return {
+        success: true,
+        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\n_G.Script_Key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=${keyRec.key}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
+        data: keyRec,
+      };
+    }
+
+    case 'lic whitelist': {
+      const targetUserInput = (args.user || '').trim();
+      if (!targetUserInput) {
+        return { success: false, message: 'Usage: `/lic whitelist <user>` (Discord ID, @mention, or Roblox name)' };
+      }
+
+      const cleanIdentifier = targetUserInput.replace(/[<@!>]/g, '');
+      const panelId = args.panel || (state.panels[0] ? state.panels[0].id : 'default');
+
+      const existing = state.whitelist.find(
+        (w) => (w.identifier === cleanIdentifier || w.identifier === targetUserInput) && w.panelId === panelId
+      );
+
+      if (existing) {
+        existing.status = 'active';
+      } else {
+        state.whitelist.push({
+          id: 'wl_' + Math.random().toString(36).substring(2, 9),
+          panelId,
+          platform: 'discord',
+          identifier: cleanIdentifier,
+          note: `Whitelisted via /lic whitelist by ${execution.user?.username || 'Owner'}`,
+          status: 'active',
+          addedAt: new Date().toISOString(),
+          lastSeenAt: null,
+          boundHwid: null,
+        });
+      }
+
+      db.logAudit('whitelist_change', `Whitelisted ${targetUserInput} on panel ${panelId}`, 'DiscordBot', execution.user?.id || 'admin', 'info');
+      db.save();
+
+      return {
+        success: true,
+        message: `✅ **User Whitelisted!**\nUser <@${cleanIdentifier}> has been whitelisted on panel \`${panelId}\`.\nWhen they click **📜 Script** on the panel, their loader will appear!`,
+      };
+    }
+
     default:
       return {
         success: false,

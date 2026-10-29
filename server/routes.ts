@@ -797,9 +797,10 @@ router.put('/scripts/:id', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Forbidden: You do not own this script' });
   }
 
-  const { filename, sourceCode, newSourceCode, obfuscationEnabled } = req.body;
+  const { filename, sourceCode, newSourceCode, obfuscationEnabled, trialEnabled } = req.body;
   if (filename) script.filename = path.basename(filename);
   if (obfuscationEnabled !== undefined) script.isObfuscated = !!obfuscationEnabled;
+  if (trialEnabled !== undefined) script.trialEnabled = !!trialEnabled;
 
   const codeToUpdate = (newSourceCode || sourceCode || '').trim();
 
@@ -837,6 +838,31 @@ router.put('/scripts/:id', requireAuth, async (req, res) => {
     script,
     loadstringUrl: `https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
     message: 'Script updated in-place successfully. Existing loadstring URL remains unchanged!',
+  });
+});
+
+// Toggle Trial Key Mode for a Script
+router.post('/scripts/:id/toggle-trial', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const state = db.get();
+  const script = state.scripts.find((s) => s.id === id);
+  if (!script) return res.status(404).json({ error: 'Script not found' });
+  if (user.role !== 'admin' && script.userId !== user.id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  script.trialEnabled = !script.trialEnabled;
+  db.logAudit('script_update', `Toggled Trial Key Mode for "${script.filename}" to ${script.trialEnabled ? 'ON' : 'OFF'}`, req.ip, user.id);
+  db.save();
+
+  res.json({
+    success: true,
+    trialEnabled: script.trialEnabled,
+    script,
+    message: script.trialEnabled
+      ? `Trial mode turned ON. Anyone can test this script with key="trial".`
+      : `Trial mode turned OFF. Unwhitelisted users will be kicked in Roblox with "Script trial has been turned off by owner."`,
   });
 });
 
@@ -1732,23 +1758,70 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
   const rawId = (req.query.script as string) || (req.query.id as string) || req.params.id || req.params.scriptId || 'latest';
   const id = rawId.trim();
   const state = db.get();
-  const resolved = resolveScriptContentAndMeta(id);
 
-  const isBrowser = req.headers.accept?.includes('text/html');
+  const userAgent = (req.headers['user-agent'] || '').toLowerCase();
+  const isExecutor =
+    userAgent.includes('roblox') ||
+    userAgent.includes('synapse') ||
+    userAgent.includes('wave') ||
+    userAgent.includes('delta') ||
+    userAgent.includes('fluxus') ||
+    userAgent.includes('codex') ||
+    userAgent.includes('arceus') ||
+    userAgent.includes('hydrogen') ||
+    !!req.headers['x-hwid'] ||
+    !!req.headers['x-roblox-user-id'] ||
+    !!req.headers['x-license-key'];
+
+  const isBrowser = !isExecutor && (
+    req.headers.accept?.includes('text/html') ||
+    userAgent.includes('mozilla') ||
+    userAgent.includes('chrome') ||
+    userAgent.includes('safari') ||
+    userAgent.includes('firefox') ||
+    userAgent.includes('edge') ||
+    userAgent.includes('mobile') ||
+    userAgent.includes('android')
+  );
+
+  // If a web browser visits directly without ?raw=true: ALWAYS render the beautiful 🛑 UNAUTHORIZED ACCESS 🛑 HTML webpage!
+  if (isBrowser && !req.query.raw) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderUnauthorizedHtml(id || 'Protected Script', id || 'loader'));
+  }
+
+  // Resolve script record & content
+  let resolved = resolveScriptContentAndMeta(id);
+
+  const licenseKeyInput = (
+    (req.query.key || req.headers['x-license-key'] || req.query.license_key || req.query.api_key) as string
+  )?.trim();
+
+  // If not resolved by direct ID, try resolving by key record
+  if (!resolved && licenseKeyInput) {
+    const keyRec = state.keys.find(
+      (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
+    );
+    if (keyRec && keyRec.scriptId) {
+      resolved = resolveScriptContentAndMeta(keyRec.scriptId);
+    }
+  }
+
+  // Fallback to first available script if id was generic
+  if (!resolved && state.scripts.length > 0) {
+    resolved = resolveScriptContentAndMeta(state.scripts[0].id);
+  }
 
   if (!resolved) {
     if (isBrowser) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
       return res.status(404).send(renderUnauthorizedHtml(id, id));
     }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     return res.status(404).send(`-- [RONIGUARD] 404: Script "${id}" not found.`);
   }
 
   const { content, filename, scriptRecord } = resolved;
-
-  // Browser access without ?raw=true: ALWAYS render the Unauthorized Access page!
-  if (isBrowser && !req.query.raw) {
-    return res.send(renderUnauthorizedHtml(filename, id));
-  }
 
   // Check 1: User or Owner session bypass
   const authUser = getAuthenticatedUser(req);
@@ -1756,22 +1829,39 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
     authUser && (authUser.role === 'admin' || (scriptRecord && scriptRecord.userId === authUser.id))
   );
 
-  // Check 2: Executor license key or whitelisted user
-  const licenseKeyInput = ((req.query.key || req.headers['x-license-key'] || req.query.license_key || req.query.api_key) as string)?.trim();
+  // Check 2: Executor license key, trial key, or whitelisted user
   const hwid = ((req.headers['x-hwid'] || req.query.hwid) as string)?.trim();
   const robloxUser = ((req.headers['x-roblox-user-id'] || req.query.user_id) as string)?.trim();
 
   let isAuthorizedExecutor = false;
   let keyRecordMatched: any = null;
 
-  if (licenseKeyInput) {
+  // TRIAL ("trail") KEY HANDLING
+  const cleanKey = (licenseKeyInput || '').toLowerCase().trim();
+  const isTrialKey = cleanKey === 'trial' || cleanKey === 'trail';
+
+  if (isTrialKey) {
+    if (scriptRecord && scriptRecord.trialEnabled) {
+      isAuthorizedExecutor = true;
+    } else {
+      // Trial is OFF: Kick the player in Roblox!
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(200).send(`-- [RONIGUARD] Script Trial Disabled
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    game:GetService("Players").LocalPlayer:Kick("Script trial has been turned off by owner.")
+else
+    error("Script trial has been turned off by owner.")
+end`);
+    }
+  }
+
+  // SCRIPT-SPECIFIC LICENSE KEY CHECK
+  if (!isAuthorizedExecutor && licenseKeyInput && !isTrialKey) {
     const keyRec = state.keys.find(
       (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
     );
 
     if (keyRec && keyRec.status === 'active') {
-      // SCRIPT-SPECIFIC API KEY VALIDATION:
-      // Key A authorizes Script A only; Key B authorizes Script B only!
       if (scriptRecord && keyRec.scriptId && keyRec.scriptId !== scriptRecord.id) {
         isAuthorizedExecutor = false;
       } else {
@@ -1786,12 +1876,16 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
     }
   }
 
+  // WHITELIST ACCESS CHECK
   if (!isAuthorizedExecutor && robloxUser) {
-    const wl = state.whitelist.find((w) => w.identifier === robloxUser && w.status === 'active');
+    const wl = state.whitelist.find(
+      (w) => (w.identifier === robloxUser || w.identifier === `@${robloxUser}`) && w.status === 'active'
+    );
     if (wl) {
       isAuthorizedExecutor = true;
       wl.lastSeenAt = new Date().toISOString();
       if (hwid && !wl.boundHwid) wl.boundHwid = hwid;
+      db.save();
     }
   }
 
@@ -1808,15 +1902,21 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
   // Enforce authorization
   if (!isAuthorizedExecutor && !isAuthorizedOwner) {
     if (isBrowser) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
       return res.status(401).send(renderUnauthorizedHtml(filename, id));
     }
-    return res.status(401).send(`-- [RONIGUARD] Access Denied: Invalid or unauthorized API key for script "${filename}".\nreturn error("[RONIGUARD] Access Denied: Valid script-specific API key required. Usage: loader.lua?script=${id}&key=YOUR_API_KEY")`);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.status(200).send(`-- [RONIGUARD] Unauthorized Executor Access
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    game:GetService("Players").LocalPlayer:Kick("You are not whitelisted on this script! Redeem a license key or contact the owner.")
+else
+    error("[RONIGUARD] Access Denied: Valid script-specific API key required.")
+end`);
   }
 
   // Deliver the protected script payload to Roblox executor
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('X-Roniguard-Engine', 'RONIGUARD-MAX-v2.5');
-  res.setHeader('X-Roniguard-Security-Walls', 'Active');
+  res.setHeader('X-Roniguard-Engine', 'RONIGUARD-MAX');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   return res.send(content);
 }

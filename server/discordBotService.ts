@@ -187,6 +187,38 @@ class DiscordBotService {
                 },
               ],
             },
+            {
+              type: 1, // SUB_COMMAND
+              name: 'redeem',
+              description: 'Redeem and bind an API key to your Discord account for script access',
+              options: [
+                {
+                  type: 3,
+                  name: 'key',
+                  description: 'License key to redeem (e.g. RONI-API-...)',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1, // SUB_COMMAND
+              name: 'whitelist',
+              description: 'Whitelist a Discord or Roblox user to access this panel',
+              options: [
+                {
+                  type: 3,
+                  name: 'user',
+                  description: 'Discord user ID, mention, or Roblox username',
+                  required: true,
+                },
+                {
+                  type: 3,
+                  name: 'panel',
+                  description: 'Panel name or ID (optional)',
+                  required: false,
+                },
+              ],
+            },
           ],
         },
         {
@@ -409,16 +441,43 @@ class DiscordBotService {
       let buttonReply = '';
       if (customId.startsWith('panel_script')) {
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
-        const userScript = state.scripts.find((s) => s.userId === userRec.id) || state.scripts[0];
-        const userKey = state.keys.find((k) => k.userId === userRec.id && k.status === 'active') || state.keys[0];
+        const targetPanelId = customId.replace('panel_script_', '').trim();
+        const targetPanel = state.panels.find((p) => p.id === targetPanelId) || state.panels[0];
+        const targetScript = (targetPanel ? state.scripts.find((s) => s.panelId === targetPanel.id) : null) || state.scripts[0];
 
-        const scriptParam = userScript ? userScript.id : 'scr_main';
-        const keyParam = userKey ? userKey.key : (userScript ? userScript.apiKey : 'RONI-FREE-KEY');
-        const loadstring = `loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptParam}&key=${keyParam}"))()`;
+        const isOwner = userRec.role === 'admin' || (targetScript && targetScript.userId === userRec.id);
+        const isWhitelisted = state.whitelist.some(
+          (w) =>
+            w.status === 'active' &&
+            (w.identifier === callerId ||
+              w.identifier === `<@${callerId}>` ||
+              w.identifier === callerUsername ||
+              (targetPanel && w.panelId === targetPanel.id && (w.identifier === callerId || w.identifier === callerUsername)))
+        );
 
-        buttonReply = `📜 **RONIHUB SCRIPT LOADER**\n\`\`\`lua\n${loadstring}\n\`\`\`\n*Copy and run this script in your Luau executor (Roblox). Content is protected by RONIGUARD MAX.*`;
+        const userKey = state.keys.find(
+          (k) =>
+            k.status === 'active' &&
+            (k.userId === userRec.id ||
+              (k.boundHwid && k.boundHwid.includes(callerId)) ||
+              (targetScript && k.scriptId === targetScript.id && k.userId === userRec.id))
+        );
+
+        const hasAccess = isOwner || isWhitelisted || !!userKey;
+        const scriptId = targetScript ? targetScript.id : 'scr_main';
+
+        if (hasAccess) {
+          const keyParam = userKey ? userKey.key : (targetScript ? targetScript.apiKey : 'RONI-ACTIVE-KEY');
+          buttonReply = `✅ **You are Whitelisted!**\n\n📜 **YOUR PERSONAL SCRIPT LOADER**\n\`\`\`lua\n_G.Script_Key = "${keyParam}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=${keyParam}"))()\n\`\`\`\n*Copy and paste into your Luau executor (Roblox). Access is verified.*`;
+        } else if (targetScript && targetScript.trialEnabled) {
+          // Trial Mode is ON: give free trial script
+          buttonReply = `🎁 **TRIAL MODE ACTIVE (Free Access)**\n\n📜 **TRIAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "trail"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=trial"))()\n\`\`\`\n*Trial mode is enabled by the owner. Everyone can test this script!*`;
+        } else {
+          // Trial is OFF and user is not whitelisted
+          buttonReply = `⛔ **You are not whitelisted!**\nYou do not have access to this script on this panel.\nTrial mode is currently **OFF**.\n\nUse \`/lic redeem <key>\` if you have a license key, or contact the owner to get whitelisted.`;
+        }
       } else if (customId.startsWith('panel_redeem')) {
-        buttonReply = `🔑 **Redeem License Key**\nTo link and verify your key with your Discord account (<@${callerId}>), use the command:\n\`/lic check <your_key>\`\nor redeem it on the web dashboard at https://roniguardreal.wasmer.app`;
+        buttonReply = `🔑 **Redeem License Key**\nTo link and verify your key with your Discord account (<@${callerId}>), use the command:\n\`/lic redeem <your_key>\`\n\nOnce redeemed, you will be whitelisted automatically! You can then click **📜 Script** to view your personal loader.`;
       } else if (customId.startsWith('panel_key_info')) {
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
         const userKey = state.keys.find((k) => k.userId === userRec.id || (k.boundHwid && k.boundHwid.includes(callerId)));
@@ -426,7 +485,7 @@ class DiscordBotService {
         if (userKey) {
           buttonReply = `📊 **License Key Information**\n• **Owner**: <@${callerId}>\n• **Key**: \`${userKey.key}\`\n• **Status**: \`${userKey.status.toUpperCase()}\`\n• **Type**: \`${userKey.type}\`\n• **HWID Locked**: \`${userKey.hwidLocked ? 'Yes' : 'No'}\`\n• **Expires**: \`${userKey.expiresAt ? new Date(userKey.expiresAt).toLocaleDateString() : 'Never (Lifetime)'}\``;
         } else {
-          buttonReply = `⚠️ **No Active License Key Found**\nThere is no registered license key bound to <@${callerId}>.\n• Use \`/lic check <key>\` to redeem your key\n• Click **Free Key** to get one at https://roniguardreal.wasmer.app`;
+          buttonReply = `⚠️ **No Active License Key Found**\nThere is no registered license key bound to <@${callerId}>.\n• Use \`/lic redeem <key>\` to redeem your key\n• Visit https://roniguardreal.wasmer.app to manage your licenses.`;
         }
       } else if (customId.startsWith('panel_reset_hwid')) {
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
@@ -448,8 +507,6 @@ class DiscordBotService {
         buttonReply = `⚙️ **HWID Reset Successful**\nHardware ID locks have been cleared for <@${callerId}>. The next time you execute the script in Roblox, your new device hardware ID will automatically bind.`;
       } else if (customId.startsWith('panel_get_role')) {
         buttonReply = `👤 **Role Verification**\nClearance confirmed for <@${callerId}>.\nRole: **Verified User**\nAccess Tier: **Active Script Executor**`;
-      } else if (customId.startsWith('panel_free_key')) {
-        buttonReply = `🔗 **Free Key Access**\nGet your free key or manage your script hub at:\nhttps://roniguardreal.wasmer.app`;
       } else {
         buttonReply = `✅ Action received for ${customId}`;
       }
@@ -577,18 +634,6 @@ class DiscordBotService {
                   label: 'Get Role',
                   emoji: { name: '👤' },
                   custom_id: `panel_get_role_${targetPanel.id}`,
-                },
-              ],
-            },
-            {
-              type: 1, // Row 4
-              components: [
-                {
-                  type: 2,
-                  style: 2, // Secondary (Grey)
-                  label: 'Free Key',
-                  emoji: { name: '🔗' },
-                  custom_id: `panel_free_key_${targetPanel.id}`,
                 },
               ],
             },

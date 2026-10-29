@@ -247,6 +247,24 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
     }
   };
 
+  const handleToggleTrial = async (script: ScriptItem) => {
+    try {
+      const res = await api.toggleTrial(script.id, !script.trialEnabled);
+      setScripts((prev) =>
+        prev.map((s) => (s.id === script.id ? { ...s, trialEnabled: res.trialEnabled } : s))
+      );
+      onShowToast(
+        'success',
+        res.trialEnabled ? 'Trial Mode Activated' : 'Trial Mode Deactivated',
+        res.trialEnabled
+          ? 'Free trial access enabled! Anyone can run with Script_key = "trail" on Roblox.'
+          : 'Trial access disabled! Unwhitelisted players running the trial script will be kicked from Roblox.'
+      );
+    } catch (err: any) {
+      onShowToast('error', 'Failed to toggle trial mode', err.message);
+    }
+  };
+
   const handleDeleteScript = async () => {
     if (!scriptToDelete) return;
     try {
@@ -390,7 +408,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                     </span>
                   </div>
 
-                  <div className="space-y-1.5 text-xs text-neutral-400 mb-4 bg-purple-950/20 p-3 rounded-xl border border-purple-900/20">
+                  <div className="space-y-1.5 text-xs text-neutral-400 mb-3 bg-purple-950/20 p-3 rounded-xl border border-purple-900/20">
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-500">Panel:</span>
                       <span className="text-neutral-300 font-medium truncate max-w-[150px]">
@@ -410,9 +428,68 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                       </span>
                     </div>
                   </div>
+
+                  {/* Trial Mode ("trail") Toggle */}
+                  <div className="mb-3 flex items-center justify-between p-2.5 rounded-xl bg-purple-950/40 border border-purple-800/30">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{script.trialEnabled ? '🎁' : '🔒'}</span>
+                      <div>
+                        <div className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                          <span>Trial Access:</span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                              script.trialEnabled
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                : 'bg-neutral-800 text-neutral-400'
+                            }`}
+                          >
+                            {script.trialEnabled ? 'ACTIVE (trail)' : 'OFF'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400">
+                          {script.trialEnabled ? 'Public free access enabled' : 'Whitelisted users only'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTrial(script)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                        script.trialEnabled
+                          ? 'bg-amber-900/60 hover:bg-amber-800/70 text-amber-200 border border-amber-700/50'
+                          : 'bg-purple-900/40 hover:bg-purple-800/60 text-purple-200 border border-purple-700/50'
+                      }`}
+                    >
+                      {script.trialEnabled ? 'Disable' : 'Enable Trial'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-purple-900/20">
+                  {script.trialEnabled && (
+                    <button
+                      onClick={() =>
+                        copyToClipboard(
+                          `Script_key = "trail"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=trial"))()`,
+                          `trial_${script.id}`
+                        )
+                      }
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 border border-amber-700/40 text-amber-300 text-[11px] font-semibold transition-all"
+                    >
+                      {copiedId === `trial_${script.id}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 font-bold">Copied Trial Script!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 text-amber-400" />
+                          <span>Copy Trial Script (trail)</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => copyToClipboard(loadstringSnippet, `ls_${script.id}`)}
                     className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700/40 text-purple-200 text-xs font-semibold transition-all"
