@@ -13,7 +13,10 @@ class DiscordBotService {
   private lastPingStart = 0;
 
   public async start(providedToken?: string): Promise<boolean> {
-    const tokenToUse = providedToken || db.get().botConfig.botToken || process.env.DISCORD_BOT_TOKEN;
+    const tokenToUse =
+      providedToken ||
+      process.env.DISCORD_BOT_TOKEN ||
+      db.get().botConfig.botToken;
     if (!tokenToUse || !tokenToUse.trim()) {
       console.log('[RONIGUARD-BOT] No bot token configured.');
       return false;

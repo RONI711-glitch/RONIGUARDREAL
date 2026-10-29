@@ -5,7 +5,6 @@ import {
   LogOut,
   Calendar,
   CheckCircle2,
-  ExternalLink,
   RefreshCw,
   KeyRound,
   ShieldAlert,
@@ -141,88 +140,6 @@ export const AccountView: React.FC<AccountViewProps> = ({ onLogout, onShowToast 
                 <div className="flex justify-between text-neutral-400">
                   <span>Host Endpoint:</span>
                   <span className="text-purple-300 font-mono text-[11px]">https://roniguardreal.wasmer.app</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Discord Developer Portal Setup Guide */}
-            <div className="bg-[#0e081c] border border-purple-900/30 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-purple-400" />
-                  Discord OAuth2 & Bot Configuration
-                </h4>
-                <a
-                  href="https://discord.com/developers/applications"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 font-medium transition-colors"
-                >
-                  Discord Developer Portal
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                To link your Discord Bot and OAuth2 login, configure these in the Discord Developer Portal and your server environment variables:
-              </p>
-
-              {/* Redirect URI */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-                  OAuth2 Redirect URI (Add to Discord Portal &rarr; OAuth2 &rarr; Redirects):
-                </label>
-                <div className="flex items-center gap-2 bg-[#06030b] border border-purple-900/40 rounded-xl px-3 py-2">
-                  <code className="text-xs font-mono text-purple-300 select-all flex-1 truncate">
-                    https://roniguardreal.wasmer.app/api/auth/discord/callback
-                  </code>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText('https://roniguardreal.wasmer.app/api/auth/discord/callback');
-                      onShowToast('success', 'Copied to clipboard', 'OAuth2 Redirect URI copied!');
-                    }}
-                    className="text-xs bg-purple-950/60 hover:bg-purple-900 border border-purple-600/30 text-purple-200 px-2.5 py-1 rounded-lg transition-colors font-medium cursor-pointer"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-
-              {/* Environment Variables Reference */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-                  Server Environment Variables (.env / Secrets):
-                </label>
-                <div className="bg-[#06030b] border border-purple-900/30 rounded-xl p-3 text-[11px] font-mono text-neutral-300 space-y-1 select-all">
-                  <div><span className="text-purple-400">DISCORD_CLIENT_ID</span>="1549804529778692237"</div>
-                  <div><span className="text-purple-400">DISCORD_CLIENT_SECRET</span>="YOUR_DISCORD_CLIENT_SECRET"</div>
-                  <div><span className="text-purple-400">DISCORD_BOT_TOKEN</span>="YOUR_DISCORD_BOT_TOKEN"</div>
-                  <div><span className="text-purple-400">DISCORD_REDIRECT_URI</span>="https://roniguardreal.wasmer.app/api/auth/discord/callback"</div>
-                </div>
-              </div>
-
-              {/* Active Slash Commands */}
-              <div className="pt-2 border-t border-purple-900/20 text-xs space-y-2">
-                <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-                  Active Clean Slash Commands:
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                  <div className="bg-purple-950/20 border border-purple-900/20 rounded-lg p-2">
-                    <span className="text-purple-300 font-mono font-bold">/panelsetup</span>
-                    <p className="text-neutral-400 text-[10px] mt-0.5">Deploys interactive button panel (Script, Redeem, HWID, Key Info)</p>
-                  </div>
-                  <div className="bg-purple-950/20 border border-purple-900/20 rounded-lg p-2">
-                    <span className="text-purple-300 font-mono font-bold">/lic &lt;check|info|revoke|list|gen&gt;</span>
-                    <p className="text-neutral-400 text-[10px] mt-0.5">Inspect and manage script-specific license keys</p>
-                  </div>
-                  <div className="bg-purple-950/20 border border-purple-900/20 rounded-lg p-2">
-                    <span className="text-purple-300 font-mono font-bold">/hwid reset &lt;user&gt;</span>
-                    <p className="text-neutral-400 text-[10px] mt-0.5">Reset hardware ID binding for new devices</p>
-                  </div>
-                  <div className="bg-purple-950/20 border border-purple-900/20 rounded-lg p-2">
-                    <span className="text-purple-300 font-mono font-bold">/status</span>
-                    <p className="text-neutral-400 text-[10px] mt-0.5">Display bot health, panel count, and security stats</p>
-                  </div>
                 </div>
               </div>
             </div>

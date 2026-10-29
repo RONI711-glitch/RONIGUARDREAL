@@ -133,9 +133,7 @@ export function requireOwnerAuth(req: Request, res: Response, next: () => void) 
 // Redirect to Discord OAuth2 Authorization
 router.get('/auth/discord/login', (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
-  const host = req.get('host') || 'roniguardreal.wasmer.app';
-  const protocol = req.protocol === 'https' || host.includes('wasmer') ? 'https' : req.protocol;
-  const redirectUri = process.env.DISCORD_REDIRECT_URI || `${protocol}://${host}/api/auth/discord/callback`;
+  const redirectUri = process.env.DISCORD_REDIRECT_URI || 'https://roniguardreal.wasmer.app/api/auth/discord/callback';
 
   const state = generateRandomHex(16);
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
@@ -159,9 +157,7 @@ router.get('/auth/discord/callback', async (req, res) => {
   try {
     const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-    const host = req.get('host') || 'roniguardreal.wasmer.app';
-    const protocol = req.protocol === 'https' || host.includes('wasmer') ? 'https' : req.protocol;
-    const redirectUri = process.env.DISCORD_REDIRECT_URI || `${protocol}://${host}/api/auth/discord/callback`;
+    const redirectUri = process.env.DISCORD_REDIRECT_URI || 'https://roniguardreal.wasmer.app/api/auth/discord/callback';
 
     let discordUser: any = null;
 
