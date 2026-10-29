@@ -264,13 +264,83 @@ var Store = class {
             lastLoginAt: (/* @__PURE__ */ new Date()).toISOString()
           });
         }
-        const defaultUid = parsed.users[0]?.id || "usr_owner";
+        const nowStr = (/* @__PURE__ */ new Date()).toISOString();
+        if (parsed.panels.length === 0) {
+          parsed.panels.push({
+            id: "pnl_main_default",
+            userId: defaultUid,
+            name: "RONIHUB PANEL",
+            description: "THE BEST FREEMIUM EVER",
+            status: "active",
+            protectionProfile: "maximum",
+            whitelistEnabled: true,
+            keyAuthEnabled: true,
+            hwidLockEnabled: true,
+            maxHwidResets: 3,
+            scriptCount: 1,
+            createdAt: nowStr,
+            updatedAt: nowStr
+          });
+        }
+        if (parsed.scripts.length === 0) {
+          const sampleLua = `-- [RONIGUARD] Universal Roblox Script
+print("[RONIGUARD] Executing Protected Script Payload...")
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    print("[RONIGUARD] Active Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
+end
+print("[RONIGUARD] Successfully authenticated and running!")`;
+          try {
+            const srcPath = path.join(SOURCES_DIR, "src_scr_main_default.lua");
+            const bldPath = path.join(BUILDS_DIR, "bld_scr_main_default.lua");
+            fs.writeFileSync(srcPath, sampleLua, "utf-8");
+            fs.writeFileSync(bldPath, sampleLua, "utf-8");
+          } catch {
+          }
+          parsed.scripts.push({
+            id: "scr_main_default",
+            userId: defaultUid,
+            panelId: parsed.panels[0].id,
+            filename: "main.lua",
+            originalFilename: "main.lua",
+            originalFileId: "src_scr_main_default",
+            protectedFileId: "bld_scr_main_default",
+            originalSize: 220,
+            protectedSize: 220,
+            status: "ready",
+            apiKey: "RONI-API-DEFAULT-KEY",
+            apiKeyId: "key_default",
+            isObfuscated: false,
+            trialEnabled: true,
+            buildCount: 1,
+            lastBuiltAt: nowStr,
+            createdAt: nowStr
+          });
+        }
+        if (parsed.keys.length === 0) {
+          parsed.keys.push({
+            id: "key_default",
+            userId: defaultUid,
+            scriptId: parsed.scripts[0].id,
+            panelId: parsed.panels[0].id,
+            key: "RONI-API-DEFAULT-KEY",
+            type: "lifetime",
+            maxUses: 99999,
+            currentUses: 0,
+            hwidLocked: false,
+            boundHwid: null,
+            status: "active",
+            createdAt: nowStr,
+            expiresAt: null,
+            lastUsedAt: null
+          });
+        }
         parsed.panels.forEach((p) => {
           if (!p.userId) p.userId = defaultUid;
         });
         parsed.scripts.forEach((s) => {
           if (!s.userId) s.userId = defaultUid;
           if (s.isObfuscated === void 0) s.isObfuscated = true;
+          if (s.trialEnabled === void 0) s.trialEnabled = true;
         });
         parsed.keys.forEach((k) => {
           if (!k.userId) k.userId = defaultUid;
