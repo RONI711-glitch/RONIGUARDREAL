@@ -15,8 +15,8 @@ class DiscordBotService {
   public async start(providedToken?: string): Promise<boolean> {
     const tokenToUse =
       providedToken ||
-      process.env.DISCORD_BOT_TOKEN ||
-      db.get().botConfig.botToken;
+      db.get().botConfig.botToken ||
+      process.env.DISCORD_BOT_TOKEN;
     if (!tokenToUse || !tokenToUse.trim()) {
       console.log('[RONIGUARD-BOT] No bot token configured.');
       return false;
@@ -38,15 +38,29 @@ class DiscordBotService {
         },
       });
 
-      if (!userRes.ok) {
-        console.error('[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:', userRes.status);
+      let authRes = userRes;
+      if (!authRes.ok) {
+        const altToken = (process.env.DISCORD_BOT_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+        if (altToken && altToken !== this.token) {
+          const retryRes = await fetch('https://discord.com/api/v10/users/@me', {
+            headers: { Authorization: `Bot ${altToken}` },
+          });
+          if (retryRes.ok) {
+            this.token = altToken;
+            authRes = retryRes;
+          }
+        }
+      }
+
+      if (!authRes.ok) {
+        console.error('[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:', authRes.status);
         const state = db.get();
         state.botConfig.isConnected = false;
         db.save();
         return false;
       }
 
-      const botUser = (await userRes.json()) as any;
+      const botUser = (await authRes.json()) as any;
       this.applicationId = botUser.id;
 
       // Update state

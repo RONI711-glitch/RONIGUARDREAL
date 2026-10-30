@@ -301,6 +301,24 @@ export const api = {
     try {
       return await fetchWithAuth('/api/auth/me');
     } catch {
+      if (typeof localStorage !== 'undefined') {
+        const storedUser = localStorage.getItem('roniguard_discord_user');
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            return {
+              id: parsed.id || 'usr_' + Math.random().toString(36).slice(2),
+              discordId: parsed.id || '1549804529778692237',
+              username: parsed.username || 'Discord Developer',
+              avatar: parsed.avatar || null,
+              email: parsed.email || null,
+              role: 'user',
+              lastLoginAt: new Date().toISOString(),
+            };
+          } catch {}
+        }
+      }
+
       const store = loadLocalStore();
       return {
         id: 'usr_owner',
