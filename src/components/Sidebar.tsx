@@ -15,8 +15,7 @@ export type SectionId =
   | 'panels'
   | 'scripts'
   | 'licenses'
-  | 'account'
-  | 'admin';
+  | 'account';
 
 interface SidebarProps {
   activeSection: SectionId;
@@ -30,7 +29,6 @@ interface SidebarProps {
   };
   username?: string;
   userRole?: 'user' | 'admin';
-  isAdmin?: boolean;
 }
 
 interface NavItem {
@@ -56,7 +54,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   counts,
   username = 'Discord User',
   userRole = 'user',
-  isAdmin = false,
 }) => {
   const content = (
     <div className="flex flex-col h-full bg-[#0a0614] border-r border-purple-900/25">
@@ -130,37 +127,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
 
-        {/* Optional Admin Section */}
-        {isAdmin && (
-          <div className="pt-4 mt-4 border-t border-purple-900/20">
-            <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-purple-400 uppercase">
-              Administration
-            </div>
-            <button
-              onClick={() => {
-                onSelectSection('admin');
-                onCloseMobile();
-              }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all group ${
-                activeSection === 'admin'
-                  ? 'bg-purple-900/40 text-white border border-purple-500/40 shadow-sm shadow-purple-900/30 font-semibold'
-                  : 'text-neutral-300 hover:text-white hover:bg-purple-950/30'
-              }`}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <ShieldCheck
-                  className={`w-4 h-4 shrink-0 transition-colors ${
-                    activeSection === 'admin' ? 'text-purple-300' : 'text-purple-400'
-                  }`}
-                />
-                <span className="truncate">Admin Vault</span>
-              </div>
-              <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40">
-                ADMIN
-              </span>
-            </button>
-          </div>
-        )}
       </nav>
 
       {/* User Footer Profile */}

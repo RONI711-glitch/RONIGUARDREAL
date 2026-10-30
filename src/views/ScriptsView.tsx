@@ -427,6 +427,12 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                         {(script.originalSize / 1024).toFixed(1)} KB
                       </span>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-500">In-Place Updates:</span>
+                      <span className="font-mono text-purple-300 font-bold">
+                        {script.updateCount || 0} / 10
+                      </span>
+                    </div>
                   </div>
 
                   {/* Trial Mode ("trail") Toggle */}
@@ -828,7 +834,12 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
           <div className="bg-[#0f0920] border border-purple-700/40 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-purple-900/30 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-white">Update Script In-Place</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">Update Script In-Place</h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800">
+                    {scriptToEdit.updateCount || 0} / 10 updates
+                  </span>
+                </div>
                 <p className="text-xs text-neutral-400">
                   Loadstring URL and API key will stay the same for existing users.
                 </p>

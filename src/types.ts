@@ -1,3 +1,16 @@
+export interface UserQuotaItem {
+  current: number;
+  max: number;
+}
+
+export interface UserQuotas {
+  monthlyObfuscations: UserQuotaItem;
+  panels: UserQuotaItem;
+  scripts: UserQuotaItem;
+  keysAndWhitelist: UserQuotaItem;
+  maxScriptUpdates: number;
+}
+
 export interface UserProfile {
   id: string;
   discordId: string;
@@ -8,6 +21,7 @@ export interface UserProfile {
   role: 'user' | 'admin';
   lastLoginAt: string;
   activeSessionsCount?: number;
+  quotas?: UserQuotas;
 }
 
 export interface OwnerProfile {
@@ -51,6 +65,7 @@ export interface ScriptItem {
   lastBuiltAt: string | null;
   createdAt: string;
   trialEnabled?: boolean;
+  updateCount?: number;
 }
 
 export interface ScriptJobStage {
@@ -218,6 +233,7 @@ export interface OverviewMetrics {
   lastPing: number | null;
   recentActivity: AuditLog[];
   recentBuilds: BuildHistoryItem[];
+  quotas?: UserQuotas;
 }
 
 export interface SourceRecoveryItem {

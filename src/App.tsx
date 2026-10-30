@@ -12,8 +12,8 @@ import { PanelsView } from './views/PanelsView.tsx';
 import { ScriptsView } from './views/ScriptsView.tsx';
 import { LicensesView } from './views/LicensesView.tsx';
 import { AccountView } from './views/AccountView.tsx';
-import { SettingsView } from './views/SettingsView.tsx';
 import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
+import { CosmicAudioPlayer } from './components/CosmicAudioPlayer.tsx';
 
 export default function App() {
   const isLoadstringRoute =
@@ -164,7 +164,6 @@ export default function App() {
     scripts: 'Script Management',
     licenses: 'Script Licenses',
     account: 'Account & Settings',
-    admin: 'Administrator Vault',
   };
 
   return (
@@ -181,7 +180,7 @@ export default function App() {
       />
 
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar with simplified 5 sections */}
+        {/* Sidebar with clean 5 public sections */}
         <Sidebar
           activeSection={activeSection}
           onSelectSection={(sec) => {
@@ -193,7 +192,6 @@ export default function App() {
           counts={sidebarCounts}
           username={currentUser?.username || 'Developer'}
           userRole={currentUser?.role || 'user'}
-          isAdmin={currentUser?.role === 'admin'}
         />
 
         {/* Main Content Area */}
@@ -216,15 +214,11 @@ export default function App() {
           {activeSection === 'account' && (
             <AccountView onLogout={handleLogout} onShowToast={showToast} />
           )}
-
-          {activeSection === 'admin' && (
-            <SettingsView
-              onShowToast={showToast}
-              onNavigate={(sec) => setActiveSection(sec)}
-            />
-          )}
         </main>
       </div>
+
+      {/* Floating Cosmic Audio Synthesizer */}
+      <CosmicAudioPlayer />
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />

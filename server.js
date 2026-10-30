@@ -466,6 +466,38 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     this.save();
     return job;
   }
+  getUserQuotas(userId) {
+    const currentMonth = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
+    const user = this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    const monthlyObf = (user?.obfuscationMonth === currentMonth ? user.monthlyObfuscations : 0) || 0;
+    const panelsCount = this.state.panels.filter((p) => p.userId === userId).length;
+    const scriptsCount = this.state.scripts.filter((s) => s.userId === userId).length;
+    const keysCount = this.state.keys.filter((k) => k.userId === userId).length;
+    const whitelistCount = this.state.whitelist.filter((w) => w.userId === userId).length;
+    const totalKeysAndWhitelist = keysCount + whitelistCount;
+    return {
+      monthlyObfuscations: { current: monthlyObf, max: 15 },
+      panels: { current: panelsCount, max: 5 },
+      scripts: { current: scriptsCount, max: 10 },
+      keysAndWhitelist: { current: totalKeysAndWhitelist, max: 1e3 },
+      maxScriptUpdates: 10
+    };
+  }
+  checkAndIncrementMonthlyObfuscation(user) {
+    const currentMonth = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
+    if (user.obfuscationMonth !== currentMonth) {
+      user.obfuscationMonth = currentMonth;
+      user.monthlyObfuscations = 0;
+    }
+    const current = user.monthlyObfuscations || 0;
+    const max = 15;
+    if (user.role !== "admin" && current >= max) {
+      return { allowed: false, current, max };
+    }
+    user.monthlyObfuscations = current + 1;
+    this.save();
+    return { allowed: true, current: user.monthlyObfuscations, max };
+  }
   logAudit(eventType, details, ip = "127.0.0.1", userAgent = "RONIGUARD Web", severity = "info") {
     const entry = {
       id: "log_" + crypto.randomBytes(6).toString("hex"),
@@ -1706,6 +1738,21 @@ var DiscordBotService = class {
       state.botConfig.lastTestedAt = (/* @__PURE__ */ new Date()).toISOString();
       db.logAudit("bot_sync", `Discord Bot connected to Gateway as @${data.user.username}`, "Gateway", "Discord Bot Service", "info");
       db.save();
+      if (Array.isArray(data.guilds) && this.token) {
+        for (const g of data.guilds) {
+          if (g && g.id) {
+            fetch(`https://discord.com/api/v10/applications/${this.applicationId}/guilds/${g.id}/commands`, {
+              method: "PUT",
+              headers: {
+                Authorization: `Bot ${this.token}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify([])
+            }).catch(() => {
+            });
+          }
+        }
+      }
     } else if (eventName === "INTERACTION_CREATE") {
       await this.handleInteraction(data);
     }
@@ -2187,7 +2234,8 @@ router.get("/auth/me", requireAuth, (req, res) => {
     email: user.email,
     role: user.role,
     lastLoginAt: user.lastLoginAt,
-    activeSessionsCount: user.sessionTokens?.length || 1
+    activeSessionsCount: user.sessionTokens?.length || 1,
+    quotas: db.getUserQuotas(user.id)
   });
 });
 router.post("/auth/logout", requireAuth, (req, res) => {
@@ -2330,7 +2378,8 @@ router.get("/overview", requireAuth, (req, res) => {
     lastPing: state.botConfig.lastPing || null,
     recentActivity: state.auditLogs.slice(0, 8),
     recentBuilds: userBuilds.slice(0, 5),
-    activeJobs: userJobs.filter((j) => j.status === "processing")
+    activeJobs: userJobs.filter((j) => j.status === "processing"),
+    quotas: db.getUserQuotas(user.id)
   });
 });
 router.get("/panels", requireAuth, (req, res) => {
@@ -2341,6 +2390,11 @@ router.get("/panels", requireAuth, (req, res) => {
 });
 router.post("/panels", requireAuth, (req, res) => {
   const user = req.user;
+  const state = db.get();
+  const userPanels = state.panels.filter((p) => p.userId === user.id);
+  if (user.role !== "admin" && userPanels.length >= 5) {
+    return res.status(400).json({ error: "Panel limit reached: Maximum 5 panels allowed per account." });
+  }
   const { name, description, protectionProfile, whitelistEnabled, keyAuthEnabled, hwidLockEnabled, maxHwidResets } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Panel name is required" });
@@ -2360,7 +2414,6 @@ router.post("/panels", requireAuth, (req, res) => {
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
-  const state = db.get();
   state.panels.unshift(newPanel);
   db.logAudit("panel_update", `Created panel "${newPanel.name}" (${newPanel.id})`, req.ip, user.id);
   db.save();
@@ -2455,6 +2508,16 @@ router.post("/scripts/process", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Script source content cannot be empty" });
   }
   const state = db.get();
+  const userScripts = state.scripts.filter((s) => s.userId === user.id);
+  if (user.role !== "admin" && userScripts.length >= 10) {
+    return res.status(400).json({ error: "Script creation limit reached: Maximum 10 scripts per account." });
+  }
+  if (obfuscationEnabled) {
+    const obfCheck = db.checkAndIncrementMonthlyObfuscation(user);
+    if (!obfCheck.allowed) {
+      return res.status(429).json({ error: `Monthly obfuscation limit reached (${obfCheck.current}/${obfCheck.max}). Quota resets next month.` });
+    }
+  }
   let panel = state.panels.find((p) => p.id === panelId && (p.userId === user.id || user.role === "admin"));
   if (!panel) {
     panel = state.panels.find((p) => p.userId === user.id);
@@ -2628,11 +2691,15 @@ router.put("/scripts/:id", requireAuth, async (req, res) => {
   if (trialEnabled !== void 0) script.trialEnabled = !!trialEnabled;
   const codeToUpdate = (newSourceCode || sourceCode || "").trim();
   if (codeToUpdate) {
-    const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
-    fs2.writeFileSync(origPath, codeToUpdate, "utf-8");
-    script.originalSize = Buffer.byteLength(codeToUpdate, "utf-8");
+    if (user.role !== "admin" && (script.updateCount || 0) >= 10) {
+      return res.status(400).json({ error: "Script update limit reached: Maximum 10 updates allowed per script project." });
+    }
     let output = "";
     if (script.isObfuscated) {
+      const obfCheck = db.checkAndIncrementMonthlyObfuscation(user);
+      if (!obfCheck.allowed) {
+        return res.status(429).json({ error: `Monthly obfuscation limit reached (${obfCheck.current}/${obfCheck.max}). Quota resets next month.` });
+      }
       const obf = await runObfuscationPipeline(codeToUpdate, { engine: "RONIGUARD-MAX", profile: "maximum" });
       output = obf.transformedCode || codeToUpdate;
     } else {
@@ -2641,6 +2708,10 @@ router.put("/scripts/:id", requireAuth, async (req, res) => {
 
 ${codeToUpdate}`;
     }
+    script.updateCount = (script.updateCount || 0) + 1;
+    const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+    fs2.writeFileSync(origPath, codeToUpdate, "utf-8");
+    script.originalSize = Buffer.byteLength(codeToUpdate, "utf-8");
     if (!script.protectedFileId) {
       script.protectedFileId = "build_" + generateRandomHex(12);
     }
@@ -3009,10 +3080,16 @@ router.get("/keys", requireOwnerAuth, (_req, res) => {
   res.json(db.get().keys);
 });
 router.post("/keys/generate", requireOwnerAuth, (req, res) => {
+  const user = req.user;
   const { type, panelId, count, maxUses, hwidLocked } = req.body;
   const state = db.get();
   const targetPanelId = panelId || state.panels[0]?.id || "pnl_main";
   const qty = Math.min(Math.max(Number(count) || 1, 1), 50);
+  const userKeysCount = state.keys.filter((k) => k.userId === user?.id).length;
+  const userWlCount = state.whitelist.filter((w) => w.userId === user?.id).length;
+  if (user?.role !== "admin" && userKeysCount + userWlCount + qty > 1e3) {
+    return res.status(400).json({ error: "Quota reached: Maximum 1000 keys and whitelist entries combined." });
+  }
   const createdKeys = [];
   for (let i = 0; i < qty; i++) {
     const segments = Array.from({ length: 3 }, () => generateRandomHex(2).toUpperCase()).join("-");
@@ -3021,10 +3098,10 @@ router.post("/keys/generate", requireOwnerAuth, (req, res) => {
     if (type === "24h") expiresAt = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     if (type === "7d") expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
     if (type === "30d") expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-    const user = req.user;
+    const user2 = req.user;
     const targetScript = state.scripts.find((s) => s.panelId === targetPanelId) || state.scripts[0];
     const scriptId = req.body.scriptId || (targetScript ? targetScript.id : "scr_main");
-    const callerUserId = user?.id || targetScript?.userId || "usr_owner";
+    const callerUserId = user2?.id || targetScript?.userId || "usr_owner";
     const record = {
       id: "key_" + generateRandomHex(4),
       userId: callerUserId,
@@ -3211,148 +3288,70 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>\u{1F6D1} UNAUTHORIZED ACCESS \u{1F6D1} | RONIGUARD</title>
+  <title>ACCESS UNAUTHORIZED</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: radial-gradient(circle at 50% 25%, #180509 0%, #060205 100%);
-      color: #f1f5f9;
+    html, body {
+      height: 100%;
+      width: 100%;
+      background-color: #0b0e17;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+      margin: 0;
+    }
+    .container {
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      position: relative;
       padding: 1.5rem;
     }
-    .card {
-      max-width: 540px;
-      width: 100%;
-      background: rgba(18, 5, 10, 0.96);
-      border: 2px solid #ef4444;
-      border-radius: 1.5rem;
-      padding: 2.25rem 2rem;
-      text-align: center;
-      box-shadow: 0 0 60px rgba(239, 68, 68, 0.25), inset 0 0 25px rgba(239, 68, 68, 0.08);
-      position: relative;
-      overflow: hidden;
-    }
-    .card::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; right: 0; height: 4px;
-      background: linear-gradient(90deg, #ef4444, #f59e0b, #ef4444);
-    }
-    .badge {
+    .badge-card {
+      background: #0f1524;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 14px;
+      padding: 18px 36px;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.4rem 1rem;
-      border-radius: 9999px;
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #fca5a5;
-      font-size: 0.8rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      margin-bottom: 1.25rem;
-      text-transform: uppercase;
-    }
-    .title {
-      font-size: 1.75rem;
-      font-weight: 900;
-      color: #ef4444;
-      letter-spacing: -0.02em;
-      margin-bottom: 0.6rem;
-      text-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
-    }
-    .notice {
+      justify-content: center;
+      gap: 14px;
+      color: #f1f5f9;
       font-size: 1.15rem;
       font-weight: 700;
-      color: #ffffff;
-      margin-bottom: 0.75rem;
-    }
-    .desc {
-      font-size: 0.875rem;
-      color: #94a3b8;
-      line-height: 1.6;
-      margin-bottom: 1.75rem;
-    }
-    .url-box {
-      background: #090306;
-      border: 1px dashed rgba(239, 68, 68, 0.5);
-      border-radius: 0.85rem;
-      padding: 1.1rem;
-      margin-bottom: 1.75rem;
-    }
-    .url-label {
-      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #f87171;
-      margin-bottom: 0.35rem;
-      font-weight: 700;
     }
-    .url-link {
-      font-family: monospace;
-      font-size: 1rem;
-      color: #38bdf8;
-      word-break: break-all;
-      font-weight: 700;
-      text-decoration: underline;
+    .siren {
+      font-size: 1.25rem;
+      line-height: 1;
     }
-    .btn {
-      display: block;
-      width: 100%;
-      padding: 1rem 1.5rem;
-      background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
-      color: #ffffff;
-      text-decoration: none;
-      border-radius: 0.85rem;
-      font-weight: 800;
-      font-size: 1rem;
-      letter-spacing: 0.02em;
-      box-shadow: 0 4px 25px rgba(239, 68, 68, 0.45);
-      transition: transform 0.2s, opacity 0.2s;
-    }
-    .btn:hover {
-      opacity: 0.95;
-      transform: translateY(-2px);
-    }
-    .footer {
-      margin-top: 1.5rem;
-      font-size: 0.75rem;
-      color: #64748b;
-      line-height: 1.5;
-    }
-    .footer code {
-      background: #000;
-      padding: 0.2rem 0.4rem;
-      border-radius: 0.3rem;
-      color: #fef08a;
-      font-size: 0.72rem;
+    .footer-text {
+      position: absolute;
+      bottom: 28px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: #55627f;
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">\u{1F6D1} SECURITY SENTINEL \u{1F6D1}</div>
-    <h1 class="title">\u{1F6D1} UNAUTHORIZED ACCESS \u{1F6D1}</h1>
-    <p class="notice">Content is not visible here.</p>
-    <p class="desc">
-      Raw script payloads cannot be viewed directly through a web browser.
-      Please visit the official dashboard to view, configure, and manage scripts.
-    </p>
-    <div class="url-box">
-      <div class="url-label">Official Real Page:</div>
-      <a href="https://roniguardreal.wasmer.app" class="url-link">https://roniguardreal.wasmer.app</a>
+  <div class="container">
+    <div class="badge-card">
+      <span class="siren">\u{1F6A8}\u{1F6A8}</span>
+      <span>ACCESS UNAUTHORIZED</span>
+      <span class="siren">\u{1F6A8}\u{1F6A8}</span>
     </div>
-    <a href="https://roniguardreal.wasmer.app" class="btn">
-      \u{1F449} Visit Real Page: https://roniguardreal.wasmer.app
-    </a>
-    <p class="footer">
-      Roblox execution: Use <code>loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua"))()</code> in your executor console.
-    </p>
+    <div class="footer-text">
+      Contents can not be displayed on browser
+    </div>
   </div>
 </body>
 </html>`;
@@ -3503,7 +3502,19 @@ end`);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("X-Roniguard-Engine", "RONIGUARD-MAX");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-  return res.send(content);
+  const robloxPreamble = `-- [RONIGUARD] Protected Lua Execution Gateway
+local _rgPlayer = "Unknown"
+pcall(function()
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        _rgPlayer = tostring(game:GetService("Players").LocalPlayer.Name)
+    end
+end)
+print("[RONIGUARD] Player: " .. _rgPlayer)
+print("[RONIGUARD] Status: Connected & Confirmed")
+print("[RONIGUARD] Loading secured script payload...")
+
+`;
+  return res.send(robloxPreamble + content);
 }
 router.get("/loader/raw/:id", handleRawLoaderRequest);
 router.get("/raw/:id", handleRawLoaderRequest);

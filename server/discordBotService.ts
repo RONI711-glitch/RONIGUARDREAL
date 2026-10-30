@@ -421,6 +421,22 @@ class DiscordBotService {
       state.botConfig.lastTestedAt = new Date().toISOString();
       db.logAudit('bot_sync', `Discord Bot connected to Gateway as @${data.user.username}`, 'Gateway', 'Discord Bot Service', 'info');
       db.save();
+
+      // Automatically purge any stale guild-level commands to prevent duplicate commands
+      if (Array.isArray(data.guilds) && this.token) {
+        for (const g of data.guilds) {
+          if (g && g.id) {
+            fetch(`https://discord.com/api/v10/applications/${this.applicationId}/guilds/${g.id}/commands`, {
+              method: 'PUT',
+              headers: {
+                Authorization: `Bot ${this.token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify([]),
+            }).catch(() => {});
+          }
+        }
+      }
     } else if (eventName === 'INTERACTION_CREATE') {
       await this.handleInteraction(data);
     }

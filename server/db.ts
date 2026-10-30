@@ -13,6 +13,8 @@ export interface UserRecord {
   sessionTokens: string[];
   createdAt: string;
   lastLoginAt: string;
+  monthlyObfuscations?: number;
+  obfuscationMonth?: string;
 }
 
 export interface OwnerRecord {
@@ -62,6 +64,7 @@ export interface ScriptRecord {
   createdAt: string;
   keyLocked?: boolean;
   trialEnabled?: boolean;
+  updateCount?: number;
 }
 
 export interface ScriptJobStage {
@@ -737,6 +740,42 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     job.updatedAt = new Date().toISOString();
     this.save();
     return job;
+  }
+
+  public getUserQuotas(userId: string) {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const user = this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    const monthlyObf = (user?.obfuscationMonth === currentMonth ? user.monthlyObfuscations : 0) || 0;
+
+    const panelsCount = this.state.panels.filter((p) => p.userId === userId).length;
+    const scriptsCount = this.state.scripts.filter((s) => s.userId === userId).length;
+    const keysCount = this.state.keys.filter((k) => k.userId === userId).length;
+    const whitelistCount = this.state.whitelist.filter((w) => w.userId === userId).length;
+    const totalKeysAndWhitelist = keysCount + whitelistCount;
+
+    return {
+      monthlyObfuscations: { current: monthlyObf, max: 15 },
+      panels: { current: panelsCount, max: 5 },
+      scripts: { current: scriptsCount, max: 10 },
+      keysAndWhitelist: { current: totalKeysAndWhitelist, max: 1000 },
+      maxScriptUpdates: 10,
+    };
+  }
+
+  public checkAndIncrementMonthlyObfuscation(user: UserRecord): { allowed: boolean; current: number; max: number } {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    if (user.obfuscationMonth !== currentMonth) {
+      user.obfuscationMonth = currentMonth;
+      user.monthlyObfuscations = 0;
+    }
+    const current = user.monthlyObfuscations || 0;
+    const max = 15;
+    if (user.role !== 'admin' && current >= max) {
+      return { allowed: false, current, max };
+    }
+    user.monthlyObfuscations = current + 1;
+    this.save();
+    return { allowed: true, current: user.monthlyObfuscations, max };
   }
 
   public logAudit(
