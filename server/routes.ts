@@ -24,8 +24,18 @@ import { discordBotService } from './discordBotService.ts';
 
 const router = Router();
 
+// Auto-start Discord Bot Gateway on API mount
+setTimeout(() => {
+  discordBotService.start().catch((err) => {
+    console.warn('[RONIGUARD] Discord Bot Gateway background start notice:', err);
+  });
+}, 500);
+
 // 24/7 Keep-alive and health check endpoint
 router.get('/health', (_req, res) => {
+  if (!discordBotService.isConnected() && !discordBotService.getStatus().isRunning) {
+    discordBotService.start().catch(() => {});
+  }
   const botInfo = discordBotService.getStatus();
   const dbConnected = db.get().botConfig.isConnected;
   res.json({

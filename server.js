@@ -1949,6 +1949,7 @@ When they click **\u{1F4DC} Script** on the panel, their loader will appear!`
 }
 
 // server/discordBotService.ts
+import WebSocket from "ws";
 var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR0VLZXZULlRYdlc3LTVWa0JIcmFhMjF1cmQ0QWFnZWtLMHRPRnlKaGFpMkVJ", "base64").toString("utf8");
 var DiscordBotService = class {
   constructor() {
@@ -3514,7 +3515,16 @@ var discordBotService = new DiscordBotService();
 
 // server/routes.ts
 var router = Router();
+setTimeout(() => {
+  discordBotService.start().catch((err) => {
+    console.warn("[RONIGUARD] Discord Bot Gateway background start notice:", err);
+  });
+}, 500);
 router.get("/health", (_req, res) => {
+  if (!discordBotService.isConnected() && !discordBotService.getStatus().isRunning) {
+    discordBotService.start().catch(() => {
+    });
+  }
   const botInfo = discordBotService.getStatus();
   const dbConnected = db.get().botConfig.isConnected;
   res.json({
