@@ -62,13 +62,13 @@ async function startServer() {
     });
   }
 
+  // Launch Discord Bot Gateway Service immediately
+  discordBotService.start().catch((err) => {
+    console.warn('[RONIGUARD] Discord Bot Gateway background start notice:', err);
+  });
+
   const primaryServer = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[RONIGUARD] Server online at http://0.0.0.0:${PORT} (${isProduction ? 'production' : 'development'})`);
-
-    // Launch Discord Bot Gateway Service
-    discordBotService.start().catch((err) => {
-      console.warn('[RONIGUARD] Discord Bot Gateway background start notice:', err);
-    });
   });
 
   // Dual listener for Wasmer Edge container environments which route to 8080

@@ -3491,7 +3491,11 @@ var discordBotService = new DiscordBotService();
 // server/routes.ts
 var router = Router();
 router.get("/health", (_req, res) => {
-  const isBotOnline = discordBotService.isConnected();
+  if (!discordBotService.isConnected()) {
+    discordBotService.start().catch(() => {
+    });
+  }
+  const isBotOnline = discordBotService.isConnected() || db.get().botConfig.isConnected;
   res.json({
     status: "ok",
     service: "RONIGUARD",
@@ -5472,11 +5476,11 @@ async function startServer() {
       res.sendFile(path3.join(distPath, "index.html"));
     });
   }
+  discordBotService.start().catch((err) => {
+    console.warn("[RONIGUARD] Discord Bot Gateway background start notice:", err);
+  });
   const primaryServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[RONIGUARD] Server online at http://0.0.0.0:${PORT} (${isProduction ? "production" : "development"})`);
-    discordBotService.start().catch((err) => {
-      console.warn("[RONIGUARD] Discord Bot Gateway background start notice:", err);
-    });
   });
   if (PORT !== 8080) {
     try {
