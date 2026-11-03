@@ -18,6 +18,7 @@ class DiscordBotService {
   private lastPingStart = 0;
   private lastHeartbeatAcked = true;
   private isConnecting = false;
+  private lastAuthError: string | null = null;
 
   public async start(providedToken?: string): Promise<boolean> {
     if (this.isConnected() && !providedToken) {
@@ -104,7 +105,9 @@ class DiscordBotService {
       }
 
       if (!authRes.ok) {
-        console.error('[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:', authRes.status);
+        const errText = await authRes.text().catch(() => '');
+        this.lastAuthError = `Status ${authRes.status}: ${errText}`;
+        console.error('[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:', this.lastAuthError);
         this.isRunning = false;
         const state = db.get();
         state.botConfig.isConnected = false;
