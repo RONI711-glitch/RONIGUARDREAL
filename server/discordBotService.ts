@@ -17,8 +17,16 @@ class DiscordBotService {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private lastPingStart = 0;
   private lastHeartbeatAcked = true;
+  private isConnecting = false;
 
   public async start(providedToken?: string): Promise<boolean> {
+    if (this.isConnected() && !providedToken) {
+      return true;
+    }
+    if (this.isConnecting && !providedToken) {
+      return true;
+    }
+
     const rawToken =
       providedToken ||
       db.get().botConfig.botToken ||
@@ -27,7 +35,7 @@ class DiscordBotService {
 
     this.token = tokenToUse.replace(/^Bot\s+/i, '');
 
-    // Stop previous connection if active (without clearing watchdog)
+    // Stop previous connection if active
     if (this.ws) {
       try { this.ws.close(); } catch {}
       this.ws = null;
@@ -39,6 +47,7 @@ class DiscordBotService {
 
     console.log('[RONIGUARD-BOT] Initializing Discord Gateway connection...');
     this.isRunning = true;
+    this.isConnecting = true;
 
     // Start 24/7 active connection watchdog (checks every 15 seconds)
     if (!this.watchdogInterval) {
@@ -129,6 +138,8 @@ class DiscordBotService {
     } catch (err) {
       console.error('[RONIGUARD-BOT] Error starting Discord bot:', err);
       return false;
+    } finally {
+      this.isConnecting = false;
     }
   }
 

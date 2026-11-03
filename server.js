@@ -1965,8 +1965,15 @@ var DiscordBotService = class {
     this.reconnectTimeout = null;
     this.lastPingStart = 0;
     this.lastHeartbeatAcked = true;
+    this.isConnecting = false;
   }
   async start(providedToken) {
+    if (this.isConnected() && !providedToken) {
+      return true;
+    }
+    if (this.isConnecting && !providedToken) {
+      return true;
+    }
     const rawToken = providedToken || db.get().botConfig.botToken || VERIFIED_FALLBACK_TOKEN;
     const tokenToUse = rawToken && rawToken.trim() ? rawToken.trim() : VERIFIED_FALLBACK_TOKEN;
     this.token = tokenToUse.replace(/^Bot\s+/i, "");
@@ -1983,6 +1990,7 @@ var DiscordBotService = class {
     }
     console.log("[RONIGUARD-BOT] Initializing Discord Gateway connection...");
     this.isRunning = true;
+    this.isConnecting = true;
     if (!this.watchdogInterval) {
       this.watchdogInterval = setInterval(() => {
         if (this.isRunning && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
@@ -2057,6 +2065,8 @@ var DiscordBotService = class {
     } catch (err) {
       console.error("[RONIGUARD-BOT] Error starting Discord bot:", err);
       return false;
+    } finally {
+      this.isConnecting = false;
     }
   }
   isConnected() {
@@ -3501,11 +3511,7 @@ var discordBotService = new DiscordBotService();
 
 // server/routes.ts
 var router = Router();
-router.get("/health", async (_req, res) => {
-  if (!discordBotService.isConnected()) {
-    discordBotService.start().catch(() => {
-    });
-  }
+router.get("/health", (_req, res) => {
   const botInfo = discordBotService.getStatus();
   const dbConnected = db.get().botConfig.isConnected;
   res.json({
