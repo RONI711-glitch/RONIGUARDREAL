@@ -592,6 +592,7 @@ class DiscordBotService {
       state.botConfig.isConnected = true;
       state.botConfig.botUsername = data.user.username;
       state.botConfig.lastTestedAt = new Date().toISOString();
+      db.save();
       db.logAudit('bot_sync', `Discord Bot connected to Gateway as @${data.user.username}`, 'Gateway', 'Discord Bot Service', 'info');
       // Automatically purge any stale guild-level commands to prevent duplicate commands
       if (Array.isArray(data.guilds) && this.token) {
@@ -612,6 +613,7 @@ class DiscordBotService {
       console.log('[RONIGUARD-BOT] 🟢 Session resumed successfully! Bot is active without interruption.');
       const state = db.get();
       state.botConfig.isConnected = true;
+      db.save();
     } else if (eventName === 'INTERACTION_CREATE') {
       await this.handleInteraction(data);
     }
