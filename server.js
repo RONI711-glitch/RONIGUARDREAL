@@ -2022,8 +2022,19 @@ var DiscordBotService = class {
           }
         }
       }
+      if (!authRes.ok && this.token !== VERIFIED_FALLBACK_TOKEN) {
+        console.warn("[RONIGUARD-BOT] Current token failed REST auth. Testing fallback verified 24/7 token...");
+        const fbRes = await fetch("https://discord.com/api/v10/users/@me", {
+          headers: { Authorization: `Bot ${VERIFIED_FALLBACK_TOKEN}` }
+        });
+        if (fbRes.ok) {
+          this.token = VERIFIED_FALLBACK_TOKEN;
+          authRes = fbRes;
+        }
+      }
       if (!authRes.ok) {
         console.error("[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:", authRes.status);
+        this.isRunning = false;
         const state2 = db.get();
         state2.botConfig.isConnected = false;
         db.save();
@@ -2045,6 +2056,9 @@ var DiscordBotService = class {
       console.error("[RONIGUARD-BOT] Error starting Discord bot:", err);
       return false;
     }
+  }
+  isConnected() {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
   stop() {
     this.isRunning = false;
@@ -2316,11 +2330,20 @@ var DiscordBotService = class {
           this.heartbeatInterval = null;
         }
         if (this.isRunning) {
-          if (event.code === 4004 && this.token !== VERIFIED_FALLBACK_TOKEN) {
-            console.warn("[RONIGUARD-BOT] Invalid token code 4004 received. Falling back to verified 24/7 token...");
-            this.token = VERIFIED_FALLBACK_TOKEN;
-            this.sessionId = null;
-            this.resumeGatewayUrl = null;
+          if (event.code === 4004) {
+            if (this.token !== VERIFIED_FALLBACK_TOKEN) {
+              console.warn("[RONIGUARD-BOT] Invalid token code 4004 received. Falling back to verified 24/7 token...");
+              this.token = VERIFIED_FALLBACK_TOKEN;
+              const s = db.get();
+              s.botConfig.botToken = VERIFIED_FALLBACK_TOKEN;
+              db.save();
+              this.sessionId = null;
+              this.resumeGatewayUrl = null;
+            } else {
+              console.error("[RONIGUARD-BOT] Gateway closed with code 4004 (Authentication failed) with fallback token. Halting reconnect.");
+              this.isRunning = false;
+              return;
+            }
           } else if (event.code === 4007 || event.code === 4009) {
             this.sessionId = null;
             this.resumeGatewayUrl = null;
@@ -3465,6 +3488,15 @@ var discordBotService = new DiscordBotService();
 
 // server/routes.ts
 var router = Router();
+router.get("/health", (_req, res) => {
+  const isBotOnline = discordBotService.isConnected();
+  res.json({
+    status: "ok",
+    service: "RONIGUARD",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    botOnline: isBotOnline
+  });
+});
 function parseCookies(req) {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return {};
@@ -5406,6 +5438,9 @@ app.get("/loader.lua", handleRawLoaderRequest);
 app.get("/raw/:id", handleRawLoaderRequest);
 app.get("/load/:id", handleRawLoaderRequest);
 app.get("/raw/latest.lua", handleRawLoaderRequest);
+app.get("/health", (_req, res) => {
+  res.redirect("/api/health");
+});
 app.get("/auth/discord/login", (req, res) => {
   res.redirect("/api/auth/discord/login" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : ""));
 });

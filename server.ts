@@ -24,6 +24,9 @@ app.get('/loader.lua', handleRawLoaderRequest);
 app.get('/raw/:id', handleRawLoaderRequest);
 app.get('/load/:id', handleRawLoaderRequest);
 app.get('/raw/latest.lua', handleRawLoaderRequest);
+app.get('/health', (_req, res) => {
+  res.redirect('/api/health');
+});
 
 // Root OAuth fallbacks to ensure zero-404 during Discord authorization redirects
 app.get('/auth/discord/login', (req, res) => {

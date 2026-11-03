@@ -24,6 +24,17 @@ import { discordBotService } from './discordBotService.ts';
 
 const router = Router();
 
+// 24/7 Keep-alive and health check endpoint
+router.get('/health', (_req, res) => {
+  const isBotOnline = discordBotService.isConnected();
+  res.json({
+    status: 'ok',
+    service: 'RONIGUARD',
+    timestamp: new Date().toISOString(),
+    botOnline: isBotOnline,
+  });
+});
+
 // Helper to parse cookies from incoming headers
 export function parseCookies(req: Request): Record<string, string> {
   const cookieHeader = req.headers.cookie;
