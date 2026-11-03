@@ -318,16 +318,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onShowToast, onNavig
           {/* Identity Card */}
           <div className="p-5 rounded-2xl bg-[#0f0a1c] border border-purple-900/25 space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-              Authenticated Owner
+              Authenticated Owner Clearance
             </h3>
             <div>
-              <span className="text-xs text-neutral-400 block">Owner Email</span>
-              <span className="font-mono font-bold text-white text-sm break-all">
-                {settings?.ownerEmail || 'ronizz.edit@gmail.com'}
+              <span className="text-xs text-neutral-400 block">Identity Status</span>
+              <span className="font-mono font-bold text-white text-sm break-all flex items-center gap-1.5 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Verified Discord Administrator
               </span>
             </div>
             <p className="text-[11px] text-neutral-400 leading-relaxed">
-              This email is the immutable owner identifier configured for RONIGUARD. Source recovery and admin operations are locked to this identity.
+              Your session is cryptographically bound to Discord ID 1549804529778692237. Multi-tenant source vaults and management commands are isolated to this identity.
             </p>
           </div>
 

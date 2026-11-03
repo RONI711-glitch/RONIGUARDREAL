@@ -14,6 +14,7 @@ import {
   Lock,
   Zap,
   Terminal,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { OverviewMetrics, UserQuotas } from '../types.ts';
@@ -106,31 +107,38 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:p-6 rounded-3xl bg-[#0e071e]/90 border border-purple-500/30 backdrop-blur-xl shadow-xl shadow-purple-950/40">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-xl font-black text-white tracking-tight">RONIGUARD Dashboard</h2>
-            <span className="text-xs text-purple-400 font-mono px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-800/40">
-              Cosmic Engine
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 sm:p-7 rounded-3xl bg-gradient-to-r from-purple-950/80 via-[#130b28]/90 to-indigo-950/80 border border-white/20 backdrop-blur-2xl shadow-2xl shadow-purple-950/50 relative overflow-hidden">
+        {/* Soft white celestial light reflection */}
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+        <div className="absolute -top-24 -left-24 w-60 h-60 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-1/2 right-10 w-72 h-72 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-100 to-purple-200 tracking-tight drop-shadow-[0_2px_10px_rgba(255,255,255,0.35)]">
+              RONIGUARD Dashboard
+            </h2>
+            <span className="text-[11px] font-bold text-white px-3 py-1 rounded-full bg-white/10 border border-white/25 shadow-sm shadow-purple-500/20 backdrop-blur-md">
+              Cosmic v3.2
             </span>
           </div>
-          <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed max-w-xl">
-            Next-generation Lua/Luau register VM obfuscation, script-specific licensing, and 24/7 Discord Bot execution.
+          <p className="text-xs text-purple-200/90 mt-1.5 leading-relaxed max-w-xl font-medium">
+            Next-generation Lua/Luau register VM obfuscation, script-specific licensing, and 24/7 Discord Bot execution in an isolated workspace.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 relative z-10">
           <button
             onClick={() => fetchMetrics(true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-purple-950/50 hover:bg-purple-900/50 border border-purple-800/40 text-neutral-300 hover:text-white text-xs font-semibold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-semibold transition-all cursor-pointer shadow-sm backdrop-blur-md"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Sync</span>
           </button>
           <button
             onClick={() => onNavigate('scripts')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 hover:from-purple-400 hover:to-indigo-400 text-white text-xs font-bold shadow-lg shadow-purple-500/40 border border-white/30 transition-all cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Deploy Script</span>
@@ -304,17 +312,20 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
             <button
               key={idx}
               onClick={() => onNavigate(card.section)}
-              className="p-5 rounded-3xl bg-[#0e081c]/90 border border-purple-900/30 hover:border-purple-500/50 text-left transition-all group flex flex-col justify-between hover:scale-[1.01] cursor-pointer"
+              className="p-6 rounded-3xl bg-gradient-to-b from-white/[0.08] via-purple-950/40 to-[#0c051a]/95 border border-white/15 hover:border-white/35 text-left transition-all group flex flex-col justify-between hover:scale-[1.02] cursor-pointer shadow-xl shadow-purple-950/30 backdrop-blur-xl relative overflow-hidden"
             >
-              <div className="flex items-center justify-between w-full mb-3">
-                <span className="text-xs font-semibold text-neutral-400">{card.label}</span>
-                <div className="w-8 h-8 rounded-xl bg-purple-950/80 border border-purple-800/40 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Icon className="w-4 h-4 text-purple-300" />
+              <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+              <div className="flex items-center justify-between w-full mb-3.5 relative z-10">
+                <span className="text-xs font-bold text-purple-200 tracking-wide">{card.label}</span>
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-white/20 to-purple-800/60 border border-white/30 flex items-center justify-center text-white shadow-md shadow-purple-600/30 group-hover:scale-110 transition-transform">
+                  <Icon className="w-5 h-5 text-white" />
                 </div>
               </div>
-              <div>
-                <span className="text-2xl font-black text-white tracking-tight">{card.value}</span>
-                <p className="text-[11px] text-neutral-500 mt-1">{card.subtext}</p>
+              <div className="relative z-10">
+                <span className="text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_8px_rgba(255,255,255,0.4)]">
+                  {card.value}
+                </span>
+                <p className="text-[11px] text-purple-300/80 mt-1.5 font-medium">{card.subtext}</p>
               </div>
             </button>
           );
@@ -322,7 +333,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Quick Navigation Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div
           onClick={() => onNavigate('panels')}
           className="p-5 rounded-3xl bg-[#0a0515] border border-purple-900/30 hover:border-purple-500/40 cursor-pointer transition-all space-y-2 group"
@@ -368,6 +379,22 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
           </div>
           <p className="text-xs text-neutral-400 leading-relaxed">
             Inspect script-specific API keys, copy ready-to-run loadstrings for Roblox executors, revoke, or regenerate.
+          </p>
+        </div>
+
+        <div
+          onClick={() => onNavigate('anti-tamper')}
+          className="p-5 rounded-3xl bg-[#0a0515] border border-purple-900/30 hover:border-purple-500/40 cursor-pointer transition-all space-y-2 group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-purple-400" />
+              Anti-Tamper
+            </span>
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:translate-x-1 text-purple-400 transition-all" />
+          </div>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            Real-time HMAC integrity verification, attack detection, and automatic license binding.
           </p>
         </div>
       </div>

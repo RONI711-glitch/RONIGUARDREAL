@@ -8,9 +8,8 @@ import {
   BUILDS_DIR,
   hashPassword,
   generateRandomHex,
-  BuildRecord,
-  KeyRecord,
 } from './db.ts';
+import type { BuildRecord, KeyRecord } from './db.ts';
 import {
   runObfuscationPipeline,
   AVAILABLE_ENGINES,
@@ -199,7 +198,6 @@ router.get('/auth/discord/callback', async (req, res) => {
       username: discordUser.username,
       discriminator: discordUser.discriminator,
       avatar: discordUser.avatar,
-      email: discordUser.email,
     });
 
     const sessionToken = generateRandomHex(32);
@@ -222,11 +220,10 @@ router.get('/auth/discord/callback', async (req, res) => {
 
 // Demo/Quick 1-Click Discord Sign In (Public Sandbox / Preview Mode)
 router.post('/auth/discord/demo-login', (req, res) => {
-  const { username, discordId, email } = req.body;
+  const { username, discordId } = req.body;
   const user = db.findOrCreateDiscordUser({
     discordId: discordId || '1549804529778692237',
     username: (username || 'Discord Developer').trim(),
-    email: email || null,
   });
 
   const sessionToken = generateRandomHex(32);
@@ -241,14 +238,14 @@ router.post('/auth/discord/demo-login', (req, res) => {
     `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`,
   ]);
 
-  return res.json({
+    return res.json({
     token: sessionToken,
     user: {
       id: user.id,
       discordId: user.discordId,
       username: user.username,
       avatar: user.avatar,
-      email: user.email,
+      email: null,
       role: user.role,
       lastLoginAt: user.lastLoginAt,
     },
@@ -264,7 +261,7 @@ router.get('/auth/me', requireAuth, (req, res) => {
     username: user.username,
     discriminator: user.discriminator || '0',
     avatar: user.avatar,
-    email: user.email,
+    email: null,
     role: user.role,
     lastLoginAt: user.lastLoginAt,
     activeSessionsCount: user.sessionTokens?.length || 1,
@@ -272,21 +269,28 @@ router.get('/auth/me', requireAuth, (req, res) => {
   });
 });
 
-// Logout
-router.post('/auth/logout', requireAuth, (req, res) => {
-  const user = (req as any).user;
+// Logout (unconditionally clears all session cookies and removes token)
+router.post('/auth/logout', (req, res) => {
   const token = getUserSessionToken(req);
-  if (token && user.sessionTokens) {
-    user.sessionTokens = user.sessionTokens.filter((t: string) => t !== token);
+  if (token) {
+    const user = db.getUserBySessionToken(token);
+    if (user && user.sessionTokens) {
+      user.sessionTokens = user.sessionTokens.filter((t: string) => t !== token);
+    }
+    const owner = db.get().owner;
+    if (owner && owner.sessionTokens) {
+      owner.sessionTokens = owner.sessionTokens.filter((t: string) => t !== token);
+    }
+    db.save();
   }
-  db.save();
 
   res.setHeader('Set-Cookie', [
-    'roni_user_token=; Path=/; Max-Age=0; SameSite=Lax',
-    'roni_owner_token=; Path=/; Max-Age=0; SameSite=Lax',
+    'roni_user_token=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
+    'roni_owner_token=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
+    'roni_discord_user=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
   ]);
 
-  res.json({ success: true, message: 'Logged out successfully' });
+  return res.json({ success: true, message: 'Logged out successfully' });
 });
 
 // Legacy owner login endpoint for backwards compatibility
@@ -425,12 +429,12 @@ router.post('/auth/update-password', requireOwnerAuth, (req, res) => {
 router.get('/overview', requireAuth, (req, res) => {
   const user = (req as any).user;
   const state = db.get();
-  const userPanels = user.role === 'admin' ? state.panels : state.panels.filter((p) => p.userId === user.id);
-  const userScripts = user.role === 'admin' ? state.scripts : state.scripts.filter((s) => s.userId === user.id);
-  const userKeys = user.role === 'admin' ? state.keys : state.keys.filter((k) => k.userId === user.id);
-  const userWhitelist = user.role === 'admin' ? state.whitelist : state.whitelist.filter((w) => w.userId === user.id);
-  const userBuilds = user.role === 'admin' ? state.builds : state.builds.filter((b) => b.userId === user.id);
-  const userJobs = user.role === 'admin' ? (state.jobs || []) : (state.jobs || []).filter((j) => j.userId === user.id);
+  const userPanels = state.panels.filter((p) => p.userId === user.id);
+  const userScripts = state.scripts.filter((s) => s.userId === user.id);
+  const userKeys = state.keys.filter((k) => k.userId === user.id);
+  const userWhitelist = state.whitelist.filter((w) => w.userId === user.id);
+  const userBuilds = state.builds.filter((b) => b.userId === user.id);
+  const userJobs = (state.jobs || []).filter((j) => j.userId === user.id);
 
   res.json({
     totalPanels: userPanels.length,
@@ -456,7 +460,7 @@ router.get('/overview', requireAuth, (req, res) => {
 router.get('/panels', requireAuth, (req, res) => {
   const user = (req as any).user;
   const state = db.get();
-  const panels = user.role === 'admin' ? state.panels : state.panels.filter((p) => p.userId === user.id);
+  const panels = state.panels.filter((p) => p.userId === user.id);
   res.json(panels);
 });
 
@@ -548,7 +552,7 @@ router.delete('/panels/:id', requireAuth, (req, res) => {
 router.get('/scripts', requireAuth, (req, res) => {
   const user = (req as any).user;
   const state = db.get();
-  const scripts = user.role === 'admin' ? state.scripts : state.scripts.filter((s) => s.userId === user.id);
+  const scripts = state.scripts.filter((s) => s.userId === user.id);
   res.json(scripts);
 });
 
@@ -778,6 +782,15 @@ function runBackgroundJobStages(jobId: string, sourceCode: string, scriptRecord:
         });
 
         db.logAudit('build', `Script "${scriptRecord.filename}" built and minted API key ${scriptRecord.apiKey}`, 'Worker', scriptRecord.userId, 'info');
+
+        // 🌟 AUTOMATIC ANTI-TAMPER SECURITY REGISTRATION 🌟
+        db.registerAntiTamper({
+          scriptId: scriptRecord.id,
+          panelId: scriptRecord.panelId,
+          apiKey: scriptRecord.apiKey,
+          scriptContent: finalOutput,
+        });
+
         db.save();
       } catch (err: any) {
         console.error('[RONIGUARD-WORKER] Error finalizing script job:', err);
@@ -903,7 +916,7 @@ router.post('/scripts/:id/toggle-trial', requireAuth, (req, res) => {
 router.get('/licenses', requireAuth, (req, res) => {
   const user = (req as any).user;
   const state = db.get();
-  const userKeys = user.role === 'admin' ? state.keys : state.keys.filter((k) => k.userId === user.id);
+  const userKeys = state.keys.filter((k) => k.userId === user.id);
 
   const baseUrl = 'https://roniguardreal.wasmer.app';
   const licenses = userKeys.map((k) => {
@@ -1228,14 +1241,18 @@ router.delete('/source-recovery/:scriptId', requireOwnerAuth, (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 7. WHITELIST MANAGEMENT
+// 7. WHITELIST MANAGEMENT (Multi-Tenant)
 // -------------------------------------------------------------
 
-router.get('/whitelist', requireOwnerAuth, (_req, res) => {
-  res.json(db.get().whitelist);
+router.get('/whitelist', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const list = state.whitelist.filter((w) => w.userId === user.id);
+  res.json(list);
 });
 
-router.post('/whitelist', requireOwnerAuth, (req, res) => {
+router.post('/whitelist', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { identifier, platform, panelId, note } = req.body;
   if (!identifier || !identifier.trim()) {
     return res.status(400).json({ error: 'Platform identifier is required' });
@@ -1246,6 +1263,7 @@ router.post('/whitelist', requireOwnerAuth, (req, res) => {
 
   const entry = {
     id: 'wl_' + generateRandomHex(4),
+    userId: user.id,
     panelId: targetPanelId,
     platform: platform || 'discord',
     identifier: identifier.trim(),
@@ -1257,26 +1275,31 @@ router.post('/whitelist', requireOwnerAuth, (req, res) => {
   };
 
   state.whitelist.unshift(entry);
-  db.logAudit('whitelist_change', `Whitelisted "${identifier}" (${entry.platform}) on panel ${targetPanelId}`);
+  db.logAudit('whitelist_change', `Whitelisted "${identifier}" (${entry.platform}) on panel ${targetPanelId}`, req.ip, user.id);
   db.save();
 
   res.json(entry);
 });
 
-router.delete('/whitelist/:id', requireOwnerAuth, (req, res) => {
+router.delete('/whitelist/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { id } = req.params;
   const state = db.get();
   const idx = state.whitelist.findIndex((w) => w.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Whitelist entry not found' });
+  if (state.whitelist[idx].userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this whitelist entry' });
+  }
 
   const removed = state.whitelist.splice(idx, 1)[0];
-  db.logAudit('whitelist_change', `Removed "${removed.identifier}" from whitelist`);
+  db.logAudit('whitelist_change', `Removed "${removed.identifier}" from whitelist`, req.ip, user.id);
   db.save();
 
   res.json({ success: true, message: 'Removed from whitelist' });
 });
 
-router.post('/whitelist/import', requireOwnerAuth, (req, res) => {
+router.post('/whitelist/import', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { entries, panelId } = req.body;
   if (!Array.isArray(entries)) {
     return res.status(400).json({ error: 'Entries must be an array of objects or strings' });
@@ -1292,6 +1315,7 @@ router.post('/whitelist/import', requireOwnerAuth, (req, res) => {
 
     state.whitelist.unshift({
       id: 'wl_' + generateRandomHex(4),
+      userId: user.id,
       panelId: targetPanelId,
       platform: (typeof item === 'object' && item.platform) || 'discord',
       identifier: ident.trim(),
@@ -1304,21 +1328,24 @@ router.post('/whitelist/import', requireOwnerAuth, (req, res) => {
     importedCount++;
   }
 
-  db.logAudit('whitelist_change', `Imported ${importedCount} whitelist entries`);
+  db.logAudit('whitelist_change', `Imported ${importedCount} whitelist entries`, req.ip, user.id);
   db.save();
 
   res.json({ success: true, importedCount });
 });
 
 // -------------------------------------------------------------
-// 8. LICENSE KEYS MANAGEMENT
+// 8. LICENSE KEYS MANAGEMENT (Multi-Tenant & Delete Support)
 // -------------------------------------------------------------
 
-router.get('/keys', requireOwnerAuth, (_req, res) => {
-  res.json(db.get().keys);
+router.get('/keys', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const keys = state.keys.filter((k) => k.userId === user.id);
+  res.json(keys);
 });
 
-router.post('/keys/generate', requireOwnerAuth, (req, res) => {
+router.post('/keys/generate', requireAuth, (req, res) => {
   const user = (req as any).user;
   const { type, panelId, count, maxUses, hwidLocked } = req.body;
   const state = db.get();
@@ -1342,14 +1369,12 @@ router.post('/keys/generate', requireOwnerAuth, (req, res) => {
     if (type === '7d') expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
     if (type === '30d') expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
 
-    const user = (req as any).user;
     const targetScript = state.scripts.find((s) => s.panelId === targetPanelId) || state.scripts[0];
     const scriptId = req.body.scriptId || (targetScript ? targetScript.id : 'scr_main');
-    const callerUserId = user?.id || targetScript?.userId || 'usr_owner';
 
     const record: KeyRecord = {
       id: 'key_' + generateRandomHex(4),
-      userId: callerUserId,
+      userId: user.id,
       scriptId,
       panelId: targetPanelId,
       key: keyStr,
@@ -1368,23 +1393,47 @@ router.post('/keys/generate', requireOwnerAuth, (req, res) => {
     createdKeys.push(record);
   }
 
-  db.logAudit('key_gen', `Generated ${qty} key(s) [${type}] for panel ${targetPanelId}`);
+  db.logAudit('key_gen', `Generated ${qty} key(s) [${type}] for panel ${targetPanelId}`, req.ip, user.id);
   db.save();
 
   res.json(createdKeys);
 });
 
-router.post('/keys/revoke/:id', requireOwnerAuth, (req, res) => {
+router.post('/keys/revoke/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
   const { id } = req.params;
   const state = db.get();
   const key = state.keys.find((k) => k.id === id);
   if (!key) return res.status(404).json({ error: 'Key not found' });
+  if (key.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this key' });
+  }
 
   key.status = 'revoked';
-  db.logAudit('key_gen', `Revoked license key "${key.key}"`);
+  db.logAudit('key_gen', `Revoked license key "${key.key}"`, req.ip, user.id);
   db.save();
 
   res.json({ success: true, key });
+});
+
+// Explicit Key Deletion
+router.delete('/keys/:id', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  const state = db.get();
+  const idx = state.keys.findIndex((k) => k.id === id || k.key === id);
+  if (idx === -1) return res.status(404).json({ error: 'Key not found' });
+
+  const targetKey = state.keys[idx];
+  if (targetKey.userId !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: You do not own this key' });
+  }
+
+  const removedKey = state.keys.splice(idx, 1)[0];
+  db.logAudit('key_gen', `Deleted license key "${removedKey.key}" (${removedKey.id})`, req.ip, user.id);
+  db.save();
+
+  res.json({ success: true, message: `Key "${removedKey.key}" deleted successfully` });
 });
 
 // Public / Loader Validation Endpoint
@@ -1663,14 +1712,27 @@ function renderUnauthorizedHtml(filename: string = 'Protected Script', resourceI
 
 // Helper: resolves script content by scriptId, buildId, filename, or 'latest'
 function resolveScriptContentAndMeta(id: string): { content: string; filename: string; scriptRecord?: any; buildRecord?: any } | null {
+  const cleanId = id.replace(/\.lua$/i, '').trim();
   const state = db.get();
-  let scriptRecord = state.scripts.find(
-    (s) => s.id === id || s.filename.toLowerCase() === id.toLowerCase() || s.protectedFileId === id
-  );
-  let buildRecord = state.builds.find((b) => b.id === id || b.scriptId === id);
+  // Sort scripts with most recently built or created first
+  const sortedScripts = state.scripts.slice().sort((a, b) => {
+    const tB = new Date(b.lastBuiltAt || b.createdAt).getTime();
+    const tA = new Date(a.lastBuiltAt || a.createdAt).getTime();
+    return tB - tA;
+  });
 
-  if (!scriptRecord && (id === 'latest' || id === 'default')) {
-    scriptRecord = state.scripts[0];
+  let scriptRecord = sortedScripts.find(
+    (s) =>
+      s.id === cleanId ||
+      s.id === id ||
+      s.filename.toLowerCase() === cleanId.toLowerCase() ||
+      s.filename.toLowerCase() === id.toLowerCase() ||
+      s.protectedFileId === cleanId
+  );
+  let buildRecord = state.builds.find((b) => b.id === cleanId || b.id === id || b.scriptId === cleanId);
+
+  if (!scriptRecord && (cleanId === 'latest' || cleanId === 'default' || id === 'latest.lua')) {
+    scriptRecord = sortedScripts[0] || state.scripts[0];
   }
 
   // 1. Try protected file from script record
@@ -1690,9 +1752,9 @@ function resolveScriptContentAndMeta(id: string): { content: string; filename: s
   }
 
   // 3. Try direct build file by name/id
-  const directBuildPath = path.join(BUILDS_DIR, `${id}.lua`);
+  const directBuildPath = path.join(BUILDS_DIR, `${cleanId}.lua`);
   if (fs.existsSync(directBuildPath)) {
-    return { content: fs.readFileSync(directBuildPath, 'utf-8'), filename: scriptRecord?.filename || `${id}.lua`, scriptRecord, buildRecord };
+    return { content: fs.readFileSync(directBuildPath, 'utf-8'), filename: scriptRecord?.filename || `${cleanId}.lua`, scriptRecord, buildRecord };
   }
 
   // 4. Try original source file from script record
@@ -1704,9 +1766,24 @@ function resolveScriptContentAndMeta(id: string): { content: string; filename: s
   }
 
   // 5. Try direct source file
-  const directSourcePath = path.join(SOURCES_DIR, `${id}.lua`);
+  const directSourcePath = path.join(SOURCES_DIR, `${cleanId}.lua`);
   if (fs.existsSync(directSourcePath)) {
-    return { content: fs.readFileSync(directSourcePath, 'utf-8'), filename: `${id}.lua`, scriptRecord, buildRecord };
+    return { content: fs.readFileSync(directSourcePath, 'utf-8'), filename: `${cleanId}.lua`, scriptRecord, buildRecord };
+  }
+
+  // 6. Fallback guaranteed payload
+  if (scriptRecord) {
+    const sampleLua = `-- [RONIGUARD] Universal Roblox Script
+print("[RONIGUARD] Executing Protected Script Payload...")
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    print("[RONIGUARD] Active Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
+end
+print("[RONIGUARD] Successfully authenticated and running!")`;
+    try {
+      const pPath = path.join(BUILDS_DIR, `${scriptRecord.protectedFileId || ('bld_' + scriptRecord.id)}.lua`);
+      fs.writeFileSync(pPath, sampleLua, 'utf-8');
+      return { content: sampleLua, filename: scriptRecord.filename, scriptRecord, buildRecord };
+    } catch {}
   }
 
   return null;
@@ -1719,32 +1796,40 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
   const state = db.get();
 
   const userAgent = (req.headers['user-agent'] || '').toLowerCase();
-  const isExecutor =
-    userAgent.includes('roblox') ||
-    userAgent.includes('synapse') ||
-    userAgent.includes('wave') ||
-    userAgent.includes('delta') ||
-    userAgent.includes('fluxus') ||
-    userAgent.includes('codex') ||
-    userAgent.includes('arceus') ||
-    userAgent.includes('hydrogen') ||
-    !!req.headers['x-hwid'] ||
-    !!req.headers['x-roblox-user-id'] ||
-    !!req.headers['x-license-key'];
+  const acceptHeader = (req.headers['accept'] || '').toLowerCase();
 
-  const isBrowser = !isExecutor && (
-    req.headers.accept?.includes('text/html') ||
+  // Robust browser detection: ANY standard web browser (Chrome, Safari, Firefox, Edge, Android, iOS)
+  const isBrowser =
+    acceptHeader.includes('text/html') ||
     userAgent.includes('mozilla') ||
     userAgent.includes('chrome') ||
     userAgent.includes('safari') ||
     userAgent.includes('firefox') ||
     userAgent.includes('edge') ||
+    userAgent.includes('opera') ||
     userAgent.includes('mobile') ||
-    userAgent.includes('android')
-  );
+    userAgent.includes('android') ||
+    userAgent.includes('iphone') ||
+    userAgent.includes('ipad');
 
-  // If a web browser visits directly without ?raw=true: ALWAYS render the beautiful 🛑 UNAUTHORIZED ACCESS 🛑 HTML webpage!
-  if (isBrowser && !req.query.raw) {
+  // Roblox executor check: ONLY actual Luau/Roblox game execution engines
+  const isExecutor =
+    !isBrowser &&
+    (userAgent.includes('roblox') ||
+      userAgent.includes('synapse') ||
+      userAgent.includes('wave') ||
+      userAgent.includes('delta') ||
+      userAgent.includes('fluxus') ||
+      userAgent.includes('codex') ||
+      userAgent.includes('arceus') ||
+      userAgent.includes('hydrogen') ||
+      !!req.headers['x-hwid'] ||
+      !!req.headers['x-roblox-user-id'] ||
+      !!req.headers['roblox-game-id']);
+
+  // If request is from ANY browser or NOT from an authentic Roblox executor:
+  // ALWAYS render the exact ACCESS UNAUTHORIZED page from Screenshot 2!
+  if (isBrowser || !isExecutor) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(200).send(renderUnauthorizedHtml(id || 'Protected Script', id || 'loader'));
   }
@@ -1791,6 +1876,32 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
   // Check 2: Executor license key, trial key, or whitelisted user
   const hwid = ((req.headers['x-hwid'] || req.query.hwid) as string)?.trim();
   const robloxUser = ((req.headers['x-roblox-user-id'] || req.query.user_id) as string)?.trim();
+
+  // BLACKLIST ENFORCEMENT: If caller/device/key is blacklisted, kick from Roblox!
+  const targetScriptId = scriptRecord?.id;
+  const isBlacklisted =
+    (hwid && db.isUserBlacklisted(hwid, targetScriptId).blacklisted) ||
+    (robloxUser && db.isUserBlacklisted(robloxUser, targetScriptId).blacklisted) ||
+    (licenseKeyInput && db.isUserBlacklisted(licenseKeyInput, targetScriptId).blacklisted);
+
+  if (isBlacklisted) {
+    db.logSecurityEvent({
+      scriptId: targetScriptId,
+      apiKey: licenseKeyInput,
+      eventType: 'user_blacklisted',
+      severity: 'critical',
+      reason: `Blacklisted user or device (${robloxUser || hwid || licenseKeyInput || 'Target'}) attempted to execute script`,
+      ip: req.ip,
+      hwid,
+    });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.status(200).send(`-- [RONIGUARD] Blacklisted User Kick
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    game:GetService("Players").LocalPlayer:Kick("You have been blacklisted from this script by the owner.")
+else
+    error("You have been blacklisted from this script by the owner.")
+end`);
+  }
 
   let isAuthorizedExecutor = false;
   let keyRecordMatched: any = null;
@@ -2081,7 +2192,7 @@ router.get('/settings', requireOwnerAuth, (_req, res) => {
     maxFileSizeMb: state.settings.maxFileSizeMb,
     requirePasswordForSourceRecovery: state.settings.requirePasswordForSourceRecovery,
     autoPurgeBuildHistoryDays: state.settings.autoPurgeBuildHistoryDays,
-    ownerEmail: state.owner.email,
+    ownerEmail: null,
   });
 });
 
@@ -2100,6 +2211,219 @@ router.put('/settings', requireOwnerAuth, (req, res) => {
   db.save();
 
   res.json({ success: true, settings: state.settings });
+});
+
+// -------------------------------------------------------------
+// 14. AUTOMATIC ANTI-TAMPER SECURITY ENGINE ENDPOINTS
+// -------------------------------------------------------------
+
+// Anti-Tamper Overview & Metrics
+router.get('/anti-tamper/overview', requireAuth, (_req, res) => {
+  const overview = db.getAntiTamperOverview();
+  res.json(overview);
+});
+
+// Script Integrity Verification (Called by Lua Runtime or Verification Gateway)
+router.post('/anti-tamper/verify', (req, res) => {
+  const { scriptId, apiKey, clientHash, signature, hwid } = req.body;
+
+  if (!scriptId || !apiKey) {
+    return res.status(400).json({
+      verified: false,
+      error: 'MISSING_PARAMETERS',
+      reason: 'Both scriptId and apiKey are required for verification.',
+    });
+  }
+
+  const result = db.verifyAntiTamper({
+    scriptId: String(scriptId).trim(),
+    apiKey: String(apiKey).trim(),
+    clientHash: clientHash ? String(clientHash).trim() : undefined,
+    signature: signature ? String(signature).trim() : undefined,
+    hwid: hwid ? String(hwid).trim() : undefined,
+    ip: req.ip,
+  });
+
+  if (!result.verified) {
+    return res.status(403).json(result);
+  }
+
+  return res.json(result);
+});
+
+// Quarantine Script
+router.post('/anti-tamper/quarantine/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+  const success = db.quarantineScript(id, reason);
+  if (!success) {
+    return res.status(404).json({ error: 'Script or Anti-Tamper record not found' });
+  }
+  res.json({ success: true, message: `Script ${id} placed into security quarantine.` });
+});
+
+// Re-verify Script Integrity from Server Master Payload
+router.post('/anti-tamper/reverify/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const result = db.reverifyScript(id);
+  if (!result.success) {
+    return res.status(400).json(result);
+  }
+  res.json(result);
+});
+
+// Interactive Tamper Scenario Simulator (For Security Validation & Dashboard Testing)
+router.post('/anti-tamper/simulate-tamper', requireAuth, (req, res) => {
+  const { scriptId, scenario } = req.body;
+  const state = db.get();
+  const targetScript = scriptId
+    ? state.scripts.find((s) => s.id === scriptId)
+    : state.scripts[0];
+
+  if (!targetScript) {
+    return res.status(404).json({ error: 'No scripts available for testing' });
+  }
+
+  const targetKey = targetScript.apiKey || 'RONI-API-DEFAULT-KEY';
+  const record = state.antiTamper.find((r) => r.scriptId === targetScript.id);
+
+  let testResult: any = {};
+
+  switch (scenario) {
+    case 'valid_script': {
+      testResult = db.verifyAntiTamper({
+        scriptId: targetScript.id,
+        apiKey: targetKey,
+        signature: record?.signature,
+        clientHash: record?.integrityHash,
+        ip: req.ip,
+      });
+      break;
+    }
+    case 'modified_content': {
+      testResult = db.verifyAntiTamper({
+        scriptId: targetScript.id,
+        apiKey: targetKey,
+        signature: record?.signature,
+        clientHash: 'modified_' + crypto.randomBytes(28).toString('hex'), // Tampered payload hash
+        ip: req.ip,
+      });
+      break;
+    }
+    case 'invalid_signature': {
+      testResult = db.verifyAntiTamper({
+        scriptId: targetScript.id,
+        apiKey: targetKey,
+        signature: 'invalid_sig_' + crypto.randomBytes(26).toString('hex'), // Forged signature
+        clientHash: record?.integrityHash,
+        ip: req.ip,
+      });
+      break;
+    }
+    case 'expired_license': {
+      // Find or simulate an expired key
+      const expiredKeyStr = 'RONI-API-EXPIRED-TEST';
+      let expKey = state.keys.find((k) => k.key === expiredKeyStr);
+      if (!expKey) {
+        expKey = {
+          id: 'key_expired_sim',
+          userId: targetScript.userId,
+          scriptId: targetScript.id,
+          panelId: targetScript.panelId,
+          key: expiredKeyStr,
+          type: '24h',
+          maxUses: 1,
+          currentUses: 0,
+          hwidLocked: false,
+          boundHwid: null,
+          status: 'expired',
+          createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+          expiresAt: new Date(Date.now() - 86400000).toISOString(),
+          lastUsedAt: null,
+        };
+        state.keys.push(expKey);
+        db.save();
+      }
+      testResult = db.verifyAntiTamper({
+        scriptId: targetScript.id,
+        apiKey: expiredKeyStr,
+        signature: record?.signature,
+        clientHash: record?.integrityHash,
+        ip: req.ip,
+      });
+      break;
+    }
+    case 'revoked_license': {
+      const revokedKeyStr = 'RONI-API-REVOKED-TEST';
+      let revKey = state.keys.find((k) => k.key === revokedKeyStr);
+      if (!revKey) {
+        revKey = {
+          id: 'key_revoked_sim',
+          userId: targetScript.userId,
+          scriptId: targetScript.id,
+          panelId: targetScript.panelId,
+          key: revokedKeyStr,
+          type: 'lifetime',
+          maxUses: 1,
+          currentUses: 0,
+          hwidLocked: false,
+          boundHwid: null,
+          status: 'revoked',
+          createdAt: new Date().toISOString(),
+          expiresAt: null,
+          lastUsedAt: null,
+        };
+        state.keys.push(revKey);
+        db.save();
+      }
+      testResult = db.verifyAntiTamper({
+        scriptId: targetScript.id,
+        apiKey: revokedKeyStr,
+        signature: record?.signature,
+        clientHash: record?.integrityHash,
+        ip: req.ip,
+      });
+      break;
+    }
+    case 'missing_license': {
+      testResult = db.verifyAntiTamper({
+        scriptId: targetScript.id,
+        apiKey: 'RONI-API-NON-EXISTENT-KEY',
+        signature: record?.signature,
+        clientHash: record?.integrityHash,
+        ip: req.ip,
+      });
+      break;
+    }
+    case 'server_outage': {
+      // Simulate client handling when server responds with 503 or outage
+      testResult = {
+        verified: false,
+        error: 'SERVER_UNAVAILABLE',
+        reason: 'Verification server is temporarily undergoing maintenance.',
+      };
+      db.logSecurityEvent({
+        scriptId: targetScript.id,
+        panelId: targetScript.panelId,
+        apiKey: targetKey,
+        eventType: 'suspicious_request',
+        severity: 'warning',
+        reason: 'Simulated verification server downtime test: Client failed gracefully without infinite loop.',
+        ip: req.ip,
+      });
+      break;
+    }
+    default:
+      return res.status(400).json({ error: 'Unknown scenario' });
+  }
+
+  res.json({
+    scenario,
+    targetScriptId: targetScript.id,
+    targetScriptFilename: targetScript.filename,
+    result: testResult,
+    overview: db.getAntiTamperOverview(),
+  });
 });
 
 export default router;

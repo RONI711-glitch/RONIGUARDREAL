@@ -309,30 +309,30 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
 
         <button
           onClick={() => setIsCreateOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/30 transition-all shrink-0"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-white via-purple-100 to-purple-200 hover:from-white hover:to-white text-purple-950 font-extrabold text-xs shadow-[0_0_20px_rgba(255,255,255,0.35)] hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0 cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
-          Create Script
+          <Plus className="w-4 h-4 stroke-[2.5]" />
+          <span>Create Script</span>
         </button>
       </div>
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-purple-300/70 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search scripts by filename or ID..."
-            className="w-full pl-10 pr-4 py-2 bg-[#0d071a] border border-purple-900/30 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500/60"
+            className="w-full pl-10 pr-4 py-2.5 bg-[#110722]/90 border border-white/10 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-400 transition-colors shadow-inner"
           />
         </div>
 
         <select
           value={selectedPanelFilter}
           onChange={(e) => setSelectedPanelFilter(e.target.value)}
-          className="px-3 py-2 bg-[#0d071a] border border-purple-900/30 rounded-xl text-xs text-neutral-300 focus:outline-none focus:border-purple-500/60"
+          className="px-3 py-2 bg-[#110722]/90 border border-white/10 rounded-xl text-xs text-neutral-200 focus:outline-none focus:border-purple-400"
         >
           <option value="all">All Panels</option>
           {panels.map((p) => (
@@ -345,22 +345,22 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
 
       {/* Scripts Grid / List */}
       {loading ? (
-        <div className="p-12 text-center text-xs text-neutral-500 flex flex-col items-center gap-3">
+        <div className="p-12 text-center text-xs text-purple-300/70 flex flex-col items-center gap-3">
           <RefreshCw className="w-6 h-6 animate-spin text-purple-400" />
           Loading scripts and protection state...
         </div>
       ) : filteredScripts.length === 0 ? (
-        <div className="p-12 border border-purple-900/20 rounded-2xl bg-[#0d071a]/40 text-center">
-          <FileCode2 className="w-10 h-10 text-neutral-600 mx-auto mb-3" />
-          <h3 className="text-sm font-semibold text-neutral-300">No Scripts Found</h3>
-          <p className="text-xs text-neutral-500 max-w-sm mx-auto mt-1 mb-4">
+        <div className="p-12 border border-white/10 rounded-2xl bg-gradient-to-b from-[#140a28]/80 to-[#0a0416] text-center backdrop-blur-xl">
+          <FileCode2 className="w-10 h-10 text-purple-400/50 mx-auto mb-3" />
+          <h3 className="text-sm font-bold text-white">No Scripts Found</h3>
+          <p className="text-xs text-neutral-400 max-w-sm mx-auto mt-1 mb-4">
             Create your first script with RONIGUARD MAX obfuscation to generate an executor loadstring.
           </p>
           <button
             onClick={() => setIsCreateOpen(true)}
-            className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold inline-flex items-center gap-2"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-white to-purple-100 text-purple-950 text-xs font-extrabold inline-flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.3)] cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 stroke-[2.5]" />
             Create Script Now
           </button>
         </div>
@@ -368,13 +368,14 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredScripts.map((script) => {
             const panel = panels.find((p) => p.id === script.panelId);
-            const loadstringSnippet = `loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey || 'YOUR_KEY'}"))()`;
+            const loadstringSnippet = `_G.Script_Key = "${script.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=" .. _G.Script_Key))()`;
 
             return (
               <div
                 key={script.id}
-                className="bg-[#0e081c] border border-purple-900/30 hover:border-purple-500/40 rounded-2xl p-5 flex flex-col justify-between transition-all group"
+                className="relative bg-gradient-to-b from-[#180e30]/90 via-[#100722]/95 to-[#0b0417]/98 border border-white/10 hover:border-purple-400/50 rounded-2xl p-5 flex flex-col justify-between transition-all shadow-lg hover:shadow-[0_8px_30px_rgba(168,85,247,0.22)] backdrop-blur-xl group overflow-hidden"
               >
+                <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -417,9 +418,23 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-500">API Key:</span>
-                      <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[140px]">
-                        {script.apiKey || 'Generated upon deployment'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[130px]">
+                          {script.apiKey || 'RONI-API-DEFAULT-KEY'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(script.apiKey || 'RONI-API-DEFAULT-KEY', `key_${script.id}`)}
+                          className="p-1 hover:text-purple-300 text-neutral-400 hover:bg-purple-900/30 rounded transition-colors"
+                          title="Copy API Key"
+                        >
+                          {copiedId === `key_${script.id}` ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-500">Original Size:</span>
@@ -476,7 +491,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                     <button
                       onClick={() =>
                         copyToClipboard(
-                          `Script_key = "trail"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=trial"))()`,
+                          `_G.Script_Key = "trail"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=" .. _G.Script_Key))()`,
                           `trial_${script.id}`
                         )
                       }
@@ -496,22 +511,43 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                     </button>
                   )}
 
-                  <button
-                    onClick={() => copyToClipboard(loadstringSnippet, `ls_${script.id}`)}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700/40 text-purple-200 text-xs font-semibold transition-all"
-                  >
-                    {copiedId === `ls_${script.id}` ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400 font-bold">Copied Loadstring</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy Loadstring</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => copyToClipboard(script.apiKey || 'RONI-API-DEFAULT-KEY', `key_btn_${script.id}`)}
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-300 text-xs font-semibold transition-all"
+                      title="Copy script-specific API key"
+                    >
+                      {copiedId === `key_btn_${script.id}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied Key!</span>
+                        </>
+                      ) : (
+                        <>
+                          <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copy API Key</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => copyToClipboard(loadstringSnippet, `ls_${script.id}`)}
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700/40 text-purple-200 text-xs font-semibold transition-all"
+                      title="Copy Roblox loadstring code"
+                    >
+                      {copiedId === `ls_${script.id}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied Loader!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Loader</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <button
@@ -794,11 +830,11 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
             <div className="p-4 rounded-xl bg-[#090412] border border-purple-900/40 space-y-2">
               <span className="text-xs font-semibold text-neutral-300">Roblox Executor Loadstring:</span>
               <div className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-black/60 font-mono text-[11px] text-purple-200 border border-neutral-800 overflow-x-auto">
-                <code className="break-all">{`loadstring(game:HttpGet("${completedJobResult.loadstringUrl}"))()`}</code>
+                <code className="break-all">{`_G.Script_Key = "${completedJobResult.apiKey}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${completedJobResult.scriptId}&key=" .. _G.Script_Key))()`}</code>
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      `loadstring(game:HttpGet("${completedJobResult.loadstringUrl}"))()`,
+                      `_G.Script_Key = "${completedJobResult.apiKey}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${completedJobResult.scriptId}&key=" .. _G.Script_Key))()`,
                       'modal_loadstring'
                     )
                   }

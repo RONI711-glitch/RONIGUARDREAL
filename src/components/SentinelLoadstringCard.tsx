@@ -39,23 +39,21 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
   } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  // Guarantee ZERO 404 in Roblox on Wasmer Edge by using physical static endpoints
-  const staticLoaderUrl = `${WASMER_APP_URL}/loader.lua`;
-  const staticRawUrl = `${WASMER_APP_URL}/raw/latest.lua`;
-  const primaryLoadstring = `loadstring(game:HttpGet("${staticLoaderUrl}"))()`;
-  const rawLoadstring = `loadstring(game:HttpGet("${staticRawUrl}"))()`;
-  const executorCodeWithKey = `loadstring(game:HttpGet("${staticLoaderUrl}?key=YOUR_LICENSE_KEY"))()`;
+  // Universal Roblox Execution Loadstrings with Script ID & Key Separation
+  const staticLoaderUrl = `${WASMER_APP_URL}/loader.lua?script=${scriptId}`;
+  const primaryLoadstring = `_G.Script_Key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()`;
+  const executorCodeWithKey = `_G.Script_Key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()`;
 
   const copyToClipboard = (text: string, type: 'loadstring' | 'raw' | 'key' | 'directCode') => {
     navigator.clipboard.writeText(text);
     if (type === 'loadstring') {
       setCopiedLoadstring(true);
       setTimeout(() => setCopiedLoadstring(false), 2000);
-      onShowToast('success', 'Roblox Loadstring Copied', 'Paste into executor (Synapse, Wave, Delta, Fluxus, etc.). Zero 404.');
+      onShowToast('success', 'Roblox Loadstring Copied', 'Paste into executor (Synapse, Wave, Delta, Fluxus, etc.).');
     } else if (type === 'raw') {
       setCopiedStaticUrl(true);
       setTimeout(() => setCopiedStaticUrl(false), 2000);
-      onShowToast('info', 'Static URL Copied', staticLoaderUrl);
+      onShowToast('info', 'Loader URL Copied', staticLoaderUrl);
     } else if (type === 'key') {
       setCopiedKeyUrl(true);
       setTimeout(() => setCopiedKeyUrl(false), 2000);
@@ -73,7 +71,7 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
     try {
       const res = await api.simulateLoaderCheck(scriptId, true);
       setSimulationResult(res);
-      onShowToast('success', 'AidenFuscators Verified', '54-Opcode Register VM & Security Walls online.');
+      onShowToast('success', 'RONIGUARD VM Verified', 'Register VM & Security Walls online.');
     } catch (err: any) {
       onShowToast('error', 'Verification Notice', err.message);
     } finally {
@@ -82,23 +80,23 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
   };
 
   return (
-    <div className="rounded-2xl bg-gradient-to-br from-[#0c0817] to-[#06030c] border border-cyan-800/40 p-5 shadow-xl space-y-4 relative overflow-hidden">
+    <div className="rounded-2xl bg-gradient-to-br from-[#0c0817] to-[#06030c] border border-purple-800/40 p-5 shadow-xl space-y-4 relative overflow-hidden">
       {/* Top Ambient Glow */}
-      <div className="absolute top-0 right-0 w-72 h-72 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 right-0 w-72 h-72 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-cyan-900/30 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-900/30 pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-950">
-            <Lock className="w-5 h-5 text-cyan-400" />
+          <div className="w-9 h-9 rounded-xl bg-purple-950/80 border border-purple-500/40 flex items-center justify-center text-purple-400 shadow-md shadow-purple-950">
+            <Lock className="w-5 h-5 text-purple-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold text-white tracking-tight">
-                AIDENFUSCATORS × RONIGUARD LOADSTRING
+                RONIGUARD VM v2.5 UNIVERSAL LOADER
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950/80 border border-cyan-500/40 text-cyan-300">
-                ZERO-404 GUARANTEED
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-950/80 border border-purple-500/40 text-purple-300">
+                ACTIVE
               </span>
             </div>
             <p className="text-[11px] text-neutral-400">
@@ -108,20 +106,20 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
         </div>
 
         {/* Engine Badge */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-200 text-xs self-start sm:self-auto">
-          <Cpu className="w-4 h-4 text-cyan-400 shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-200 text-xs self-start sm:self-auto">
+          <Cpu className="w-4 h-4 text-purple-400 shrink-0" />
           <div className="text-[11px] leading-tight">
-            <span className="block font-bold text-cyan-300">AidenFuscators Register VM v1.5</span>
-            <span className="text-neutral-400">54 Opcodes · Base-85 Bytecode</span>
+            <span className="block font-bold text-purple-300">RONIGUARD MAX Register VM</span>
+            <span className="text-neutral-400">Anti-Tamper · Control-Flow Flattening</span>
           </div>
         </div>
       </div>
 
       {/* Notice Callout */}
-      <div className="p-3.5 rounded-xl bg-[#07040f] border border-cyan-900/40 flex items-start gap-3">
+      <div className="p-3.5 rounded-xl bg-[#07040f] border border-purple-900/40 flex items-start gap-3">
         <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
         <div className="text-xs text-neutral-300 leading-relaxed">
-          <span className="font-semibold text-white">Roblox Execution Ready:</span> This loadstring connects directly to the static endpoint on Wasmer (<span className="text-cyan-300 font-mono">/loader.lua</span>) with physical file persistence. It is guaranteed to return HTTP 200 with no 404 or 405 errors in Synapse, Wave, Delta, Fluxus, or Arceus X.
+          <span className="font-semibold text-white">Roblox Execution Ready:</span> This loadstring connects to <span className="text-purple-300 font-mono">loader.lua</span> with your script ID and person key. Browsers opening this link will see the UNAUTHORIZED page, while genuine Roblox executors (Synapse, Wave, Delta, Fluxus, etc.) will authenticate and run the secured file.
         </div>
       </div>
 

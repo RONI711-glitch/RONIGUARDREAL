@@ -13,6 +13,7 @@ import {
   Unlock,
   RefreshCw,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { LicenseItem } from '../types.ts';
@@ -28,8 +29,9 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Revoke & Regenerate modals
+  // Revoke, Delete & Regenerate modals
   const [keyToRevoke, setKeyToRevoke] = useState<LicenseItem | null>(null);
+  const [keyToDelete, setKeyToDelete] = useState<LicenseItem | null>(null);
   const [keyToRegenerate, setKeyToRegenerate] = useState<LicenseItem | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -86,6 +88,21 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
     }
   };
 
+  const handleDeleteKey = async () => {
+    if (!keyToDelete) return;
+    setIsProcessing(true);
+    try {
+      await api.deleteKey(keyToDelete.id);
+      onShowToast('info', 'Key Deleted', `License key ${keyToDelete.key} was permanently removed.`);
+      setKeyToDelete(null);
+      loadLicenses();
+    } catch (err: any) {
+      onShowToast('error', 'Delete Failed', err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const filtered = licenses.filter((l) => {
     const q = searchQuery.toLowerCase();
     return (
@@ -112,7 +129,7 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
         <button
           onClick={loadLicenses}
           disabled={loading}
-          className="px-3.5 py-2 rounded-xl bg-purple-950/60 hover:bg-purple-900/60 border border-purple-800/40 text-purple-200 text-xs font-semibold flex items-center gap-2 transition-all self-start sm:self-auto"
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-white via-purple-100 to-purple-200 hover:from-white text-purple-950 text-xs font-extrabold flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.3)] transition-all self-start sm:self-auto cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh Keys
@@ -121,27 +138,27 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
 
       {/* Search Input */}
       <div className="relative">
-        <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <Search className="w-4 h-4 text-purple-300/70 absolute left-3.5 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Filter by script name, script ID, or API key..."
-          className="w-full pl-10 pr-4 py-2.5 bg-[#0d071a] border border-purple-900/30 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500/60"
+          className="w-full pl-10 pr-4 py-2.5 bg-[#110722]/90 border border-white/10 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-400 transition-colors shadow-inner"
         />
       </div>
 
       {/* Licenses Table / Cards */}
       {loading ? (
-        <div className="p-12 text-center text-xs text-neutral-500 flex flex-col items-center gap-3">
+        <div className="p-12 text-center text-xs text-purple-300/70 flex flex-col items-center gap-3">
           <RefreshCw className="w-6 h-6 animate-spin text-purple-400" />
           Loading active script licenses...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="p-12 border border-purple-900/20 rounded-2xl bg-[#0d071a]/40 text-center">
-          <KeyRound className="w-10 h-10 text-neutral-600 mx-auto mb-3" />
-          <h3 className="text-sm font-semibold text-neutral-300">No Licenses Found</h3>
-          <p className="text-xs text-neutral-500 max-w-sm mx-auto mt-1">
+        <div className="p-12 border border-white/10 rounded-2xl bg-gradient-to-b from-[#140a28]/80 to-[#0a0416] text-center backdrop-blur-xl">
+          <KeyRound className="w-10 h-10 text-purple-400/50 mx-auto mb-3" />
+          <h3 className="text-sm font-bold text-white">No Licenses Found</h3>
+          <p className="text-xs text-neutral-400 max-w-sm mx-auto mt-1">
             Deploy a script in the Scripts tab to automatically generate its unique API key.
           </p>
         </div>
@@ -149,15 +166,14 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
         <div className="space-y-3">
           {filtered.map((item) => {
             const isActive = item.status === 'active';
-            const loadstring = item.loadstringUrl
-              ? `loadstring(game:HttpGet("${item.loadstringUrl}"))()`
-              : `loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${item.scriptId}&key=${item.key}"))()`;
+            const loadstring = `_G.Script_Key = "${item.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${item.scriptId}&key=" .. _G.Script_Key))()`;
 
             return (
               <div
                 key={item.id}
-                className="bg-[#0e081c] border border-purple-900/30 hover:border-purple-600/40 rounded-2xl p-4 sm:p-5 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+                className="relative bg-gradient-to-b from-[#180e30]/90 via-[#100722]/95 to-[#0b0417]/98 border border-white/10 hover:border-purple-400/50 rounded-2xl p-4 sm:p-5 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-lg hover:shadow-[0_8px_30px_rgba(168,85,247,0.22)] backdrop-blur-xl group overflow-hidden"
               >
+                <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
                 {/* Script & Key Info */}
                 <div className="min-w-0 space-y-2">
                   <div className="flex items-center gap-2.5 flex-wrap">
@@ -237,13 +253,22 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
                   {isActive && (
                     <button
                       onClick={() => setKeyToRevoke(item)}
-                      className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-red-950/30 hover:bg-red-950/60 border border-red-900/40 text-red-300 text-xs font-medium transition-all"
-                      title="Revoke API key immediately"
+                      className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-amber-950/30 hover:bg-amber-900/40 border border-amber-900/40 text-amber-300 text-xs font-medium transition-all"
+                      title="Revoke API key"
                     >
                       <Ban className="w-3.5 h-3.5" />
                       <span>Revoke</span>
                     </button>
                   )}
+
+                  <button
+                    onClick={() => setKeyToDelete(item)}
+                    className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-300 text-xs font-semibold transition-all"
+                    title="Permanently delete key"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             );
@@ -260,6 +285,17 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
         confirmVariant="danger"
         onConfirm={handleRevoke}
         onCancel={() => setKeyToRevoke(null)}
+      />
+
+      {/* DELETE MODAL */}
+      <ConfirmModal
+        isOpen={!!keyToDelete}
+        title="Permanently Delete License Key"
+        message={`Are you sure you want to permanently delete key "${keyToDelete?.key}"? This completely removes the key from the database.`}
+        confirmText="Delete Permanently"
+        confirmVariant="danger"
+        onConfirm={handleDeleteKey}
+        onCancel={() => setKeyToDelete(null)}
       />
 
       {/* REGENERATE MODAL */}

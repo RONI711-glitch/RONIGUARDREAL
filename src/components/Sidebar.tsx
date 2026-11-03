@@ -15,6 +15,7 @@ export type SectionId =
   | 'panels'
   | 'scripts'
   | 'licenses'
+  | 'anti-tamper'
   | 'account';
 
 interface SidebarProps {
@@ -43,6 +44,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { id: 'panels', label: 'Panels', icon: Layers, countKey: 'panels' },
   { id: 'scripts', label: 'Scripts', icon: FileCode2, countKey: 'scripts' },
   { id: 'licenses', label: 'Licenses', icon: KeyRound, countKey: 'activeKeys' },
+  { id: 'anti-tamper', label: 'Anti-Tamper', icon: ShieldCheck },
   { id: 'account', label: 'Account', icon: User },
 ];
 
@@ -56,19 +58,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRole = 'user',
 }) => {
   const content = (
-    <div className="flex flex-col h-full bg-[#0a0614] border-r border-purple-900/25">
+    <div className="flex flex-col h-full bg-[#080314]/95 border-r border-white/10 backdrop-blur-2xl">
       {/* Brand Header */}
-      <div className="flex items-center justify-between px-6 py-5 border-b border-purple-900/20">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-purple-950 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
-            <ShieldAlert className="w-4 h-4 text-purple-200" />
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-white/20 via-purple-600 to-indigo-900 border border-white/30 flex items-center justify-center text-white shadow-lg shadow-purple-600/40">
+            <ShieldAlert className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-base font-extrabold text-white tracking-tight leading-none">
-              RONI<span className="text-purple-400">GUARD</span>
+            <h1 className="text-base font-black text-white tracking-tight leading-none drop-shadow-[0_1px_4px_rgba(255,255,255,0.3)]">
+              RONI<span className="text-purple-300">GUARD</span>
             </h1>
-            <p className="text-[10px] text-neutral-400 font-medium tracking-wide uppercase mt-0.5">
-              Lua Security & Licensing
+            <p className="text-[10px] text-purple-200/80 font-semibold tracking-wide uppercase mt-0.5">
+              Cosmic Security Hub
             </p>
           </div>
         </div>
@@ -82,8 +84,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation list */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
+        <div className="px-3 pb-2 text-[11px] font-bold tracking-wider text-purple-300/70 uppercase">
           Navigation
         </div>
 
@@ -99,16 +101,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectSection(item.id);
                 onCloseMobile();
               }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all group ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                 isActive
-                  ? 'bg-purple-900/40 text-white border border-purple-500/40 shadow-sm shadow-purple-900/30 font-semibold'
-                  : 'text-neutral-300 hover:text-white hover:bg-purple-950/30'
+                  ? 'bg-gradient-to-r from-white/15 via-purple-900/50 to-indigo-950/60 text-white border border-white/30 shadow-lg shadow-purple-600/20'
+                  : 'text-neutral-300 hover:text-white hover:bg-white/[0.06]'
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Icon
                   className={`w-4 h-4 shrink-0 transition-colors ${
-                    isActive ? 'text-purple-300' : 'text-neutral-400 group-hover:text-purple-300'
+                    isActive ? 'text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.6)]' : 'text-neutral-400 group-hover:text-purple-200'
                   }`}
                 />
                 <span className="truncate">{item.label}</span>

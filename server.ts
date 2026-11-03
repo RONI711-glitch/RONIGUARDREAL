@@ -25,6 +25,17 @@ app.get('/raw/:id', handleRawLoaderRequest);
 app.get('/load/:id', handleRawLoaderRequest);
 app.get('/raw/latest.lua', handleRawLoaderRequest);
 
+// Root OAuth fallbacks to ensure zero-404 during Discord authorization redirects
+app.get('/auth/discord/login', (req, res) => {
+  res.redirect('/api/auth/discord/login' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+});
+app.get('/auth/discord/callback', (req, res) => {
+  res.redirect('/api/auth/discord/callback' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+});
+app.get('/auth/callback', (req, res) => {
+  res.redirect('/api/auth/discord/callback' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+});
+
 // Development vs Production serving
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -48,15 +59,26 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const primaryServer = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[RONIGUARD] Server online at http://0.0.0.0:${PORT} (${isProduction ? 'production' : 'development'})`);
-    console.log(`[RONIGUARD] Configured owner: ronizz.edit@gmail.com`);
 
     // Launch Discord Bot Gateway Service
     discordBotService.start().catch((err) => {
       console.warn('[RONIGUARD] Discord Bot Gateway background start notice:', err);
     });
   });
+
+  // Dual listener for Wasmer Edge container environments which route to 8080
+  if (PORT !== 8080) {
+    try {
+      const secondaryApp = app.listen(8080, '0.0.0.0', () => {
+        console.log('[RONIGUARD] Wasmer Edge port 8080 listener active');
+      });
+      secondaryApp.on('error', () => {
+        // Port 8080 in use or restricted, primary listener on PORT is sufficient
+      });
+    } catch {}
+  }
 }
 
 startServer().catch((err) => {

@@ -25,7 +25,7 @@ export interface UserProfile {
 }
 
 export interface OwnerProfile {
-  email: string;
+  email: string | null;
   lastLogin: string | null;
   twoFactorEnabled: boolean;
   activeSessionsCount?: number;
@@ -264,4 +264,54 @@ export interface ObfuscationEngineInfo {
   supportedProfiles: string[];
   supportedTargets: string[];
   isDefault: boolean;
+}
+
+export interface AntiTamperRecord {
+  id: string;
+  scriptId: string;
+  panelId: string;
+  apiKey: string;
+  integrityHash: string;
+  signature: string;
+  scriptLength: number;
+  status: 'guaranteed' | 'tampered' | 'quarantined';
+  totalVerifications: number;
+  passedVerifications: number;
+  failedVerifications: number;
+  lastVerifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SecurityEventRecord {
+  id: string;
+  scriptId?: string;
+  panelId?: string;
+  apiKey?: string;
+  eventType:
+    | 'tamper_detected'
+    | 'signature_mismatch'
+    | 'content_tampered'
+    | 'revoked_license'
+    | 'expired_license'
+    | 'missing_license'
+    | 'integrity_verified'
+    | 'suspicious_request';
+  severity: 'info' | 'warning' | 'critical';
+  reason: string;
+  ip: string;
+  hwid?: string;
+  timestamp: string;
+}
+
+export interface AntiTamperOverview {
+  totalProtected: number;
+  guaranteedCount: number;
+  tamperedCount: number;
+  quarantinedCount: number;
+  totalVerifications: number;
+  passedVerifications: number;
+  failedVerifications: number;
+  records: AntiTamperRecord[];
+  recentEvents: SecurityEventRecord[];
 }

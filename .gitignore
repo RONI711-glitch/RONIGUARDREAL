@@ -9,3 +9,5 @@ coverage/
 .aistudio/
 data/
 public/assets/
+*.bundle
+*.patch

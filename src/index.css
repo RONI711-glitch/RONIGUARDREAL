@@ -34,25 +34,94 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #090514;
+  background: #06020f;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #251642;
-  border-radius: 3px;
+  background: #28164a;
+  border-radius: 9999px;
+  border: 1px solid rgba(168, 85, 247, 0.2);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #491f80;
+  background: #58219c;
+}
+
+/* Celestial Universe Keyframes */
+@keyframes celestial-drift-1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translate(40px, -30px) scale(1.12);
+    opacity: 0.32;
+  }
+}
+
+@keyframes celestial-drift-2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.18;
+  }
+  50% {
+    transform: translate(-35px, 25px) scale(1.15);
+    opacity: 0.28;
+  }
+}
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(0.9); }
+  50% { opacity: 0.85; transform: scale(1.2); }
+}
+
+.animate-celestial-1 {
+  animation: celestial-drift-1 22s ease-in-out infinite;
+}
+
+.animate-celestial-2 {
+  animation: celestial-drift-2 28s ease-in-out infinite;
+}
+
+/* Smothered Universe Glass */
+.cosmic-glass {
+  background: radial-gradient(130% 130% at 50% 0%, rgba(26, 14, 48, 0.65) 0%, rgba(10, 5, 20, 0.75) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.cosmic-glass:hover {
+  border-color: rgba(192, 132, 252, 0.35);
+  box-shadow: 0 12px 48px -8px rgba(168, 85, 247, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.18);
+}
+
+/* Glowing text and buttons */
+.text-cosmic-glow {
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.4), 0 0 40px rgba(168, 85, 247, 0.3);
+}
+
+.btn-cosmic-primary {
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #7e22ce 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-cosmic-primary:hover {
+  background: linear-gradient(135deg, #c084fc 0%, #818cf8 50%, #9333ea 100%);
+  box-shadow: 0 6px 30px rgba(168, 85, 247, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
 }
 
 /* Subtle neon glows */
 .neon-glow-sm {
-  box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.18);
 }
 
 .neon-glow {
-  box-shadow: 0 0 25px rgba(168, 85, 247, 0.25);
+  box-shadow: 0 0 25px rgba(168, 85, 247, 0.28);
 }
 
 .neon-border {

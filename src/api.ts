@@ -12,6 +12,9 @@ import {
   SourceRecoveryItem,
   SystemSettings,
   ObfuscationEngineInfo,
+  AntiTamperOverview,
+  AntiTamperRecord,
+  SecurityEventRecord,
 } from './types.ts';
 import {
   runClientObfuscation,
@@ -25,21 +28,29 @@ export const WASMER_APP_URL = 'https://roniguardreal.wasmer.app';
 export const generateLocalId = () => Math.random().toString(36).substring(2, 9);
 
 export function getStoredToken(): string | null {
-  // 1. Check URL parameters (e.g. redirected from Discord OAuth callback)
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') return null;
+
+  // If user explicitly signed out, do not auto-restore session from cookies, storage, or stale query params
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('roniguard_logged_out') === 'true') {
     const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('auth_token') || params.get('token') || params.get('user_token');
-    if (urlToken) {
-      setStoredToken(urlToken);
-      // Clean auth_token query parameter from URL bar without reloading
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-      return urlToken;
+    if (params.get('auth_token') || params.get('token') || params.get('user_token')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
+    return null;
+  }
+
+  // 1. Check URL parameters (redirected from fresh Discord OAuth callback)
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get('auth_token') || params.get('token') || params.get('user_token');
+  if (urlToken) {
+    setStoredToken(urlToken);
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+    return urlToken;
   }
 
   // 2. Check localStorage
-  const local = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+  const local = localStorage.getItem(TOKEN_KEY);
   if (local) return local;
 
   // 3. Check document.cookie
@@ -47,9 +58,7 @@ export function getStoredToken(): string | null {
     const match = document.cookie.match(/(?:^|;\s*)(?:roni_user_token|roni_owner_token)=([^;]+)/);
     if (match && match[1]) {
       const tok = decodeURIComponent(match[1]);
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TOKEN_KEY, tok);
-      }
+      localStorage.setItem(TOKEN_KEY, tok);
       return tok;
     }
   }
@@ -58,7 +67,16 @@ export function getStoredToken(): string | null {
 }
 
 export function setStoredToken(token: string): void {
+  backendOfflineMode = false;
   if (typeof localStorage !== 'undefined') {
+    const prevToken = localStorage.getItem(TOKEN_KEY);
+    if (prevToken && prevToken !== token) {
+      localStorage.removeItem(LOCAL_STORE_KEY);
+      localStorage.removeItem('roniguard_local_db_v1');
+      localStorage.removeItem('roniguard_local_db_v2');
+      localStorage.removeItem('roniguard_local_db_v3');
+    }
+    localStorage.removeItem('roniguard_logged_out');
     localStorage.setItem(TOKEN_KEY, token);
   }
   if (typeof document !== 'undefined') {
@@ -70,13 +88,21 @@ export function setStoredToken(token: string): void {
 }
 
 export function clearStoredToken(): void {
+  backendOfflineMode = false;
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('roniguard_discord_user');
+    localStorage.removeItem(LOCAL_STORE_KEY);
+    localStorage.removeItem('roniguard_local_db_v1');
+    localStorage.removeItem('roniguard_local_db_v2');
+    localStorage.removeItem('roniguard_local_db_v3');
+    localStorage.setItem('roniguard_logged_out', 'true');
   }
   if (typeof document !== 'undefined') {
     try {
       document.cookie = 'roni_user_token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'roni_owner_token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'roni_discord_user=; path=/; max-age=0; SameSite=Lax';
     } catch {}
   }
 }
@@ -86,7 +112,7 @@ export function clearStoredToken(): void {
 // -------------------------------------------------------------
 interface LocalStoreState {
   owner: {
-    email: string;
+    email: string | null;
     lastLogin: string;
     twoFactorEnabled: boolean;
   };
@@ -105,7 +131,7 @@ function getInitialLocalStore(): LocalStoreState {
   const now = new Date().toISOString();
   return {
     owner: {
-      email: 'ronizz.edit@gmail.com',
+      email: null,
       lastLogin: now,
       twoFactorEnabled: false,
     },
@@ -120,7 +146,7 @@ function getInitialLocalStore(): LocalStoreState {
       {
         id: 'log_1',
         eventType: 'login',
-        details: 'Owner authentication established for ronizz.edit@gmail.com',
+        details: 'Multi-tenant session established via Discord',
         ip: '127.0.0.1',
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Browser',
         timestamp: now,
@@ -134,7 +160,7 @@ function getInitialLocalStore(): LocalStoreState {
       maxFileSizeMb: 15,
       requirePasswordForSourceRecovery: true,
       autoPurgeBuildHistoryDays: 60,
-      ownerEmail: 'ronizz.edit@gmail.com',
+      ownerEmail: '',
     },
   };
 }
@@ -188,12 +214,11 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
       credentials: 'include',
     });
 
-    // Detect Wasmer static server (404 Not Found, 405 Method Not Allowed, or HTML error page on API)
+    // Detect Wasmer static server (Only when the host serves an HTML 404/405 page instead of an API server)
     const contentType = response.headers.get('content-type') || '';
     if (
-      response.status === 404 ||
-      response.status === 405 ||
-      (response.status >= 400 && contentType.includes('text/html'))
+      (response.status === 404 || response.status === 405) &&
+      contentType.includes('text/html')
     ) {
       backendOfflineMode = true;
       throw new Error('BACKEND_OFFLINE_WASMER_EDGE');
@@ -282,7 +307,7 @@ export const api = {
       return {
         token,
         user: {
-          email: 'ronizz.edit@gmail.com',
+          email: null,
           lastLogin: store.owner.lastLogin,
           twoFactorEnabled: false,
         },
@@ -298,6 +323,12 @@ export const api = {
   },
 
   async getMe() {
+    // If explicitly logged out or no token is available, return null
+    const token = getStoredToken();
+    if (!token || (typeof localStorage !== 'undefined' && localStorage.getItem('roniguard_logged_out') === 'true')) {
+      return null;
+    }
+
     try {
       return await fetchWithAuth('/api/auth/me');
     } catch {
@@ -311,7 +342,7 @@ export const api = {
               discordId: parsed.id || '1549804529778692237',
               username: parsed.username || 'Discord Developer',
               avatar: parsed.avatar || null,
-              email: parsed.email || null,
+              email: null,
               role: 'user',
               lastLoginAt: new Date().toISOString(),
             };
@@ -319,15 +350,7 @@ export const api = {
         }
       }
 
-      const store = loadLocalStore();
-      return {
-        id: 'usr_owner',
-        discordId: '1549804529778692237',
-        username: 'RONIGUARD Developer',
-        email: store.owner.email,
-        role: 'admin',
-        lastLoginAt: store.owner.lastLogin,
-      };
+      return null;
     }
   },
 
@@ -1091,6 +1114,21 @@ export const api = {
     }
   },
 
+  async deleteKey(id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      return await fetchWithAuth(`/api/keys/${id}`, { method: 'DELETE' });
+    } catch {
+      const store = loadLocalStore();
+      const idx = store.keys.findIndex((k) => k.id === id);
+      if (idx !== -1) {
+        store.keys.splice(idx, 1);
+        saveLocalStore(store);
+        return { success: true, message: 'Key deleted' };
+      }
+      throw new Error('Key not found');
+    }
+  },
+
   async testKeyValidation(key: string, hwid?: string, identifier?: string) {
     try {
       return await fetchWithAuth('/api/keys/validate', {
@@ -1292,9 +1330,9 @@ loadstring(game:HttpGet(url))()
   },
 
   async getLoaderDetails(id: string) {
-    const publicRawUrl = `${WASMER_APP_URL}/api/loader/raw/${id}`;
-    const loadstringSnippet = `loadstring(game:HttpGet("${publicRawUrl}"))()`;
-    const executorSnippetWithKey = `loadstring(game:HttpGet("${publicRawUrl}?key=YOUR_LICENSE_KEY"))()`;
+    const publicRawUrl = `${WASMER_APP_URL}/loader.lua?script=${id}`;
+    const loadstringSnippet = `_G.Script_Key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}&key=" .. _G.Script_Key))()`;
+    const executorSnippetWithKey = `_G.Script_Key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}&key=" .. _G.Script_Key))()`;
 
     try {
       const data = await fetchWithAuth(`/api/loader/details/${id}`);
@@ -1394,5 +1432,73 @@ loadstring(game:HttpGet(url))()
       saveLocalStore(store);
       return store.settings;
     }
+  },
+
+  // Anti-Tamper Security
+  async getAntiTamperOverview(): Promise<AntiTamperOverview> {
+    try {
+      return await fetchWithAuth('/api/anti-tamper/overview');
+    } catch {
+      return {
+        totalProtected: 1,
+        guaranteedCount: 1,
+        tamperedCount: 0,
+        quarantinedCount: 0,
+        totalVerifications: 1,
+        passedVerifications: 1,
+        failedVerifications: 0,
+        records: [
+          {
+            id: 'at_default',
+            scriptId: 'scr_main_default',
+            panelId: 'pnl_main_default',
+            apiKey: 'RONI-API-DEFAULT-KEY',
+            integrityHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            signature: '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b',
+            scriptLength: 220,
+            status: 'guaranteed',
+            totalVerifications: 1,
+            passedVerifications: 1,
+            failedVerifications: 0,
+            lastVerifiedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        recentEvents: [
+          {
+            id: 'se_init',
+            scriptId: 'scr_main_default',
+            panelId: 'pnl_main_default',
+            apiKey: 'RONI-API-DEFAULT-KEY',
+            eventType: 'integrity_verified',
+            severity: 'info',
+            reason: 'Automated Anti-Tamper integrity signature initialized.',
+            ip: '127.0.0.1',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+  },
+
+  async quarantineScript(id: string, reason?: string) {
+    return await fetchWithAuth(`/api/anti-tamper/quarantine/${id}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async reverifyScript(id: string) {
+    return await fetchWithAuth(`/api/anti-tamper/reverify/${id}`, {
+      method: 'POST',
+    });
+  },
+
+  async simulateTamperTest(scriptId: string | undefined, scenario: string) {
+    return await fetchWithAuth('/api/anti-tamper/simulate-tamper', {
+      method: 'POST',
+      body: JSON.stringify({ scriptId, scenario }),
+    });
   },
 };

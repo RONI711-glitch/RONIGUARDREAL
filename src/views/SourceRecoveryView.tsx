@@ -132,7 +132,7 @@ export const SourceRecoveryView: React.FC<SourceRecoveryViewProps> = ({ onShowTo
           <span>Cryptographic Security & Owner Identity Separation</span>
         </div>
         <p className="text-[11px] leading-relaxed text-neutral-300">
-          Owner Email: <span className="text-white font-mono font-bold">ronizz.edit@gmail.com</span>. Your original raw Lua/Luau scripts are never distributed to players, clients, or third parties. Every source retrieval requires active owner session credentials and re-authentication, with irreversible immutable audit logging.
+          Owner Clearance: <span className="text-white font-mono font-bold">Authenticated Discord Developer (Verified)</span>. Your original raw Lua/Luau scripts are never distributed to players, clients, or third parties. Every source retrieval requires active owner session credentials and re-authentication, with irreversible immutable audit logging.
         </p>
       </div>
 

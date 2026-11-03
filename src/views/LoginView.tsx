@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock } from 'lucide-react';
+import { ShieldAlert, AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink } from 'lucide-react';
 import { api } from '../api.ts';
 
 interface LoginViewProps {
@@ -43,13 +43,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const handleDiscordSignIn = () => {
     setIsLoading(true);
     setErrorMsg(null);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('roniguard_logged_out');
+    }
 
     // Build absolute URL to avoid Google 404 inside Google AI Studio iframes
     const isFramed = window.self !== window.top;
     const origin = window.location.origin;
     const loginEndpoint = `${origin}/api/auth/discord/login`;
     const directDiscordUrl =
-      'https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=https%3A%2F%2Froniguardreal.wasmer.app%2Fapi%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify%20email';
+      'https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=https%3A%2F%2Froniguardreal.wasmer.app%2Fapi%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify';
 
     try {
       if (isFramed) {
@@ -101,7 +104,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* Primary Action: Only Discord Sign In */}
+          {/* Primary Action: Discord Sign In + Add Bot to Server */}
           <div className="space-y-3 mb-5">
             <button
               onClick={handleDiscordSignIn}
@@ -113,6 +116,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               </svg>
               <span>{isLoading ? 'Connecting to Discord...' : 'Sign in with Discord'}</span>
             </button>
+
+            <a
+              href="https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3.5 px-5 rounded-2xl bg-[#140b28] hover:bg-[#1f103d] border border-purple-500/40 hover:border-purple-400 text-purple-200 font-bold text-xs sm:text-sm shadow-lg shadow-purple-950/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer group"
+            >
+              <Bot className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+              <span>Add RONIGUARD Bot to Server</span>
+              <ExternalLink className="w-3.5 h-3.5 text-purple-400 opacity-60" />
+            </a>
           </div>
 
           {/* User Limits Info Badge */}
