@@ -2049,8 +2049,10 @@ var DiscordBotService = class {
       state.botConfig.botAvatar = botUser.avatar ? `https://cdn.discordapp.com/avatars/${botUser.id}/${botUser.avatar}.png` : void 0;
       state.botConfig.lastTestedAt = (/* @__PURE__ */ new Date()).toISOString();
       db.save();
-      await this.registerSlashCommands();
       this.connectGateway();
+      this.registerSlashCommands().catch((err) => {
+        console.warn("[RONIGUARD-BOT] Slash command registration warning:", err);
+      });
       return true;
     } catch (err) {
       console.error("[RONIGUARD-BOT] Error starting Discord bot:", err);
@@ -2059,6 +2061,15 @@ var DiscordBotService = class {
   }
   isConnected() {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      isConnected: this.isConnected(),
+      hasWs: this.ws !== null,
+      wsState: this.ws ? this.ws.readyState : null,
+      tokenConfigured: !!this.token
+    };
   }
   stop() {
     this.isRunning = false;
@@ -3490,17 +3501,19 @@ var discordBotService = new DiscordBotService();
 
 // server/routes.ts
 var router = Router();
-router.get("/health", (_req, res) => {
+router.get("/health", async (_req, res) => {
   if (!discordBotService.isConnected()) {
     discordBotService.start().catch(() => {
     });
   }
-  const isBotOnline = discordBotService.isConnected() || db.get().botConfig.isConnected;
+  const botInfo = discordBotService.getStatus();
+  const dbConnected = db.get().botConfig.isConnected;
   res.json({
     status: "ok",
     service: "RONIGUARD",
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    botOnline: isBotOnline
+    botOnline: botInfo.isConnected || dbConnected,
+    bot: botInfo
   });
 });
 function parseCookies(req) {

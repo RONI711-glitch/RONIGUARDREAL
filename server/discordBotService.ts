@@ -117,11 +117,13 @@ class DiscordBotService {
       state.botConfig.lastTestedAt = new Date().toISOString();
       db.save();
 
-      // 2. Register Slash Commands on Discord
-      await this.registerSlashCommands();
-
-      // 3. Connect to Gateway WebSocket
+      // 2. Connect to Gateway WebSocket immediately so bot comes online instantly
       this.connectGateway();
+
+      // 3. Register Slash Commands on Discord asynchronously
+      this.registerSlashCommands().catch((err) => {
+        console.warn('[RONIGUARD-BOT] Slash command registration warning:', err);
+      });
 
       return true;
     } catch (err) {
@@ -132,6 +134,16 @@ class DiscordBotService {
 
   public isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  public getStatus() {
+    return {
+      isRunning: this.isRunning,
+      isConnected: this.isConnected(),
+      hasWs: this.ws !== null,
+      wsState: this.ws ? this.ws.readyState : null,
+      tokenConfigured: !!this.token,
+    };
   }
 
   public stop() {

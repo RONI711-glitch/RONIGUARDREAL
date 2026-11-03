@@ -25,16 +25,18 @@ import { discordBotService } from './discordBotService.ts';
 const router = Router();
 
 // 24/7 Keep-alive and health check endpoint
-router.get('/health', (_req, res) => {
+router.get('/health', async (_req, res) => {
   if (!discordBotService.isConnected()) {
     discordBotService.start().catch(() => {});
   }
-  const isBotOnline = discordBotService.isConnected() || db.get().botConfig.isConnected;
+  const botInfo = discordBotService.getStatus();
+  const dbConnected = db.get().botConfig.isConnected;
   res.json({
     status: 'ok',
     service: 'RONIGUARD',
     timestamp: new Date().toISOString(),
-    botOnline: isBotOnline,
+    botOnline: botInfo.isConnected || dbConnected,
+    bot: botInfo,
   });
 });
 
