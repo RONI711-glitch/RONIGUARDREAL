@@ -152,34 +152,95 @@ export function requireOwnerAuth(req: Request, res: Response, next: () => void) 
 // 1. DISCORD OAUTH2 & AUTHENTICATION
 // -------------------------------------------------------------
 
-// Redirect to Discord OAuth2 Authorization
-router.get('/auth/discord/login', (req, res) => {
-  const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
-  const redirectUri = process.env.DISCORD_REDIRECT_URI || 'https://roniguardreal.wasmer.app/api/auth/discord/callback';
+// Helper to resolve the correct Discord OAuth Redirect URI
+function resolveRedirectUri(req: Request): string {
+  if (process.env.DISCORD_REDIRECT_URI) {
+    return process.env.DISCORD_REDIRECT_URI.trim();
+  }
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'roniguardreal.wasmer.app';
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
+  return `${proto}://${host}/api/auth/discord/callback`;
+}
 
+// Construct Discord OAuth2 Provider URL (for iframe-safe direct provider popup)
+router.get(['/auth/url', '/auth/discord/url', '/oauth/url'], (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
+  const redirectUri = resolveRedirectUri(req);
   const state = generateRandomHex(16);
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'identify email',
+    state,
+  });
+
+  const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+
+  res.setHeader('Set-Cookie', [
+    `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
+    `discord_oauth_redirect=${encodeURIComponent(redirectUri)}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
+  ]);
+
+  res.json({ url, redirectUri, clientId });
+});
+
+// Redirect to Discord OAuth2 Authorization (Direct fallback)
+router.get(['/auth/discord/login', '/auth/login', '/oauth/login', '/login/discord'], (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
+  const redirectUri = resolveRedirectUri(req);
+  const state = generateRandomHex(16);
+
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
     clientId
   )}&redirect_uri=${encodeURIComponent(
     redirectUri
   )}&response_type=code&scope=identify%20email&state=${state}`;
 
-  res.setHeader('Set-Cookie', `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=600; SameSite=Lax`);
+  res.setHeader('Set-Cookie', [
+    `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
+    `discord_oauth_redirect=${encodeURIComponent(redirectUri)}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
+  ]);
   res.redirect(discordAuthUrl);
 });
 
-// Discord OAuth2 Callback handler
-router.get('/auth/discord/callback', async (req, res) => {
+// Discord OAuth2 Callback handler (Supports postMessage popup & direct redirect)
+router.get(['/auth/discord/callback', '/auth/callback', '/oauth/callback', '/discord/callback', '/callback'], async (req, res) => {
   const { code, error, error_description } = req.query;
 
   if (error || !code) {
-    return res.redirect(`/?auth_error=${encodeURIComponent((error_description || error || 'Discord authorization was cancelled') as string)}`);
+    const errorMsg = (error_description || error || 'Discord authorization was cancelled') as string;
+    return res.send(`
+      <!doctype html>
+      <html>
+        <head><title>Authorization Cancelled</title></head>
+        <body style="background:#07040d;color:#ffffff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="background:#13082a;border:1px solid #ef4444;border-radius:16px;padding:24px;text-align:center;max-width:360px;">
+            <h3 style="color:#ef4444;margin:0 0 8px;">Authentication Notice</h3>
+            <p style="color:#d1d5db;font-size:13px;margin:0 0 16px;">${errorMsg}</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: "${encodeURIComponent(errorMsg)}" }, '*');
+                setTimeout(function() { window.close(); }, 1200);
+              } else {
+                window.location.href = '/?auth_error=' + encodeURIComponent("${encodeURIComponent(errorMsg)}");
+              }
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
   }
 
   try {
     const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || '1549804529778692237';
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-    const redirectUri = process.env.DISCORD_REDIRECT_URI || 'https://roniguardreal.wasmer.app/api/auth/discord/callback';
+
+    // Retrieve exact redirect URI used in authorize request
+    const cookies = parseCookies(req);
+    const storedRedirect = cookies['discord_oauth_redirect'] ? decodeURIComponent(cookies['discord_oauth_redirect']) : null;
+    const redirectUri = storedRedirect || resolveRedirectUri(req);
 
     let discordUser: any = null;
 
@@ -230,14 +291,65 @@ router.get('/auth/discord/callback', async (req, res) => {
     db.save();
 
     res.setHeader('Set-Cookie', [
-      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
-      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`,
+      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=None; Secure`,
+      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=None; Secure`,
     ]);
 
-    return res.redirect(`/?auth_token=${encodeURIComponent(sessionToken)}&username=${encodeURIComponent(user.username)}`);
+    // Send clean HTML popup postMessage response
+    return res.send(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Authentication Successful</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        </head>
+        <body style="background:#07040d;color:#ffffff;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:16px;box-sizing:border-box;">
+          <div style="background:#110724;border:1px solid #8b5cf6;border-radius:20px;padding:32px 24px;text-align:center;max-width:380px;box-shadow:0 12px 40px rgba(139,92,246,0.35);">
+            <div style="width:50px;height:50px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:24px;">✓</div>
+            <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;letter-spacing:-0.02em;">Welcome, ${user.username}!</h2>
+            <p style="color:#c4b5fd;font-size:13px;margin:0 0 16px;">Authentication verified. Connecting you to RONIGUARD...</p>
+            <p style="color:#6b7280;font-size:11px;margin:0;">This window should close automatically.</p>
+          </div>
+          <script>
+            (function() {
+              var payload = {
+                type: 'OAUTH_AUTH_SUCCESS',
+                token: "${sessionToken}",
+                user: ${JSON.stringify({ id: user.id, username: user.username, role: user.role, avatar: user.avatar })}
+              };
+              if (window.opener) {
+                window.opener.postMessage(payload, '*');
+                setTimeout(function() { window.close(); }, 400);
+              } else {
+                window.location.href = '/?auth_token=' + encodeURIComponent("${sessionToken}") + '&username=' + encodeURIComponent("${user.username}");
+              }
+            })();
+          </script>
+        </body>
+      </html>
+    `);
   } catch (err: any) {
     console.error('[RONIGUARD] Discord OAuth callback error:', err);
-    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || 'Authentication failed')}`);
+    return res.send(`
+      <!doctype html>
+      <html>
+        <head><title>Authentication Failed</title></head>
+        <body style="background:#07040d;color:#ffffff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="background:#13082a;border:1px solid #ef4444;border-radius:16px;padding:24px;text-align:center;max-width:360px;">
+            <h3 style="color:#ef4444;margin:0 0 8px;">Authentication Error</h3>
+            <p style="color:#d1d5db;font-size:13px;margin:0 0 16px;">${err.message || 'Authentication failed'}</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: "${encodeURIComponent(err.message || 'Authentication failed')}" }, '*');
+                setTimeout(function() { window.close(); }, 1500);
+              } else {
+                window.location.href = '/?auth_error=' + encodeURIComponent("${encodeURIComponent(err.message || 'Authentication failed')}");
+              }
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
   }
 });
 

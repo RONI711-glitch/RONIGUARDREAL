@@ -26,16 +26,28 @@ export interface ObfuscationResult {
   error?: string;
 }
 
-// Single official obfuscation engine as requested
+export const VYKUS_API_KEY = process.env.VYKUS_API_KEY || 'vk_InV5PXOw2Hdq4kfXkUUM5A';
+export const VYKUS_API_URL = process.env.VYKUS_API_URL || 'https://vykus-obsufucater-xtce.onrender.com';
+
+// Official Obfuscation Engines
 export const AVAILABLE_ENGINES = [
   {
-    id: 'RONIGUARD-MAX',
-    name: 'RONIGUARD MAX',
-    version: '4.2.0',
-    description: 'Premier Lua/Luau Protection Engine with 54-Opcode Register Virtual Machine, Base-85 bytecode serialization, opaque predicates, and metatable security seals.',
-    supportedProfiles: ['maximum'],
+    id: 'VYKUS-VM',
+    name: 'Vykus Cloud Polymorphic VM',
+    version: '2.9.0',
+    description: 'Cloud polymorphic virtual machine protector: encrypted string decks, anti-debug probes, polymorphic bytecode virtualization, and AST mangling via Vykus Engine.',
+    supportedProfiles: ['maximum', 'advanced', 'basic'],
     supportedTargets: ['Luau', 'Lua 5.1', 'LuaJIT', 'Roblox'],
     isDefault: true,
+  },
+  {
+    id: 'RONIGUARD-MAX',
+    name: 'RONIGUARD MAX (Local VM)',
+    version: '4.2.0',
+    description: 'Internal 54-Opcode Register Virtual Machine with Base-85 bytecode serialization, opaque predicates, and metatable security seals.',
+    supportedProfiles: ['maximum'],
+    supportedTargets: ['Luau', 'Lua 5.1', 'LuaJIT', 'Roblox'],
+    isDefault: false,
   },
 ];
 
@@ -250,7 +262,87 @@ ${current}
 }
 
 // ============================================================================
-// 2. NON-OBFUSCATED WORKFLOW (When Obfuscation is toggled OFF)
+// 2. VYKUS CLOUD OBFUSCATION ENGINE (https://vykus-obsufucater-xtce.onrender.com/)
+// ============================================================================
+let cachedVykusSessionCookie: string | null = null;
+let vykusSessionExpiresAt = 0;
+
+async function getVykusSession(): Promise<string | null> {
+  if (cachedVykusSessionCookie && Date.now() < vykusSessionExpiresAt) {
+    return cachedVykusSessionCookie;
+  }
+
+  try {
+    const res = await fetch(`${VYKUS_API_URL}/api/auth/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: VYKUS_API_KEY }),
+    });
+
+    if (!res.ok) {
+      console.warn('[VYKUS] Auth key check response:', res.status);
+      return null;
+    }
+
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) {
+      const match = setCookie.match(/vykus_session=[^;]+/);
+      cachedVykusSessionCookie = match ? match[0] : setCookie;
+      vykusSessionExpiresAt = Date.now() + 3600000; // 1 hour cache
+      return cachedVykusSessionCookie;
+    }
+  } catch (err) {
+    console.warn('[VYKUS] Error authenticating with Vykus API:', err);
+  }
+  return null;
+}
+
+export async function runVykusObfuscator(
+  sourceCode: string,
+  options: ObfuscationOptions = {}
+): Promise<string> {
+  const cookie = await getVykusSession();
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': VYKUS_API_KEY,
+    Authorization: `Bearer ${VYKUS_API_KEY}`,
+  };
+  if (cookie) {
+    headers['Cookie'] = cookie;
+  }
+
+  const res = await fetch(`${VYKUS_API_URL}/api/obfuscate`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      source: sourceCode,
+      options: {
+        mode: options.profile === 'basic' ? 'light' : 'maximum',
+        layers: 2,
+        density: 0.35,
+        strings: options.stringEncryption !== false,
+        numbers: options.constantVirtualization !== false,
+        rename: options.variableRenaming !== false,
+        junk: true,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Vykus Obfuscator API returned HTTP ${res.status}`);
+  }
+
+  const data = (await res.json()) as any;
+  if (!data || typeof data.output !== 'string') {
+    throw new Error(data?.error || 'Vykus API did not return protected output');
+  }
+
+  return data.output;
+}
+
+// ============================================================================
+// 3. NON-OBFUSCATED WORKFLOW (When Obfuscation is toggled OFF)
 // Preserves clean source code with official RONIGUARD Runtime Header
 // ============================================================================
 export function formatNonObfuscatedScript(sourceCode: string, scriptName = 'Script'): string {
@@ -284,7 +376,7 @@ export async function runObfuscationPipeline(
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: 'RONIGUARD MAX',
+      engineUsed: 'Vykus Cloud Polymorphic VM',
       profileUsed: options.profile || 'maximum',
       error: `Syntax validation failed: ${syntaxCheck.error}`,
     };
@@ -292,10 +384,20 @@ export async function runObfuscationPipeline(
 
   try {
     let finalCode = '';
+    let engineUsed = 'Standard Runtime (Non-Obfuscated)';
     const isObfuscationEnabled = options.obfuscationEnabled !== false;
 
     if (isObfuscationEnabled) {
-      finalCode = runRoniguardMax(sourceCode, options);
+      try {
+        console.log('[OBFUSCATOR] Calling Vykus Cloud Obfuscator API...');
+        finalCode = await runVykusObfuscator(sourceCode, options);
+        engineUsed = 'Vykus Cloud Polymorphic VM (v2.9.0)';
+        console.log('[OBFUSCATOR] Vykus Cloud Obfuscation succeeded!');
+      } catch (vykusErr) {
+        console.warn('[OBFUSCATOR] Vykus Cloud call failed, falling back to local RONIGUARD MAX VM:', vykusErr);
+        finalCode = runRoniguardMax(sourceCode, options);
+        engineUsed = 'RONIGUARD MAX (Local VM)';
+      }
     } else {
       finalCode = formatNonObfuscatedScript(sourceCode);
     }
@@ -310,7 +412,7 @@ export async function runObfuscationPipeline(
       outputSize,
       compressionRatio,
       durationMs: Date.now() - startTime,
-      engineUsed: isObfuscationEnabled ? 'RONIGUARD MAX' : 'Standard Runtime (Non-Obfuscated)',
+      engineUsed,
       profileUsed: options.profile || 'maximum',
     };
   } catch (err: any) {

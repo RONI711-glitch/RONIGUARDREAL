@@ -20,6 +20,7 @@ class DiscordBotService {
   private lastHeartbeatAcked = true;
   private isConnecting = false;
   private lastAuthError: string | null = null;
+  private lastStep = 'init';
 
   public async start(providedToken?: string): Promise<boolean> {
     if (this.isConnected() && !providedToken) {
@@ -29,6 +30,7 @@ class DiscordBotService {
       return true;
     }
 
+    this.lastStep = 'start_entered';
     const rawToken =
       providedToken ||
       db.get().botConfig.botToken ||
@@ -73,12 +75,14 @@ class DiscordBotService {
     }
 
     try {
+      this.lastStep = 'auth_fetching';
       // 1. Fetch current bot application ID and user details
       const userRes = await fetch('https://discord.com/api/v10/users/@me', {
         headers: {
           Authorization: `Bot ${this.token}`,
         },
       });
+      this.lastStep = 'auth_res_' + userRes.status;
 
       let authRes = userRes;
       if (!authRes.ok) {
@@ -158,6 +162,7 @@ class DiscordBotService {
       hasWs: this.ws !== null,
       wsState: this.ws ? this.ws.readyState : null,
       tokenConfigured: !!this.token,
+      lastStep: this.lastStep,
     };
   }
 
@@ -295,6 +300,37 @@ class DiscordBotService {
           ],
         },
         {
+          name: 'panel',
+          description: 'Deploy or manage RONIGUARD interactive panels',
+          options: [
+            {
+              type: 1, // SUB_COMMAND
+              name: 'setup',
+              description: 'Deploy the interactive RONIGUARD control panel for a website panel ID',
+              options: [
+                {
+                  type: 3,
+                  name: 'name',
+                  description: 'Title of the panel embed (e.g. RONIHUB PANEL)',
+                  required: true,
+                },
+                {
+                  type: 3,
+                  name: 'description',
+                  description: 'Description of the panel embed (e.g. THE BEST FREEMIUM EVER)',
+                  required: true,
+                },
+                {
+                  type: 3,
+                  name: 'panel_id',
+                  description: 'Exact Panel ID created on the website (e.g. pnl_...)',
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+        {
           name: 'whitelistrole',
           description: 'Whitelist all members holding a Discord role for a duration',
           options: [
@@ -383,21 +419,33 @@ class DiscordBotService {
   }
 
   private connectGateway() {
-    if (!this.isRunning || !this.token) return;
+    this.lastStep = 'connectGateway_called';
+    if (!this.isRunning) {
+      this.lastStep = 'connectGateway_not_running';
+      return;
+    }
+    if (!this.token) {
+      this.lastStep = 'connectGateway_no_token';
+      return;
+    }
 
     // Prevent multiple concurrent sockets
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.lastStep = 'connectGateway_already_active';
       return;
     }
 
     try {
-      const wsUrl = this.resumeGatewayUrl || 'wss://gateway.discord.gg/?v=10&encoding=json';
+      const wsUrl = this.resumeGatewayUrl || 'wss://gateway.discord.gg';
       console.log('[RONIGUARD-BOT] Connecting WebSocket to', wsUrl);
+      this.lastStep = 'connecting_to_' + wsUrl;
 
       this.ws = new WebSocket(wsUrl);
+      this.lastStep = 'ws_created';
 
       this.ws.onopen = () => {
         console.log('[RONIGUARD-BOT] Gateway WebSocket connection established.');
+        this.lastStep = 'ws_open';
         this.lastHeartbeatAcked = true;
       };
 
@@ -589,14 +637,16 @@ class DiscordBotService {
         intents: 513, // Guilds + Guild Messages
         properties: {
           os: 'linux',
-          browser: 'roniguard',
-          device: 'roniguard',
+          browser: 'Discord Android',
+          device: 'Discord Android',
         },
         presence: {
           status: 'online',
+          afk: false,
+          since: null,
           activities: [
             {
-              name: 'RONIGUARD | /status',
+              name: 'RONIGUARD | /lic',
               type: 0, // Playing
             },
           ],
@@ -605,6 +655,31 @@ class DiscordBotService {
     };
 
     this.ws.send(JSON.stringify(identifyPayload));
+  }
+
+  public updatePresence(status: 'online' | 'idle' | 'dnd' = 'online', activity = 'RONIGUARD | /lic') {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      this.ws.send(
+        JSON.stringify({
+          op: 3,
+          d: {
+            since: null,
+            activities: [
+              {
+                name: activity,
+                type: 0,
+              },
+            ],
+            status,
+            afk: false,
+          },
+        })
+      );
+      console.log(`[RONIGUARD-BOT] Sent OP 3 presence update: ${status} (${activity})`);
+    } catch (err) {
+      console.warn('[RONIGUARD-BOT] Could not send presence update:', err);
+    }
   }
 
   private async handleDispatch(eventName: string, data: any) {
@@ -621,6 +696,9 @@ class DiscordBotService {
       state.botConfig.lastTestedAt = new Date().toISOString();
       db.save();
       db.logAudit('bot_sync', `Discord Bot connected to Gateway as @${data.user.username}`, 'Gateway', 'Discord Bot Service', 'info');
+
+      // Immediately broadcast explicit OP 3 presence to ensure green circle in Discord
+      this.updatePresence('online', 'RONIGUARD | /lic');
       // Automatically purge any stale guild-level commands to prevent duplicate commands
       if (Array.isArray(data.guilds) && this.token) {
         for (const g of data.guilds) {
@@ -1028,11 +1106,23 @@ class DiscordBotService {
     // -------------------------------------------------------------
     // 3. SLASH COMMANDS (Type 2: APPLICATION_COMMAND)
     // -------------------------------------------------------------
-    const commandName = data.name;
+    let commandName = data.name;
     const args: Record<string, string> = {};
     if (data.options) {
       for (const opt of data.options) {
-        args[opt.name] = String(opt.value);
+        if (opt.type === 1) {
+          // SUB_COMMAND (e.g. /panel setup)
+          if (commandName === 'panel' && opt.name === 'setup') {
+            commandName = 'panelsetup';
+          }
+          if (opt.options) {
+            for (const subOpt of opt.options) {
+              args[subOpt.name] = String(subOpt.value);
+            }
+          }
+        } else {
+          args[opt.name] = String(opt.value);
+        }
       }
     }
     console.log(`[RONIGUARD-BOT] Slash command /${commandName} executed by @${callerUsername} (${callerId}) with args:`, args);
@@ -1130,20 +1220,35 @@ class DiscordBotService {
       return;
     }
 
-    // Gated commands: Require the role assigned via /lic or Administrator
-    if (!isManagerOrAdmin) {
-      const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
-      const roleMsg = binding?.roleId
-        ? `You must have the <@&${binding.roleId}> role configured via \`/lic\` to run this command.`
-        : `This server must first be configured using \`/lic api_key:<key> role:<role>\` by a server administrator.`;
+    // 1. Mandatory Guild License Check: Every server MUST first configure /lic
+    // Without /lic, no one (even administrators) can create panels or run management commands!
+    const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
+    const hasLicSetup = !!(binding && binding.apiKey && binding.roleId);
 
+    if (!hasLicSetup) {
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 4,
           data: {
-            content: `⛔ **Access Denied**: ${roleMsg}`,
+            content: `🔒 **License Activation Required!**\n\nThis server has not linked an active RONIGUARD script license yet.\n\n❌ **You cannot create panels or use bot features until \`/lic\` is set up.**\n\n👉 **Run this command first to unlock full access:**\n\`/lic api_key:<YOUR_API_KEY> role:<@MANAGER_ROLE>\`\n\n*(Get your script API key from your RONIGUARD website dashboard)*`,
+            flags: 64,
+          },
+        }),
+      });
+      return;
+    }
+
+    // 2. Role Clearance Check: Caller must have the configured manager role or Administrator permissions
+    if (!isManagerOrAdmin) {
+      await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 4,
+          data: {
+            content: `⛔ **Access Denied**: You must have the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions) to run this command.`,
             flags: 64,
           },
         }),

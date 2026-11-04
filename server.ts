@@ -29,14 +29,29 @@ app.get('/health', (_req, res) => {
 });
 
 // Root OAuth fallbacks to ensure zero-404 during Discord authorization redirects
-app.get('/auth/discord/login', (req, res) => {
-  res.redirect('/api/auth/discord/login' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+const oauthCallbackPaths = [
+  '/auth/discord/callback',
+  '/auth/callback',
+  '/oauth/callback',
+  '/discord/callback',
+  '/callback',
+];
+oauthCallbackPaths.forEach((p) => {
+  app.get(p, (req, res) => {
+    res.redirect('/api/auth/discord/callback' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+  });
 });
-app.get('/auth/discord/callback', (req, res) => {
-  res.redirect('/api/auth/discord/callback' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
-});
-app.get('/auth/callback', (req, res) => {
-  res.redirect('/api/auth/discord/callback' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+
+const oauthLoginPaths = [
+  '/auth/discord/login',
+  '/auth/login',
+  '/oauth/login',
+  '/login/discord',
+];
+oauthLoginPaths.forEach((p) => {
+  app.get(p, (req, res) => {
+    res.redirect('/api/auth/discord/login' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+  });
 });
 
 // Development vs Production serving

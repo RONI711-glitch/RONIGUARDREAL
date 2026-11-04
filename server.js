@@ -1104,15 +1104,26 @@ var db = new Store();
 
 // server/obfuscator.ts
 import crypto2 from "node:crypto";
+var VYKUS_API_KEY = process.env.VYKUS_API_KEY || "vk_InV5PXOw2Hdq4kfXkUUM5A";
+var VYKUS_API_URL = process.env.VYKUS_API_URL || "https://vykus-obsufucater-xtce.onrender.com";
 var AVAILABLE_ENGINES = [
   {
-    id: "RONIGUARD-MAX",
-    name: "RONIGUARD MAX",
-    version: "4.2.0",
-    description: "Premier Lua/Luau Protection Engine with 54-Opcode Register Virtual Machine, Base-85 bytecode serialization, opaque predicates, and metatable security seals.",
-    supportedProfiles: ["maximum"],
+    id: "VYKUS-VM",
+    name: "Vykus Cloud Polymorphic VM",
+    version: "2.9.0",
+    description: "Cloud polymorphic virtual machine protector: encrypted string decks, anti-debug probes, polymorphic bytecode virtualization, and AST mangling via Vykus Engine.",
+    supportedProfiles: ["maximum", "advanced", "basic"],
     supportedTargets: ["Luau", "Lua 5.1", "LuaJIT", "Roblox"],
     isDefault: true
+  },
+  {
+    id: "RONIGUARD-MAX",
+    name: "RONIGUARD MAX (Local VM)",
+    version: "4.2.0",
+    description: "Internal 54-Opcode Register Virtual Machine with Base-85 bytecode serialization, opaque predicates, and metatable security seals.",
+    supportedProfiles: ["maximum"],
+    supportedTargets: ["Luau", "Lua 5.1", "LuaJIT", "Roblox"],
+    isDefault: false
   }
 ];
 function generateIdent(prefix = "_0x", len = 4) {
@@ -1334,6 +1345,69 @@ ${current}
 
 ${vmCore}`;
 }
+var cachedVykusSessionCookie = null;
+var vykusSessionExpiresAt = 0;
+async function getVykusSession() {
+  if (cachedVykusSessionCookie && Date.now() < vykusSessionExpiresAt) {
+    return cachedVykusSessionCookie;
+  }
+  try {
+    const res = await fetch(`${VYKUS_API_URL}/api/auth/key`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: VYKUS_API_KEY })
+    });
+    if (!res.ok) {
+      console.warn("[VYKUS] Auth key check response:", res.status);
+      return null;
+    }
+    const setCookie = res.headers.get("set-cookie");
+    if (setCookie) {
+      const match = setCookie.match(/vykus_session=[^;]+/);
+      cachedVykusSessionCookie = match ? match[0] : setCookie;
+      vykusSessionExpiresAt = Date.now() + 36e5;
+      return cachedVykusSessionCookie;
+    }
+  } catch (err) {
+    console.warn("[VYKUS] Error authenticating with Vykus API:", err);
+  }
+  return null;
+}
+async function runVykusObfuscator(sourceCode, options = {}) {
+  const cookie = await getVykusSession();
+  const headers = {
+    "Content-Type": "application/json",
+    "x-api-key": VYKUS_API_KEY,
+    Authorization: `Bearer ${VYKUS_API_KEY}`
+  };
+  if (cookie) {
+    headers["Cookie"] = cookie;
+  }
+  const res = await fetch(`${VYKUS_API_URL}/api/obfuscate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      source: sourceCode,
+      options: {
+        mode: options.profile === "basic" ? "light" : "maximum",
+        layers: 2,
+        density: 0.35,
+        strings: options.stringEncryption !== false,
+        numbers: options.constantVirtualization !== false,
+        rename: options.variableRenaming !== false,
+        junk: true
+      }
+    })
+  });
+  if (!res.ok) {
+    throw new Error(`Vykus Obfuscator API returned HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data || typeof data.output !== "string") {
+    throw new Error(data?.error || "Vykus API did not return protected output");
+  }
+  return data.output;
+}
 function formatNonObfuscatedScript(sourceCode, scriptName = "Script") {
   const header = `
 --[[
@@ -1359,16 +1433,26 @@ async function runObfuscationPipeline(sourceCode, options = {}) {
       outputSize: 0,
       compressionRatio: 0,
       durationMs: Date.now() - startTime,
-      engineUsed: "RONIGUARD MAX",
+      engineUsed: "Vykus Cloud Polymorphic VM",
       profileUsed: options.profile || "maximum",
       error: `Syntax validation failed: ${syntaxCheck.error}`
     };
   }
   try {
     let finalCode = "";
+    let engineUsed = "Standard Runtime (Non-Obfuscated)";
     const isObfuscationEnabled = options.obfuscationEnabled !== false;
     if (isObfuscationEnabled) {
-      finalCode = runRoniguardMax(sourceCode, options);
+      try {
+        console.log("[OBFUSCATOR] Calling Vykus Cloud Obfuscator API...");
+        finalCode = await runVykusObfuscator(sourceCode, options);
+        engineUsed = "Vykus Cloud Polymorphic VM (v2.9.0)";
+        console.log("[OBFUSCATOR] Vykus Cloud Obfuscation succeeded!");
+      } catch (vykusErr) {
+        console.warn("[OBFUSCATOR] Vykus Cloud call failed, falling back to local RONIGUARD MAX VM:", vykusErr);
+        finalCode = runRoniguardMax(sourceCode, options);
+        engineUsed = "RONIGUARD MAX (Local VM)";
+      }
     } else {
       finalCode = formatNonObfuscatedScript(sourceCode);
     }
@@ -1381,7 +1465,7 @@ async function runObfuscationPipeline(sourceCode, options = {}) {
       outputSize,
       compressionRatio,
       durationMs: Date.now() - startTime,
-      engineUsed: isObfuscationEnabled ? "RONIGUARD MAX" : "Standard Runtime (Non-Obfuscated)",
+      engineUsed,
       profileUsed: options.profile || "maximum"
     };
   } catch (err) {
@@ -1968,6 +2052,7 @@ var DiscordBotService = class {
     this.lastHeartbeatAcked = true;
     this.isConnecting = false;
     this.lastAuthError = null;
+    this.lastStep = "init";
   }
   async start(providedToken) {
     if (this.isConnected() && !providedToken) {
@@ -1976,6 +2061,7 @@ var DiscordBotService = class {
     if (this.isConnecting && !providedToken) {
       return true;
     }
+    this.lastStep = "start_entered";
     const rawToken = providedToken || db.get().botConfig.botToken || VERIFIED_FALLBACK_TOKEN;
     const tokenToUse = rawToken && rawToken.trim() ? rawToken.trim() : VERIFIED_FALLBACK_TOKEN;
     this.token = tokenToUse.replace(/^Bot\s+/i, "");
@@ -2014,11 +2100,13 @@ var DiscordBotService = class {
       }, 12e4);
     }
     try {
+      this.lastStep = "auth_fetching";
       const userRes = await fetch("https://discord.com/api/v10/users/@me", {
         headers: {
           Authorization: `Bot ${this.token}`
         }
       });
+      this.lastStep = "auth_res_" + userRes.status;
       let authRes = userRes;
       if (!authRes.ok) {
         const altToken = (process.env.DISCORD_BOT_TOKEN || "").trim().replace(/^Bot\s+/i, "");
@@ -2082,7 +2170,8 @@ var DiscordBotService = class {
       isConnected: this.isConnected(),
       hasWs: this.ws !== null,
       wsState: this.ws ? this.ws.readyState : null,
-      tokenConfigured: !!this.token
+      tokenConfigured: !!this.token,
+      lastStep: this.lastStep
     };
   }
   stop() {
@@ -2231,6 +2320,38 @@ var DiscordBotService = class {
           ]
         },
         {
+          name: "panel",
+          description: "Deploy or manage RONIGUARD interactive panels",
+          options: [
+            {
+              type: 1,
+              // SUB_COMMAND
+              name: "setup",
+              description: "Deploy the interactive RONIGUARD control panel for a website panel ID",
+              options: [
+                {
+                  type: 3,
+                  name: "name",
+                  description: "Title of the panel embed (e.g. RONIHUB PANEL)",
+                  required: true
+                },
+                {
+                  type: 3,
+                  name: "description",
+                  description: "Description of the panel embed (e.g. THE BEST FREEMIUM EVER)",
+                  required: true
+                },
+                {
+                  type: 3,
+                  name: "panel_id",
+                  description: "Exact Panel ID created on the website (e.g. pnl_...)",
+                  required: true
+                }
+              ]
+            }
+          ]
+        },
+        {
           name: "whitelistrole",
           description: "Whitelist all members holding a Discord role for a duration",
           options: [
@@ -2323,16 +2444,28 @@ var DiscordBotService = class {
     }
   }
   connectGateway() {
-    if (!this.isRunning || !this.token) return;
+    this.lastStep = "connectGateway_called";
+    if (!this.isRunning) {
+      this.lastStep = "connectGateway_not_running";
+      return;
+    }
+    if (!this.token) {
+      this.lastStep = "connectGateway_no_token";
+      return;
+    }
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.lastStep = "connectGateway_already_active";
       return;
     }
     try {
-      const wsUrl = this.resumeGatewayUrl || "wss://gateway.discord.gg/?v=10&encoding=json";
+      const wsUrl = this.resumeGatewayUrl || "wss://gateway.discord.gg";
       console.log("[RONIGUARD-BOT] Connecting WebSocket to", wsUrl);
+      this.lastStep = "connecting_to_" + wsUrl;
       this.ws = new WebSocket(wsUrl);
+      this.lastStep = "ws_created";
       this.ws.onopen = () => {
         console.log("[RONIGUARD-BOT] Gateway WebSocket connection established.");
+        this.lastStep = "ws_open";
         this.lastHeartbeatAcked = true;
       };
       this.ws.onmessage = (event) => {
@@ -2498,14 +2631,16 @@ var DiscordBotService = class {
         // Guilds + Guild Messages
         properties: {
           os: "linux",
-          browser: "roniguard",
-          device: "roniguard"
+          browser: "Discord Android",
+          device: "Discord Android"
         },
         presence: {
           status: "online",
+          afk: false,
+          since: null,
           activities: [
             {
-              name: "RONIGUARD | /status",
+              name: "RONIGUARD | /lic",
               type: 0
               // Playing
             }
@@ -2514,6 +2649,30 @@ var DiscordBotService = class {
       }
     };
     this.ws.send(JSON.stringify(identifyPayload));
+  }
+  updatePresence(status = "online", activity = "RONIGUARD | /lic") {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      this.ws.send(
+        JSON.stringify({
+          op: 3,
+          d: {
+            since: null,
+            activities: [
+              {
+                name: activity,
+                type: 0
+              }
+            ],
+            status,
+            afk: false
+          }
+        })
+      );
+      console.log(`[RONIGUARD-BOT] Sent OP 3 presence update: ${status} (${activity})`);
+    } catch (err) {
+      console.warn("[RONIGUARD-BOT] Could not send presence update:", err);
+    }
   }
   async handleDispatch(eventName, data) {
     if (eventName === "READY") {
@@ -2528,6 +2687,7 @@ var DiscordBotService = class {
       state.botConfig.lastTestedAt = (/* @__PURE__ */ new Date()).toISOString();
       db.save();
       db.logAudit("bot_sync", `Discord Bot connected to Gateway as @${data.user.username}`, "Gateway", "Discord Bot Service", "info");
+      this.updatePresence("online", "RONIGUARD | /lic");
       if (Array.isArray(data.guilds) && this.token) {
         for (const g of data.guilds) {
           if (g && g.id) {
@@ -2908,11 +3068,22 @@ You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!
       }
       return;
     }
-    const commandName = data.name;
+    let commandName = data.name;
     const args = {};
     if (data.options) {
       for (const opt of data.options) {
-        args[opt.name] = String(opt.value);
+        if (opt.type === 1) {
+          if (commandName === "panel" && opt.name === "setup") {
+            commandName = "panelsetup";
+          }
+          if (opt.options) {
+            for (const subOpt of opt.options) {
+              args[subOpt.name] = String(subOpt.value);
+            }
+          }
+        } else {
+          args[opt.name] = String(opt.value);
+        }
       }
     }
     console.log(`[RONIGUARD-BOT] Slash command /${commandName} executed by @${callerUsername} (${callerId}) with args:`, args);
@@ -3001,16 +3172,39 @@ You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!
       });
       return;
     }
-    if (!isManagerOrAdmin) {
-      const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
-      const roleMsg = binding?.roleId ? `You must have the <@&${binding.roleId}> role configured via \`/lic\` to run this command.` : `This server must first be configured using \`/lic api_key:<key> role:<role>\` by a server administrator.`;
+    const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
+    const hasLicSetup = !!(binding && binding.apiKey && binding.roleId);
+    if (!hasLicSetup) {
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: 4,
           data: {
-            content: `\u26D4 **Access Denied**: ${roleMsg}`,
+            content: `\u{1F512} **License Activation Required!**
+
+This server has not linked an active RONIGUARD script license yet.
+
+\u274C **You cannot create panels or use bot features until \`/lic\` is set up.**
+
+\u{1F449} **Run this command first to unlock full access:**
+\`/lic api_key:<YOUR_API_KEY> role:<@MANAGER_ROLE>\`
+
+*(Get your script API key from your RONIGUARD website dashboard)*`,
+            flags: 64
+          }
+        })
+      });
+      return;
+    }
+    if (!isManagerOrAdmin) {
+      await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: 4,
+          data: {
+            content: `\u26D4 **Access Denied**: You must have the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions) to run this command.`,
             flags: 64
           }
         })
@@ -3621,27 +3815,78 @@ function requireOwnerAuth(req, res, next) {
   req.user = user;
   next();
 }
-router.get("/auth/discord/login", (req, res) => {
+function resolveRedirectUri(req) {
+  if (process.env.DISCORD_REDIRECT_URI) {
+    return process.env.DISCORD_REDIRECT_URI.trim();
+  }
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "roniguardreal.wasmer.app";
+  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+  return `${proto}://${host}/api/auth/discord/callback`;
+}
+router.get(["/auth/url", "/auth/discord/url", "/oauth/url"], (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
-  const redirectUri = process.env.DISCORD_REDIRECT_URI || "https://roniguardreal.wasmer.app/api/auth/discord/callback";
+  const redirectUri = resolveRedirectUri(req);
+  const state = generateRandomHex(16);
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "identify email",
+    state
+  });
+  const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+  res.setHeader("Set-Cookie", [
+    `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
+    `discord_oauth_redirect=${encodeURIComponent(redirectUri)}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`
+  ]);
+  res.json({ url, redirectUri, clientId });
+});
+router.get(["/auth/discord/login", "/auth/login", "/oauth/login", "/login/discord"], (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
+  const redirectUri = resolveRedirectUri(req);
   const state = generateRandomHex(16);
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
     clientId
   )}&redirect_uri=${encodeURIComponent(
     redirectUri
   )}&response_type=code&scope=identify%20email&state=${state}`;
-  res.setHeader("Set-Cookie", `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=600; SameSite=Lax`);
+  res.setHeader("Set-Cookie", [
+    `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
+    `discord_oauth_redirect=${encodeURIComponent(redirectUri)}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`
+  ]);
   res.redirect(discordAuthUrl);
 });
-router.get("/auth/discord/callback", async (req, res) => {
+router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/discord/callback", "/callback"], async (req, res) => {
   const { code, error, error_description } = req.query;
   if (error || !code) {
-    return res.redirect(`/?auth_error=${encodeURIComponent(error_description || error || "Discord authorization was cancelled")}`);
+    const errorMsg = error_description || error || "Discord authorization was cancelled";
+    return res.send(`
+      <!doctype html>
+      <html>
+        <head><title>Authorization Cancelled</title></head>
+        <body style="background:#07040d;color:#ffffff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="background:#13082a;border:1px solid #ef4444;border-radius:16px;padding:24px;text-align:center;max-width:360px;">
+            <h3 style="color:#ef4444;margin:0 0 8px;">Authentication Notice</h3>
+            <p style="color:#d1d5db;font-size:13px;margin:0 0 16px;">${errorMsg}</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: "${encodeURIComponent(errorMsg)}" }, '*');
+                setTimeout(function() { window.close(); }, 1200);
+              } else {
+                window.location.href = '/?auth_error=' + encodeURIComponent("${encodeURIComponent(errorMsg)}");
+              }
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
   }
   try {
     const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-    const redirectUri = process.env.DISCORD_REDIRECT_URI || "https://roniguardreal.wasmer.app/api/auth/discord/callback";
+    const cookies = parseCookies(req);
+    const storedRedirect = cookies["discord_oauth_redirect"] ? decodeURIComponent(cookies["discord_oauth_redirect"]) : null;
+    const redirectUri = storedRedirect || resolveRedirectUri(req);
     let discordUser = null;
     if (clientSecret) {
       const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
@@ -3683,13 +3928,63 @@ router.get("/auth/discord/callback", async (req, res) => {
     user.lastLoginAt = (/* @__PURE__ */ new Date()).toISOString();
     db.save();
     res.setHeader("Set-Cookie", [
-      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
-      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=Lax`
+      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=None; Secure`,
+      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=None; Secure`
     ]);
-    return res.redirect(`/?auth_token=${encodeURIComponent(sessionToken)}&username=${encodeURIComponent(user.username)}`);
+    return res.send(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Authentication Successful</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        </head>
+        <body style="background:#07040d;color:#ffffff;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:16px;box-sizing:border-box;">
+          <div style="background:#110724;border:1px solid #8b5cf6;border-radius:20px;padding:32px 24px;text-align:center;max-width:380px;box-shadow:0 12px 40px rgba(139,92,246,0.35);">
+            <div style="width:50px;height:50px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:24px;">\u2713</div>
+            <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;letter-spacing:-0.02em;">Welcome, ${user.username}!</h2>
+            <p style="color:#c4b5fd;font-size:13px;margin:0 0 16px;">Authentication verified. Connecting you to RONIGUARD...</p>
+            <p style="color:#6b7280;font-size:11px;margin:0;">This window should close automatically.</p>
+          </div>
+          <script>
+            (function() {
+              var payload = {
+                type: 'OAUTH_AUTH_SUCCESS',
+                token: "${sessionToken}",
+                user: ${JSON.stringify({ id: user.id, username: user.username, role: user.role, avatar: user.avatar })}
+              };
+              if (window.opener) {
+                window.opener.postMessage(payload, '*');
+                setTimeout(function() { window.close(); }, 400);
+              } else {
+                window.location.href = '/?auth_token=' + encodeURIComponent("${sessionToken}") + '&username=' + encodeURIComponent("${user.username}");
+              }
+            })();
+          </script>
+        </body>
+      </html>
+    `);
   } catch (err) {
     console.error("[RONIGUARD] Discord OAuth callback error:", err);
-    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || "Authentication failed")}`);
+    return res.send(`
+      <!doctype html>
+      <html>
+        <head><title>Authentication Failed</title></head>
+        <body style="background:#07040d;color:#ffffff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="background:#13082a;border:1px solid #ef4444;border-radius:16px;padding:24px;text-align:center;max-width:360px;">
+            <h3 style="color:#ef4444;margin:0 0 8px;">Authentication Error</h3>
+            <p style="color:#d1d5db;font-size:13px;margin:0 0 16px;">${err.message || "Authentication failed"}</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: "${encodeURIComponent(err.message || "Authentication failed")}" }, '*');
+                setTimeout(function() { window.close(); }, 1500);
+              } else {
+                window.location.href = '/?auth_error=' + encodeURIComponent("${encodeURIComponent(err.message || "Authentication failed")}");
+              }
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
   }
 });
 router.post("/auth/discord/demo-login", (req, res) => {
@@ -5479,14 +5774,28 @@ app.get("/raw/latest.lua", handleRawLoaderRequest);
 app.get("/health", (_req, res) => {
   res.redirect("/api/health");
 });
-app.get("/auth/discord/login", (req, res) => {
-  res.redirect("/api/auth/discord/login" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : ""));
+var oauthCallbackPaths = [
+  "/auth/discord/callback",
+  "/auth/callback",
+  "/oauth/callback",
+  "/discord/callback",
+  "/callback"
+];
+oauthCallbackPaths.forEach((p) => {
+  app.get(p, (req, res) => {
+    res.redirect("/api/auth/discord/callback" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : ""));
+  });
 });
-app.get("/auth/discord/callback", (req, res) => {
-  res.redirect("/api/auth/discord/callback" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : ""));
-});
-app.get("/auth/callback", (req, res) => {
-  res.redirect("/api/auth/discord/callback" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : ""));
+var oauthLoginPaths = [
+  "/auth/discord/login",
+  "/auth/login",
+  "/oauth/login",
+  "/login/discord"
+];
+oauthLoginPaths.forEach((p) => {
+  app.get(p, (req, res) => {
+    res.redirect("/api/auth/discord/login" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : ""));
+  });
 });
 async function startServer() {
   const isProduction = process.env.NODE_ENV === "production";

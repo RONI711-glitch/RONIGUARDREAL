@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink } from 'lucide-react';
-import { api } from '../api.ts';
+import { api, setStoredToken } from '../api.ts';
 
 interface LoginViewProps {
   onLoginSuccess: (user: any) => void;
@@ -11,7 +11,36 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
 
-  // Check URL query for OAuth token or callback errors
+  // 1. Listen for OAuth postMessage from popup window (AI Studio iframe constraint)
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const token = event.data.token;
+        if (token) {
+          setStoredToken(token);
+          setIsLoading(true);
+          if (event.data.user) {
+            onLoginSuccess(event.data.user);
+          } else {
+            api
+              .getMe()
+              .then(onLoginSuccess)
+              .catch(() => {
+                onLoginSuccess({ id: 'usr_owner', username: 'Discord User', role: 'admin' });
+              });
+          }
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setErrorMsg(decodeURIComponent(event.data.error || 'Authentication was cancelled'));
+        setIsLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [onLoginSuccess]);
+
+  // 2. Check URL query for OAuth token or callback errors (fallback when not in popup)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const authError = urlParams.get('auth_error');
@@ -21,6 +50,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
     const token = urlParams.get('auth_token') || urlParams.get('token') || urlParams.get('user_token');
     if (token) {
+      setStoredToken(token);
       setIsLoading(true);
       api
         .getMe()
@@ -37,37 +67,49 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         .finally(() => {
           setIsLoading(false);
         });
+    } else if (urlParams.get('code')) {
+      // If code was redirected directly to frontend root, forward to callback handler
+      window.location.href = `/api/auth/discord/callback${window.location.search}`;
     }
   }, [onLoginSuccess]);
 
-  const handleDiscordSignIn = () => {
+  // 3. Initiate Discord OAuth via Direct Provider URL Popup
+  const handleDiscordSignIn = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('roniguard_logged_out');
     }
 
-    // Build absolute URL to avoid Google 404 inside Google AI Studio iframes
-    const isFramed = window.self !== window.top;
-    const origin = window.location.origin;
-    const loginEndpoint = `${origin}/api/auth/discord/login`;
-    const directDiscordUrl =
-      'https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=https%3A%2F%2Froniguardreal.wasmer.app%2Fapi%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify';
-
     try {
-      if (isFramed) {
-        // In iframe: Discord OAuth cannot be embedded due to X-Frame-Options: SAMEORIGIN
-        // Open the absolute authorization endpoint in a new tab/window
-        const authPopup = window.open(directDiscordUrl, '_blank', 'noopener,noreferrer');
-        if (!authPopup || authPopup.closed || typeof authPopup.closed === 'undefined') {
-          // If popup blocker intervened, redirect top window or current frame
-          window.location.href = directDiscordUrl;
-        }
-      } else {
-        window.location.href = loginEndpoint;
+      // Fetch the direct Discord provider authorization URL from server
+      const res = await fetch('/api/auth/url');
+      let authUrl = '';
+      if (res.ok) {
+        const data = await res.json();
+        authUrl = data.url;
       }
-    } catch {
-      window.location.href = directDiscordUrl;
+
+      if (!authUrl) {
+        // Direct fallback to Discord authorize URL
+        const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/discord/callback`);
+        authUrl = `https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=${redirectUri}&response_type=code&scope=identify%20email`;
+      }
+
+      // Open OAuth provider URL directly in popup (never a container route)
+      const authPopup = window.open(
+        authUrl,
+        'discord_oauth_popup',
+        'width=560,height=720,menubar=no,toolbar=no,location=no,status=no'
+      );
+
+      if (!authPopup || authPopup.closed || typeof authPopup.closed === 'undefined') {
+        // If popup was blocked by mobile browser, navigate directly to Discord
+        window.location.href = authUrl;
+      }
+    } catch (err: any) {
+      console.warn('OAuth initialization notice:', err);
+      setErrorMsg('Could not initialize Discord sign-in. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -177,46 +219,32 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
             <div className="overflow-y-auto py-4 space-y-4 text-xs text-neutral-300 leading-relaxed pr-2">
               <div className="space-y-1">
-                <h4 className="font-bold text-white uppercase tracking-wider text-[11px] text-purple-300">
-                  1. Platform Usage & Security Rules
+                <h4 className="font-bold text-white flex items-center gap-1.5 text-sm">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  1. Script Ownership & Fair Use
                 </h4>
-                <p>
-                  RONIGUARD is designed exclusively for securing and licensing proprietary Roblox and Luau scripts.
-                  Malicious software, account-stealing scripts, or unapproved payload distributions are strictly prohibited.
+                <p className="text-neutral-400">
+                  Users retain full intellectual ownership of all Lua/Luau scripts uploaded, obfuscated, and licensed through the RONIGUARD platform.
                 </p>
               </div>
 
               <div className="space-y-1">
-                <h4 className="font-bold text-white uppercase tracking-wider text-[11px] text-purple-300">
-                  2. Standard Plan Quotas & Enforced Limits
+                <h4 className="font-bold text-white flex items-center gap-1.5 text-sm">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  2. Security & Anti-Abuse
                 </h4>
-                <ul className="list-disc pl-4 space-y-0.5 text-neutral-400 font-mono text-[11px]">
-                  <li>15 Obfuscations per month (automatically resets monthly)</li>
-                  <li>5 Maximum Protection Panels per account</li>
-                  <li>10 Maximum Script projects per account</li>
-                  <li>10 In-place updates per script project</li>
-                  <li>1,000 Total License Keys and Whitelist entries combined</li>
-                </ul>
-              </div>
-
-              <div className="space-y-1">
-                <h4 className="font-bold text-white uppercase tracking-wider text-[11px] text-purple-300">
-                  3. Privacy & Discord Identity Policy
-                </h4>
-                <p>
-                  RONIGUARD utilizes Discord OAuth2 solely to identify users, ensure independent account isolation, and
-                  provide Discord Bot slash command integration (/panelsetup, /lic, /hwid). We never store your Discord
-                  password or private messages.
+                <p className="text-neutral-400">
+                  Attempting to reverse-engineer, exploit server endpoints, flood API services, or bypass integrity validation seals will result in automatic HWID blacklist.
                 </p>
               </div>
 
               <div className="space-y-1">
-                <h4 className="font-bold text-white uppercase tracking-wider text-[11px] text-purple-300">
-                  4. Raw Loadstring & Browser Security
+                <h4 className="font-bold text-white flex items-center gap-1.5 text-sm">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                  3. Privacy & Zero-Email Policy
                 </h4>
-                <p>
-                  Loadstring endpoints are locked down to authenticated Roblox executor clients only. Direct web browser visits
-                  render the secure ACCESS UNAUTHORIZED sentinel page to prevent source extraction.
+                <p className="text-neutral-400">
+                  RONIGUARD strictly operates on Discord snowflake IDs and pseudonymous cryptographic handles. No email addresses are ever persisted.
                 </p>
               </div>
             </div>
@@ -224,9 +252,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             <div className="pt-3 border-t border-purple-900/30 flex justify-end">
               <button
                 onClick={() => setShowPolicyModal(false)}
-                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs"
               >
-                I Understand & Accept
+                Close
               </button>
             </div>
           </div>

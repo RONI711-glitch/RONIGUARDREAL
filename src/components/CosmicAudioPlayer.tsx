@@ -1,62 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX, Play, Pause, Sparkles, Music, ChevronDown, ChevronUp } from 'lucide-react';
 
-type AudioMode = 'nebula' | 'aurora' | 'void';
-
-interface ModeConfig {
-  id: AudioMode;
-  name: string;
-  badge: string;
-  desc: string;
-  filterCutoff: number;
-  voices: { freq: number; gain: number; type?: OscillatorType }[];
-}
-
-const AUDIO_MODES: Record<AudioMode, ModeConfig> = {
-  nebula: {
-    id: 'nebula',
-    name: 'Cosmic Nebula',
-    badge: 'VELVET',
-    desc: 'Smothered warm D-minor 9th low-pass celestial pad',
-    filterCutoff: 240,
-    voices: [
-      { freq: 73.42, gain: 0.32, type: 'sine' }, // D2
-      { freq: 110.0, gain: 0.22, type: 'sine' }, // A2
-      { freq: 174.61, gain: 0.18, type: 'sine' }, // F3
-      { freq: 220.0, gain: 0.14, type: 'sine' }, // A3
-      { freq: 261.63, gain: 0.12, type: 'sine' }, // C4
-      { freq: 329.63, gain: 0.08, type: 'sine' }, // E4
-    ],
-  },
-  aurora: {
-    id: 'aurora',
-    name: 'Crystal Aurora',
-    badge: 'ETHEREAL',
-    desc: 'Luminous pearlescent white & purple crystal harmonics',
-    filterCutoff: 460,
-    voices: [
-      { freq: 110.0, gain: 0.22, type: 'sine' }, // A2
-      { freq: 164.81, gain: 0.18, type: 'sine' }, // E3
-      { freq: 220.0, gain: 0.16, type: 'sine' }, // A3
-      { freq: 277.18, gain: 0.14, type: 'sine' }, // C#4
-      { freq: 329.63, gain: 0.12, type: 'sine' }, // E4
-      { freq: 440.0, gain: 0.09, type: 'sine' }, // A4
-      { freq: 554.37, gain: 0.06, type: 'sine' }, // C#5
-    ],
-  },
-  void: {
-    id: 'void',
-    name: 'Deep Void',
-    badge: 'SUB-SPACE',
-    desc: 'Ultra-deep smothered subterranean cosmic drone',
-    filterCutoff: 180,
-    voices: [
-      { freq: 55.0, gain: 0.45, type: 'sine' }, // A1
-      { freq: 82.41, gain: 0.3, type: 'sine' }, // E2
-      { freq: 110.0, gain: 0.2, type: 'triangle' }, // A2
-      { freq: 138.59, gain: 0.12, type: 'sine' }, // C#3
-    ],
-  },
+// Single curated celestial atmospheric soundtrack as requested by user
+const SINGLE_SOUNDTRACK = {
+  name: 'Cosmic Nebula',
+  desc: 'Warm smothered celestial ambient soundtrack',
+  filterCutoff: 260,
+  voices: [
+    { freq: 73.42, gain: 0.32, type: 'sine' as OscillatorType }, // D2
+    { freq: 110.0, gain: 0.22, type: 'sine' as OscillatorType }, // A2
+    { freq: 174.61, gain: 0.18, type: 'sine' as OscillatorType }, // F3
+    { freq: 220.0, gain: 0.14, type: 'sine' as OscillatorType }, // A3
+    { freq: 261.63, gain: 0.12, type: 'sine' as OscillatorType }, // C4
+    { freq: 329.63, gain: 0.08, type: 'sine' as OscillatorType }, // E4
+  ],
 };
 
 export const CosmicAudioPlayer: React.FC = () => {
@@ -64,7 +21,6 @@ export const CosmicAudioPlayer: React.FC = () => {
   const [volume, setVolume] = useState<number>(0.35);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
-  const [currentMode, setCurrentMode] = useState<AudioMode>('nebula');
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
@@ -81,8 +37,8 @@ export const CosmicAudioPlayer: React.FC = () => {
     activeNodesRef.current = [];
   };
 
-  // Start selected smothered audio mode
-  const startModeSynth = (modeKey: AudioMode) => {
+  // Start the single soundtrack
+  const startCosmicSynth = () => {
     try {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtxClass) return;
@@ -98,8 +54,6 @@ export const CosmicAudioPlayer: React.FC = () => {
 
       clearNodes();
 
-      const config = AUDIO_MODES[modeKey];
-
       // Master Gain with smooth fade-in
       const masterGain = ctx.createGain();
       masterGain.gain.setValueAtTime(0, ctx.currentTime);
@@ -110,7 +64,7 @@ export const CosmicAudioPlayer: React.FC = () => {
       // Smothered warm low-pass filter
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(config.filterCutoff, ctx.currentTime);
+      filter.frequency.setValueAtTime(SINGLE_SOUNDTRACK.filterCutoff, ctx.currentTime);
       filter.Q.setValueAtTime(1.6, ctx.currentTime);
       filter.connect(masterGain);
 
@@ -123,8 +77,8 @@ export const CosmicAudioPlayer: React.FC = () => {
       filterLfoGain.connect(filter.frequency);
       filterLfo.start();
 
-      // Launch voices for this cosmic universe mode
-      config.voices.forEach((voice, idx) => {
+      // Launch voices for the single celestial soundtrack
+      SINGLE_SOUNDTRACK.voices.forEach((voice, idx) => {
         const osc = ctx.createOscillator();
         osc.type = voice.type || 'sine';
         osc.frequency.setValueAtTime(voice.freq, ctx.currentTime);
@@ -161,7 +115,7 @@ export const CosmicAudioPlayer: React.FC = () => {
       activeNodesRef.current.push(filter, filterLfo, filterLfoGain, masterGain);
       setIsPlaying(true);
     } catch (err) {
-      console.warn('[COSMIC-AUDIO] Web Audio synthesis note:', err);
+      console.warn('[COSMIC-AUDIO] Web Audio synthesis notice:', err);
     }
   };
 
@@ -183,14 +137,7 @@ export const CosmicAudioPlayer: React.FC = () => {
     if (isPlaying) {
       stopCosmicSynth();
     } else {
-      startModeSynth(currentMode);
-    }
-  };
-
-  const switchMode = (mode: AudioMode) => {
-    setCurrentMode(mode);
-    if (isPlaying) {
-      startModeSynth(mode);
+      startCosmicSynth();
     }
   };
 
@@ -218,8 +165,6 @@ export const CosmicAudioPlayer: React.FC = () => {
     };
   }, []);
 
-  const activeModeConfig = AUDIO_MODES[currentMode];
-
   return (
     <div className="fixed bottom-5 right-5 z-40 select-none">
       {/* Minimized Floating Widget */}
@@ -228,14 +173,14 @@ export const CosmicAudioPlayer: React.FC = () => {
           onClick={() => setIsMinimized(false)}
           className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#140a2a]/95 hover:bg-[#1e0f3d] border border-white/20 text-white text-xs shadow-2xl shadow-purple-950/80 backdrop-blur-xl transition-all group hover:scale-105 cursor-pointer"
         >
-          <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]" />
+          <div className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]' : 'bg-neutral-600'}`} />
           <Music className="w-3.5 h-3.5 text-purple-200" />
-          <span className="font-semibold tracking-wide text-white">{activeModeConfig.name}</span>
+          <span className="font-semibold tracking-wide text-white">{SINGLE_SOUNDTRACK.name}</span>
           <ChevronUp className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white" />
         </button>
       ) : (
-        /* Full Luminous White & Smothered Purple Floating Synthesizer */
-        <div className="rounded-2xl bg-gradient-to-br from-[#1b0e35]/95 via-[#110724]/95 to-[#090314]/98 border border-white/15 p-4 shadow-[0_12px_45px_rgba(168,85,247,0.35)] backdrop-blur-2xl w-80 transition-all">
+        /* Full Luminous White & Smothered Purple Floating Synthesizer (Single Track) */
+        <div className="rounded-2xl bg-gradient-to-br from-[#1b0e35]/95 via-[#110724]/95 to-[#090314]/98 border border-white/15 p-4 shadow-[0_12px_45px_rgba(168,85,247,0.35)] backdrop-blur-2xl w-76 transition-all">
           {/* Luminous pearl white top accent line */}
           <div className="h-[1px] -mt-4 -mx-4 mb-3 bg-gradient-to-r from-transparent via-white/50 to-transparent" />
 
@@ -247,10 +192,10 @@ export const CosmicAudioPlayer: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-extrabold text-white tracking-tight block truncate drop-shadow-sm">
-                  RONIGUARD COSMIC AUDIO
+                  RONIGUARD SOUNDTRACK
                 </span>
                 <span className="text-[10px] text-purple-300 font-mono block">
-                  {isPlaying ? 'Smothered Generative Synth' : 'Ambient Space Synthesizer'}
+                  {isPlaying ? 'Playing • Cosmic Nebula' : 'Cosmic Nebula • Ready'}
                 </span>
               </div>
             </div>
@@ -262,27 +207,6 @@ export const CosmicAudioPlayer: React.FC = () => {
             >
               <ChevronDown className="w-4 h-4" />
             </button>
-          </div>
-
-          {/* Preset Mode Selector Buttons */}
-          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/40 border border-white/10 mb-3">
-            {(['nebula', 'aurora', 'void'] as AudioMode[]).map((mode) => {
-              const cfg = AUDIO_MODES[mode];
-              const isSelected = currentMode === mode;
-              return (
-                <button
-                  key={mode}
-                  onClick={() => switchMode(mode)}
-                  className={`py-1 px-1.5 rounded-lg text-[10px] font-bold transition-all text-center cursor-pointer ${
-                    isSelected
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-900/50 border border-white/20'
-                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  {cfg.name.split(' ')[1] || cfg.name}
-                </button>
-              );
-            })}
           </div>
 
           {/* Visualizer Waves */}
