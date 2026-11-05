@@ -41,8 +41,8 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
 
   // Universal Roblox Execution Loadstrings with Script ID & Key Separation
   const staticLoaderUrl = `${WASMER_APP_URL}/loader.lua?script=${scriptId}`;
-  const primaryLoadstring = `_G.Script_Key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()`;
-  const executorCodeWithKey = `_G.Script_Key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()`;
+  const primaryLoadstring = `Script_key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
+  const executorCodeWithKey = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
 
   const copyToClipboard = (text: string, type: 'loadstring' | 'raw' | 'key' | 'directCode') => {
     navigator.clipboard.writeText(text);

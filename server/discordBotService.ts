@@ -877,10 +877,10 @@ class DiscordBotService {
         let buttonReply = '';
         if (hasAccess) {
           const keyParam = userKey ? userKey.key : (targetScript ? targetScript.apiKey : 'RONI-ACTIVE-KEY');
-          buttonReply = `✅ **You are Whitelisted!**\n\n📜 **YOUR PERSONAL SCRIPT LOADER**\n\`\`\`lua\n_G.Script_Key = "${keyParam}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()\n\`\`\`\n*Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
+          buttonReply = `✅ **You are Whitelisted!**\n\n📜 **YOUR PERSONAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "${keyParam}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\n*Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
         } else if (targetScript && targetScript.trialEnabled === true) {
           // Trial Mode is strictly only displayed when explicitly enabled by owner
-          buttonReply = `🎁 **TRIAL MODE ACTIVE (Free Access)**\n\n📜 **TRIAL SCRIPT LOADER**\n\`\`\`lua\n_G.Script_Key = "trial"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()\n\`\`\`\n*Trial mode is enabled by the owner. Everyone can test this script!*`;
+          buttonReply = `🎁 **TRIAL MODE ACTIVE (Free Access)**\n\n📜 **TRIAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "trial"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\n*Trial mode is enabled by the owner. Everyone can test this script!*`;
         } else {
           // Trial is OFF (default) and user is not whitelisted: NEVER mention trial
           buttonReply = `⛔ **Access Denied: You are not whitelisted!**\nYou do not have access to this script on this panel.\nClick **🔑 Redeem Key** to enter your license key, or contact a server administrator.`;
@@ -1088,7 +1088,7 @@ class DiscordBotService {
         const script = state.scripts.find((s) => s.id === keyRec.scriptId) || state.scripts[0];
         const scriptId = script ? script.id : 'scr_main';
 
-        const successMessage = `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${callerId}>\n• **Whitelist**: Active\n• **Script ID**: \`${scriptId}\`\n\n📜 **YOUR PERSONAL SCRIPT LOADER:**\n\`\`\`lua\n_G.Script_Key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()\n\`\`\`\nYou can now click **📜 Script** on the panel anytime to view your loader!`;
+        const successMessage = `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${callerId}>\n• **Whitelist**: Active\n• **Script ID**: \`${scriptId}\`\n\n📜 **YOUR PERSONAL SCRIPT LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now click **📜 Script** on the panel anytime to view your loader!`;
 
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: 'POST',
@@ -1258,6 +1258,23 @@ class DiscordBotService {
 
     // 3B. /panelsetup COMMAND
     if (commandName === 'panelsetup') {
+      // Must configure /lic first on this server before setting up panels
+      const isLicConfigured = guild_id ? !!state.botConfig?.guildRoleBindings?.[guild_id] : true;
+      if (!isLicConfigured && callerId !== '1549804529778692237' && callerId !== '728491028374829103') {
+        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 4,
+            data: {
+              content: '⛔ **License Setup Required**: You must first configure the bot using `/lic api_key:<key> role:<role>` before you can create or deploy panels! Once `/lic` is set up, you will have full access to create panels and manage the bot.',
+              flags: 64,
+            },
+          }),
+        });
+        return;
+      }
+
       const title = (args.name || '').trim();
       const description = (args.description || '').trim();
       const panelId = (args.panel_id || '').trim();

@@ -166,7 +166,7 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
         <div className="space-y-3">
           {filtered.map((item) => {
             const isActive = item.status === 'active';
-            const loadstring = `_G.Script_Key = "${item.key}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${item.scriptId}&key=" .. _G.Script_Key))()`;
+            const loadstring = `Script_key = "${item.key}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${item.scriptId}"))()`;
 
             return (
               <div

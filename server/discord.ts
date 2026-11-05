@@ -18,6 +18,7 @@ export interface BotCommandExecution {
   commandName: string;
   args: Record<string, string>;
   source: 'dashboard_tester' | 'discord_bot_bridge';
+  guildId?: string;
   user?: {
     id: string;
     username: string;
@@ -310,6 +311,13 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
       try {
         const discordId = execution.user?.id || args.user_id || 'owner_discord';
         const discordUsername = execution.user?.username || args.username || 'Owner';
+
+        if (execution.guildId && !state.botConfig?.guildRoleBindings?.[execution.guildId] && discordId !== '1549804529778692237' && discordId !== '728491028374829103') {
+          return {
+            success: false,
+            message: '⛔ **License Setup Required**: You must first configure the bot using `/lic api_key:<key> role:<role>` before you can set up panels! Once `/lic` is set up, you will have access to create and manage panels.',
+          };
+        }
         const userRec = db.findOrCreateDiscordUser({
           discordId,
           username: discordUsername,
@@ -426,7 +434,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `**Script Licensing Information:**\n• **Script**: "${scriptRec?.filename || 'Unknown'}" (\`${scriptRec?.id || 'N/A'}\`)\n• **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || 'No key issued'}\`\n• **Status**: ${keyRec?.status === 'active' ? '🟢 ACTIVE' : '🔴 ' + (keyRec?.status || 'inactive')}\n• **Loadstring**: \`loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptRec?.id || ''}&key=${keyRec?.key || ''}"))()\``,
+        message: `**Script Licensing Information:**\n• **Script**: "${scriptRec?.filename || 'Unknown'}" (\`${scriptRec?.id || 'N/A'}\`)\n• **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || 'No key issued'}\`\n• **Status**: ${keyRec?.status === 'active' ? '🟢 ACTIVE' : '🔴 ' + (keyRec?.status || 'inactive')}\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${keyRec?.key || scriptRec?.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptRec?.id || ''}"))()\n\`\`\``,
       };
     }
 
@@ -529,7 +537,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `✅ New API key generated for script **"${script.filename}"**:\n• **API Key**: \`${newKey}\`\n• **Loadstring**: \`loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${newKey}"))()\``,
+        message: `✅ New API key generated for script **"${script.filename}"**:\n• **API Key**: \`${newKey}\`\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${newKey}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}"))()\n\`\`\``,
         data: newKeyRec,
       };
     }
@@ -595,7 +603,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\n_G.Script_Key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=${keyRec.key}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
+        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
         data: keyRec,
       };
     }

@@ -1331,8 +1331,8 @@ loadstring(game:HttpGet(url))()
 
   async getLoaderDetails(id: string) {
     const publicRawUrl = `${WASMER_APP_URL}/loader.lua?script=${id}`;
-    const loadstringSnippet = `_G.Script_Key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}&key=" .. _G.Script_Key))()`;
-    const executorSnippetWithKey = `_G.Script_Key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}&key=" .. _G.Script_Key))()`;
+    const loadstringSnippet = `Script_key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}"))()`;
+    const executorSnippetWithKey = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}"))()`;
 
     try {
       const data = await fetchWithAuth(`/api/loader/details/${id}`);

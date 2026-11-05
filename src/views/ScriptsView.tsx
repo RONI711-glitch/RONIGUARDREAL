@@ -50,7 +50,7 @@ const getAppHost = () => {
 };
 
 const buildLoadstring = (scriptId: string, key: string) => {
-  return `_G.Script_Key = "${key}"\nloadstring(game:HttpGet("${getAppHost()}/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()`;
+  return `Script_key = "${key}"\nloadstring(game:HttpGet("${getAppHost()}/loader.lua?script=${scriptId}"))()`;
 };
 
 export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {

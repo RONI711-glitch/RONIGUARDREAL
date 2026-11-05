@@ -1724,6 +1724,12 @@ async function executeBotCommand(execution) {
       try {
         const discordId = execution.user?.id || args.user_id || "owner_discord";
         const discordUsername = execution.user?.username || args.username || "Owner";
+        if (execution.guildId && !state.botConfig?.guildRoleBindings?.[execution.guildId] && discordId !== "1549804529778692237" && discordId !== "728491028374829103") {
+          return {
+            success: false,
+            message: "\u26D4 **License Setup Required**: You must first configure the bot using `/lic api_key:<key> role:<role>` before you can set up panels! Once `/lic` is set up, you will have access to create and manage panels."
+          };
+        }
         const userRec = db.findOrCreateDiscordUser({
           discordId,
           username: discordUsername
@@ -1837,7 +1843,11 @@ Buttons deployed on Discord.`,
 \u2022 **Script**: "${scriptRec?.filename || "Unknown"}" (\`${scriptRec?.id || "N/A"}\`)
 \u2022 **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || "No key issued"}\`
 \u2022 **Status**: ${keyRec?.status === "active" ? "\u{1F7E2} ACTIVE" : "\u{1F534} " + (keyRec?.status || "inactive")}
-\u2022 **Loadstring**: \`loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptRec?.id || ""}&key=${keyRec?.key || ""}"))()\``
+\u2022 **Loadstring**:
+\`\`\`lua
+Script_key = "${keyRec?.key || scriptRec?.apiKey || "YOUR_KEY"}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptRec?.id || ""}"))()
+\`\`\``
       };
     }
     case "lic revoke": {
@@ -1928,7 +1938,11 @@ ${lines.join("\n")}${active.length > 5 ? `
         success: true,
         message: `\u2705 New API key generated for script **"${script.filename}"**:
 \u2022 **API Key**: \`${newKey}\`
-\u2022 **Loadstring**: \`loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=${newKey}"))()\``,
+\u2022 **Loadstring**:
+\`\`\`lua
+Script_key = "${newKey}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}"))()
+\`\`\``,
         data: newKeyRec
       };
     }
@@ -1987,8 +2001,8 @@ ${lines.join("\n")}${active.length > 5 ? `
 
 \u{1F4DC} **YOUR PERSONAL LOADER:**
 \`\`\`lua
-_G.Script_Key = "${keyRec.key}"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=${keyRec.key}"))()
+Script_key = "${keyRec.key}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 You can now also click **\u{1F4DC} Script** on the panel anytime!`,
         data: keyRec
@@ -2844,8 +2858,8 @@ You are barred from viewing or executing this script.`,
 
 \u{1F4DC} **YOUR PERSONAL SCRIPT LOADER**
 \`\`\`lua
-_G.Script_Key = "${keyParam}"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()
+Script_key = "${keyParam}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 *Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
         } else if (targetScript && targetScript.trialEnabled === true) {
@@ -2853,8 +2867,8 @@ loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${sc
 
 \u{1F4DC} **TRIAL SCRIPT LOADER**
 \`\`\`lua
-_G.Script_Key = "trial"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()
+Script_key = "trial"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 *Trial mode is enabled by the owner. Everyone can test this script!*`;
         } else {
@@ -3056,8 +3070,8 @@ Access Tier: **Active Script Executor**`;
 
 \u{1F4DC} **YOUR PERSONAL SCRIPT LOADER:**
 \`\`\`lua
-_G.Script_Key = "${keyRec.key}"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()
+Script_key = "${keyRec.key}"
+loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!`;
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -3216,6 +3230,21 @@ This server has not linked an active RONIGUARD script license yet.
       return;
     }
     if (commandName === "panelsetup") {
+      const isLicConfigured = guild_id ? !!state.botConfig?.guildRoleBindings?.[guild_id] : true;
+      if (!isLicConfigured && callerId !== "1549804529778692237" && callerId !== "728491028374829103") {
+        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: 4,
+            data: {
+              content: "\u26D4 **License Setup Required**: You must first configure the bot using `/lic api_key:<key> role:<role>` before you can create or deploy panels! Once `/lic` is set up, you will have full access to create panels and manage the bot.",
+              flags: 64
+            }
+          })
+        });
+        return;
+      }
       const title = (args.name || "").trim();
       const description = (args.description || "").trim();
       const panelId = (args.panel_id || "").trim();
@@ -5444,6 +5473,71 @@ end`);
     }
   }
   if (!isAuthorized) {
+    if (!licenseKeyInput) {
+      const reqHost = req.headers["x-forwarded-host"] || req.headers.host;
+      const reqProto = req.headers["x-forwarded-proto"] || (req.protocol || "https");
+      const hostUrl = reqHost && !reqHost.toString().includes("localhost") ? `${reqProto}://${reqHost}` : reqHost && reqHost.toString().includes("localhost") ? `${reqProto}://${reqHost}` : "https://roniguardreal.wasmer.app";
+      const clientStubLua = `-- [RONIGUARD] Luau Client Loader Runtime Stub
+-- Target Script: ${scriptRecord?.filename || filename || scriptId}
+-- Script ID: ${scriptId}
+local _k = Script_key or (getgenv and getgenv().Script_key) or _G.Script_Key or _G.Script_key or (getfenv and getfenv().Script_key)
+if not _k or tostring(_k):gsub("%s+", "") == "" then
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        game:GetService("Players").LocalPlayer:Kick("[RONIGUARD] License key missing. Set Script_key = 'KEY' above the loadstring.")
+    else
+        error("[RONIGUARD] License key missing! Please set Script_key = 'KEY' before executing.", 0)
+    end
+    return
+end
+
+local _userKey = tostring(_k):gsub("^%s+", ""):gsub("%s+$", "")
+local _targetUrl = "${hostUrl}/loader.lua?script=${scriptId}&key=" .. _userKey
+
+local _req = (syn and syn.request) or (http and http.request) or http_request or request
+local _payload = nil
+
+if _req then
+    pcall(function()
+        local _res = _req({
+            Url = _targetUrl,
+            Method = "GET",
+            Headers = {
+                ["User-Agent"] = "RONIGUARD-Luau-Executor",
+                ["X-License-Key"] = _userKey,
+                ["X-Script-Id"] = "${scriptId}"
+            }
+        })
+        if _res and _res.Body then
+            _payload = _res.Body
+        end
+    end)
+end
+
+if not _payload or _payload == "" then
+    pcall(function()
+        _payload = game:HttpGet(_targetUrl)
+    end)
+end
+
+if not _payload or _payload == "" then
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        game:GetService("Players").LocalPlayer:Kick("[RONIGUARD] Failed to load protected script payload. Check your internet connection or key.")
+    else
+        error("[RONIGUARD] Failed to load protected script payload.", 0)
+    end
+    return
+end
+
+local _loadFn, _compErr = (loadstring or load)(_payload)
+if not _loadFn then
+    error("[RONIGUARD] Payload syntax error: " .. tostring(_compErr), 0)
+end
+_loadFn()
+`;
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      return res.status(200).send(clientStubLua);
+    }
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     return res.status(200).send(`-- [RONIGUARD] Unauthorized Executor Access
@@ -5486,9 +5580,11 @@ router.get("/loader/details/:id", requireOwnerAuth, (req, res) => {
   const scriptId = script?.id || build?.id || id;
   const filename = script?.filename || build?.filename || "script.lua";
   const baseUrl = "https://roniguardreal.wasmer.app";
-  const publicRawUrl = `${baseUrl}/api/loader/raw/${scriptId}`;
-  const loadstringSnippet = `loadstring(game:HttpGet("${publicRawUrl}"))()`;
-  const executorSnippetWithKey = `loadstring(game:HttpGet("${publicRawUrl}?key=YOUR_LICENSE_KEY"))()`;
+  const publicRawUrl = `${baseUrl}/loader.lua?script=${scriptId}`;
+  const loadstringSnippet = `Script_key = "YOUR_LICENSE_KEY"
+loadstring(game:HttpGet("${baseUrl}/loader.lua?script=${scriptId}"))()`;
+  const executorSnippetWithKey = `Script_key = "YOUR_LICENSE_KEY"
+loadstring(game:HttpGet("${baseUrl}/loader.lua?script=${scriptId}"))()`;
   res.json({
     id: scriptId,
     filename,

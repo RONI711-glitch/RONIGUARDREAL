@@ -2227,8 +2227,86 @@ end`);
     }
   }
 
-  // D. Authorization Rejection
+  // D. Authorization Rejection OR Client Loader Runtime Stub Delivery
   if (!isAuthorized) {
+    // If the request had NO license key parameter or header, the user is running the clean loadstring format:
+    // Script_key = "<key>"
+    // loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=<scriptId>"))()
+    // In this case, we deliver the Luau Client Loader Runtime Stub for this script!
+    // The stub runs in Roblox, reads Script_key (or _G.Script_Key / getgenv().Script_key),
+    // and fetches the authorized payload using /loader.lua?script=<scriptId>&key=<userKey>.
+    if (!licenseKeyInput) {
+      const reqHost = req.headers['x-forwarded-host'] || req.headers.host;
+      const reqProto = (req.headers['x-forwarded-proto'] as string) || (req.protocol || 'https');
+      const hostUrl =
+        reqHost && !reqHost.toString().includes('localhost')
+          ? `${reqProto}://${reqHost}`
+          : reqHost && reqHost.toString().includes('localhost')
+          ? `${reqProto}://${reqHost}`
+          : 'https://roniguardreal.wasmer.app';
+
+      const clientStubLua = `-- [RONIGUARD] Luau Client Loader Runtime Stub
+-- Target Script: ${scriptRecord?.filename || filename || scriptId}
+-- Script ID: ${scriptId}
+local _k = Script_key or (getgenv and getgenv().Script_key) or _G.Script_Key or _G.Script_key or (getfenv and getfenv().Script_key)
+if not _k or tostring(_k):gsub("%s+", "") == "" then
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        game:GetService("Players").LocalPlayer:Kick("[RONIGUARD] License key missing. Set Script_key = 'KEY' above the loadstring.")
+    else
+        error("[RONIGUARD] License key missing! Please set Script_key = 'KEY' before executing.", 0)
+    end
+    return
+end
+
+local _userKey = tostring(_k):gsub("^%s+", ""):gsub("%s+$", "")
+local _targetUrl = "${hostUrl}/loader.lua?script=${scriptId}&key=" .. _userKey
+
+local _req = (syn and syn.request) or (http and http.request) or http_request or request
+local _payload = nil
+
+if _req then
+    pcall(function()
+        local _res = _req({
+            Url = _targetUrl,
+            Method = "GET",
+            Headers = {
+                ["User-Agent"] = "RONIGUARD-Luau-Executor",
+                ["X-License-Key"] = _userKey,
+                ["X-Script-Id"] = "${scriptId}"
+            }
+        })
+        if _res and _res.Body then
+            _payload = _res.Body
+        end
+    end)
+end
+
+if not _payload or _payload == "" then
+    pcall(function()
+        _payload = game:HttpGet(_targetUrl)
+    end)
+end
+
+if not _payload or _payload == "" then
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        game:GetService("Players").LocalPlayer:Kick("[RONIGUARD] Failed to load protected script payload. Check your internet connection or key.")
+    else
+        error("[RONIGUARD] Failed to load protected script payload.", 0)
+    end
+    return
+end
+
+local _loadFn, _compErr = (loadstring or load)(_payload)
+if not _loadFn then
+    error("[RONIGUARD] Payload syntax error: " .. tostring(_compErr), 0)
+end
+_loadFn()
+`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      return res.status(200).send(clientStubLua);
+    }
+
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     return res.status(200).send(`-- [RONIGUARD] Unauthorized Executor Access
@@ -2281,9 +2359,9 @@ router.get('/loader/details/:id', requireOwnerAuth, (req, res) => {
 
   const baseUrl = 'https://roniguardreal.wasmer.app';
 
-  const publicRawUrl = `${baseUrl}/api/loader/raw/${scriptId}`;
-  const loadstringSnippet = `loadstring(game:HttpGet("${publicRawUrl}"))()`;
-  const executorSnippetWithKey = `loadstring(game:HttpGet("${publicRawUrl}?key=YOUR_LICENSE_KEY"))()`;
+  const publicRawUrl = `${baseUrl}/loader.lua?script=${scriptId}`;
+  const loadstringSnippet = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${baseUrl}/loader.lua?script=${scriptId}"))()`;
+  const executorSnippetWithKey = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${baseUrl}/loader.lua?script=${scriptId}"))()`;
 
   res.json({
     id: scriptId,
