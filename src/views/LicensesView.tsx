@@ -15,7 +15,7 @@ import {
   ExternalLink,
   Trash2,
 } from 'lucide-react';
-import { api } from '../api.ts';
+import { api, WASMER_APP_URL } from '../api.ts';
 import { LicenseItem } from '../types.ts';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
 
@@ -166,7 +166,7 @@ export const LicensesView: React.FC<LicensesViewProps> = ({ onShowToast }) => {
         <div className="space-y-3">
           {filtered.map((item) => {
             const isActive = item.status === 'active';
-            const loadstring = `_G.Script_Key = "${item.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${item.scriptId}&key=" .. _G.Script_Key))()`;
+            const loadstring = `_G.Script_Key = "${item.key}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${item.scriptId}&key=" .. _G.Script_Key))()`;
 
             return (
               <div

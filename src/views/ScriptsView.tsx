@@ -42,6 +42,17 @@ const STAGES = [
   'Script-Specific API Key Minting & Loadstring Finalization',
 ];
 
+const getAppHost = () => {
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return window.location.origin;
+  }
+  return 'https://roniguardreal.wasmer.app';
+};
+
+const buildLoadstring = (scriptId: string, key: string) => {
+  return `_G.Script_Key = "${key}"\nloadstring(game:HttpGet("${getAppHost()}/loader.lua?script=${scriptId}&key=" .. _G.Script_Key))()`;
+};
+
 export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
   const [scripts, setScripts] = useState<ScriptItem[]>([]);
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -116,7 +127,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
           setActiveJob(res.job);
           if (res.job.status === 'completed') {
             if (pollingRef.current) clearInterval(pollingRef.current);
-            const loadUrl = `https://roniguardreal.wasmer.app/loader.lua?script=${res.job.scriptId}&key=${res.job.apiKey}`;
+            const loadUrl = res.loadstringUrl || `${getAppHost()}/loader.lua?script=${res.job.scriptId}&key=${res.job.apiKey}`;
             setCompletedJobResult({
               scriptId: res.job.scriptId,
               scriptName: res.job.scriptName,
@@ -368,7 +379,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredScripts.map((script) => {
             const panel = panels.find((p) => p.id === script.panelId);
-            const loadstringSnippet = `_G.Script_Key = "${script.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=" .. _G.Script_Key))()`;
+            const loadstringSnippet = buildLoadstring(script.id, script.apiKey || 'YOUR_KEY');
 
             return (
               <div
@@ -491,7 +502,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                     <button
                       onClick={() =>
                         copyToClipboard(
-                          `_G.Script_Key = "trail"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}&key=" .. _G.Script_Key))()`,
+                          buildLoadstring(script.id, 'trial'),
                           `trial_${script.id}`
                         )
                       }
@@ -830,11 +841,11 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
             <div className="p-4 rounded-xl bg-[#090412] border border-purple-900/40 space-y-2">
               <span className="text-xs font-semibold text-neutral-300">Roblox Executor Loadstring:</span>
               <div className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-black/60 font-mono text-[11px] text-purple-200 border border-neutral-800 overflow-x-auto">
-                <code className="break-all">{`_G.Script_Key = "${completedJobResult.apiKey}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${completedJobResult.scriptId}&key=" .. _G.Script_Key))()`}</code>
+                <code className="break-all">{buildLoadstring(completedJobResult.scriptId, completedJobResult.apiKey)}</code>
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      `_G.Script_Key = "${completedJobResult.apiKey}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${completedJobResult.scriptId}&key=" .. _G.Script_Key))()`,
+                      buildLoadstring(completedJobResult.scriptId, completedJobResult.apiKey),
                       'modal_loadstring'
                     )
                   }

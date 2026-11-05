@@ -857,7 +857,11 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
 
   public getUserBySessionToken(token: string): UserRecord | null {
     if (!token) return null;
-    const user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    let user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    if (!user) {
+      this.state = this.load();
+      user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    }
     if (user) {
       user.email = null;
       return user;

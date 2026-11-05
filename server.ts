@@ -17,13 +17,30 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.set('trust proxy', 1);
 
 // Mount API routes
-app.use('/api', apiRouter);
+// Direct root & API endpoints for Roblox loadstrings and raw script delivery
+const rawLoaderEndpoints = [
+  '/loader.lua',
+  '/loader',
+  '/raw/:id',
+  '/load/:id',
+  '/raw/latest.lua',
+  '/raw/latest',
+  '/api/loader',
+  '/api/loader.lua',
+  '/api/loader/raw',
+  '/api/loader/raw/:id',
+  '/api/raw/:id',
+  '/api/load/:id',
+  '/api/raw/latest.lua',
+  '/api/raw/latest',
+  '/api/scripts/:id/raw',
+  '/scripts/:id/raw',
+];
+rawLoaderEndpoints.forEach((ep) => {
+  app.get(ep, handleRawLoaderRequest);
+});
 
-// Direct root endpoints for Roblox loadstrings
-app.get('/loader.lua', handleRawLoaderRequest);
-app.get('/raw/:id', handleRawLoaderRequest);
-app.get('/load/:id', handleRawLoaderRequest);
-app.get('/raw/latest.lua', handleRawLoaderRequest);
+app.use('/api', apiRouter);
 app.get('/health', (_req, res) => {
   res.redirect('/api/health');
 });

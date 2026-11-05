@@ -24,7 +24,7 @@ import {
 
 const TOKEN_KEY = 'roniguard_owner_token';
 const LOCAL_STORE_KEY = 'roniguard_local_db_v3';
-export const WASMER_APP_URL = 'https://roniguardreal.wasmer.app';
+export const WASMER_APP_URL = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://roniguardreal.wasmer.app';
 export const generateLocalId = () => Math.random().toString(36).substring(2, 9);
 
 export function getStoredToken(): string | null {

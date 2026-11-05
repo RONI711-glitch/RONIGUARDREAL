@@ -19,11 +19,15 @@ import { CosmicAudioPlayer } from './components/CosmicAudioPlayer.tsx';
 export default function App() {
   const isLoadstringRoute =
     typeof window !== 'undefined' &&
-    (window.location.pathname.startsWith('/api/loader/raw') ||
-      window.location.pathname.startsWith('/raw/') ||
+    (window.location.pathname.startsWith('/api/loader') ||
+      window.location.pathname === '/loader' ||
       window.location.pathname === '/loader.lua' ||
+      window.location.pathname.startsWith('/raw/') ||
       window.location.pathname === '/raw/latest.lua' ||
+      window.location.pathname === '/raw/latest' ||
       window.location.pathname.startsWith('/load/') ||
+      (window.location.pathname.startsWith('/scripts/') && window.location.pathname.endsWith('/raw')) ||
+      (window.location.pathname.startsWith('/api/scripts/') && window.location.pathname.endsWith('/raw')) ||
       window.location.pathname === '/unauthorized' ||
       window.location.pathname.endsWith('.lua'));
 

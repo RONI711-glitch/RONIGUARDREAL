@@ -522,7 +522,11 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
   }
   getUserBySessionToken(token) {
     if (!token) return null;
-    const user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    let user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    if (!user) {
+      this.state = this.load();
+      user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
+    }
     if (user) {
       user.email = null;
       return user;
@@ -3815,13 +3819,16 @@ function requireOwnerAuth(req, res, next) {
   req.user = user;
   next();
 }
+function getBaseUrl(req) {
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "roniguardreal.wasmer.app";
+  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+  return `${proto}://${host}`;
+}
 function resolveRedirectUri(req) {
   if (process.env.DISCORD_REDIRECT_URI) {
     return process.env.DISCORD_REDIRECT_URI.trim();
   }
-  const host = req.headers["x-forwarded-host"] || req.headers.host || "roniguardreal.wasmer.app";
-  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
-  return `${proto}://${host}/api/auth/discord/callback`;
+  return `${getBaseUrl(req)}/api/auth/discord/callback`;
 }
 router.get(["/auth/url", "/auth/discord/url", "/oauth/url"], (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
@@ -4363,10 +4370,35 @@ router.post("/scripts/process", requireAuth, async (req, res) => {
     apiKeyId,
     isObfuscated: obfuscationEnabled !== false,
     buildCount: 1,
-    lastBuiltAt: null,
+    lastBuiltAt: (/* @__PURE__ */ new Date()).toISOString(),
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     keyLocked: true
   };
+  const keyRecord = {
+    id: apiKeyId,
+    userId: user.id,
+    scriptId: scriptRecord.id,
+    panelId: panel.id,
+    key: apiKey,
+    type: "lifetime",
+    maxUses: 1,
+    currentUses: 0,
+    hwidLocked: Boolean(panel.hwidLockEnabled),
+    boundHwid: null,
+    status: "active",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    expiresAt: null,
+    lastUsedAt: null
+  };
+  state.keys.unshift(keyRecord);
+  try {
+    const initialPayload = obfuscationEnabled !== false ? runRoniguardMax(code, { profile: panel.protectionProfile || "maximum" }) : formatNonObfuscatedScript(code, scriptRecord.filename);
+    fs2.writeFileSync(path2.join(BUILDS_DIR, `${protectedFileId}.lua`), initialPayload, "utf-8");
+    fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptId}.lua`), initialPayload, "utf-8");
+    scriptRecord.protectedSize = Buffer.byteLength(initialPayload, "utf-8");
+  } catch (initErr) {
+    console.warn("[RONIGUARD] Initial payload generation fallback notice:", initErr);
+  }
   state.scripts.unshift(scriptRecord);
   panel.scriptCount = (panel.scriptCount || 0) + 1;
   db.save();
@@ -4390,7 +4422,7 @@ router.post("/scripts/process", requireAuth, async (req, res) => {
   });
 });
 function runBackgroundJobStages(jobId, sourceCode, scriptRecord) {
-  const STAGE_INTERVAL_MS = 6e3;
+  const STAGE_INTERVAL_MS = 1500;
   let currentStageIndex = 0;
   const interval = setInterval(async () => {
     currentStageIndex += 1;
@@ -4410,34 +4442,14 @@ function runBackgroundJobStages(jobId, sourceCode, scriptRecord) {
       try {
         let finalOutput = "";
         if (job.obfuscationEnabled) {
-          const obf = await runObfuscationPipeline(sourceCode, { engine: "RONIGUARD-MAX", profile: "maximum" });
+          const obf = await runObfuscationPipeline(sourceCode, { engine: "VYKUS-VM", profile: "maximum" });
           finalOutput = obf.transformedCode || sourceCode;
         } else {
-          finalOutput = `-- [RONIGUARD] Protected Asset: ${scriptRecord.filename}
--- Processed: ${(/* @__PURE__ */ new Date()).toISOString()}
-
-${sourceCode}`;
+          finalOutput = formatNonObfuscatedScript(sourceCode, scriptRecord.filename);
         }
         fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`), finalOutput, "utf-8");
         fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.id}.lua`), finalOutput, "utf-8");
         const state = db.get();
-        const keyRecord = {
-          id: scriptRecord.apiKeyId,
-          userId: scriptRecord.userId,
-          scriptId: scriptRecord.id,
-          panelId: scriptRecord.panelId,
-          key: scriptRecord.apiKey,
-          type: "lifetime",
-          maxUses: 1,
-          currentUses: 0,
-          hwidLocked: true,
-          boundHwid: null,
-          status: "active",
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          expiresAt: null,
-          lastUsedAt: null
-        };
-        state.keys.unshift(keyRecord);
         const scr = state.scripts.find((s) => s.id === scriptRecord.id);
         if (scr) {
           scr.status = job.obfuscationEnabled ? "obfuscated" : "ready";
@@ -4479,7 +4491,7 @@ router.get("/jobs/:id", requireAuth, (req, res) => {
   }
   res.json({
     job,
-    loadstringUrl: job.status === "completed" ? `https://roniguardreal.wasmer.app/loader.lua?script=${job.scriptId}&key=${job.apiKey}` : void 0
+    loadstringUrl: job.status === "completed" ? `${getBaseUrl(req)}/loader.lua?script=${job.scriptId}&key=${job.apiKey}` : void 0
   });
 });
 router.put("/scripts/:id", requireAuth, async (req, res) => {
@@ -5126,7 +5138,7 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
 <head>
   <meta charset="UTF-8">
   <title>ACCESS UNAUTHORIZED</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -5136,9 +5148,13 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       overflow: hidden;
       margin: 0;
+      color: #f1f5f9;
+      user-select: none;
+      -webkit-user-select: none;
     }
     .container {
       min-height: 100vh;
+      width: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -5161,6 +5177,10 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
       letter-spacing: 0.05em;
       box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6);
       text-transform: uppercase;
+      transition: transform 0.2s ease;
+    }
+    .badge-card:hover {
+      transform: scale(1.01);
     }
     .siren {
       font-size: 1.25rem;
@@ -5176,6 +5196,21 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
       font-size: 0.82rem;
       font-weight: 500;
       letter-spacing: 0.01em;
+    }
+    @media (max-width: 640px) {
+      .badge-card {
+        padding: 14px 22px;
+        font-size: 0.95rem;
+        gap: 10px;
+        border-radius: 12px;
+      }
+      .siren {
+        font-size: 1.1rem;
+      }
+      .footer-text {
+        bottom: 20px;
+        font-size: 0.76rem;
+      }
     }
   </style>
 </head>
@@ -5193,26 +5228,36 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
 </body>
 </html>`;
 }
-function resolveScriptContentAndMeta(id) {
+function resolveScriptContentAndMeta(id, licenseKeyInput) {
   const cleanId = id.replace(/\.lua$/i, "").trim();
   const state = db.get();
+  if (licenseKeyInput) {
+    const keyRec = state.keys.find(
+      (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
+    );
+    if (keyRec && keyRec.scriptId) {
+      const boundScript = state.scripts.find((s) => s.id === keyRec.scriptId);
+      if (boundScript) {
+        const res = resolveFromScriptRecord(boundScript);
+        if (res) return res;
+      }
+    }
+  }
   const sortedScripts = state.scripts.slice().sort((a, b) => {
     const tB = new Date(b.lastBuiltAt || b.createdAt).getTime();
     const tA = new Date(a.lastBuiltAt || a.createdAt).getTime();
     return tB - tA;
   });
   let scriptRecord = sortedScripts.find(
-    (s) => s.id === cleanId || s.id === id || s.filename.toLowerCase() === cleanId.toLowerCase() || s.filename.toLowerCase() === id.toLowerCase() || s.protectedFileId === cleanId
+    (s) => s.id === cleanId || s.id === id || s.filename.toLowerCase() === cleanId.toLowerCase() || s.filename.toLowerCase() === id.toLowerCase() || s.protectedFileId === cleanId || s.panelId === cleanId
   );
   let buildRecord = state.builds.find((b) => b.id === cleanId || b.id === id || b.scriptId === cleanId);
   if (!scriptRecord && (cleanId === "latest" || cleanId === "default" || id === "latest.lua")) {
     scriptRecord = sortedScripts[0] || state.scripts[0];
   }
-  if (scriptRecord?.protectedFileId) {
-    const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`);
-    if (fs2.existsSync(pPath)) {
-      return { content: fs2.readFileSync(pPath, "utf-8"), filename: scriptRecord.filename, scriptRecord, buildRecord };
-    }
+  if (scriptRecord) {
+    const res = resolveFromScriptRecord(scriptRecord);
+    if (res) return res;
   }
   if (buildRecord) {
     const bPath = path2.join(BUILDS_DIR, `${buildRecord.id}.lua`);
@@ -5224,163 +5269,194 @@ function resolveScriptContentAndMeta(id) {
   if (fs2.existsSync(directBuildPath)) {
     return { content: fs2.readFileSync(directBuildPath, "utf-8"), filename: scriptRecord?.filename || `${cleanId}.lua`, scriptRecord, buildRecord };
   }
-  if (scriptRecord?.originalFileId) {
-    const oPath = path2.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
-    if (fs2.existsSync(oPath)) {
-      return { content: fs2.readFileSync(oPath, "utf-8"), filename: scriptRecord.filename, scriptRecord, buildRecord };
-    }
-  }
   const directSourcePath = path2.join(SOURCES_DIR, `${cleanId}.lua`);
   if (fs2.existsSync(directSourcePath)) {
     return { content: fs2.readFileSync(directSourcePath, "utf-8"), filename: `${cleanId}.lua`, scriptRecord, buildRecord };
   }
-  if (scriptRecord) {
-    const sampleLua = `-- [RONIGUARD] Universal Roblox Script
-print("[RONIGUARD] Executing Protected Script Payload...")
+  return null;
+}
+function resolveFromScriptRecord(scriptRecord) {
+  if (scriptRecord?.protectedFileId) {
+    const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`);
+    if (fs2.existsSync(pPath)) {
+      return { content: fs2.readFileSync(pPath, "utf-8"), filename: scriptRecord.filename, scriptRecord };
+    }
+  }
+  const directBuild = path2.join(BUILDS_DIR, `${scriptRecord.id}.lua`);
+  if (fs2.existsSync(directBuild)) {
+    return { content: fs2.readFileSync(directBuild, "utf-8"), filename: scriptRecord.filename, scriptRecord };
+  }
+  if (scriptRecord?.originalFileId) {
+    const oPath = path2.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
+    if (fs2.existsSync(oPath)) {
+      const srcCode = fs2.readFileSync(oPath, "utf-8");
+      const prepared = formatNonObfuscatedScript(srcCode, scriptRecord.filename);
+      try {
+        fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || scriptRecord.id}.lua`), prepared, "utf-8");
+      } catch {
+      }
+      return { content: prepared, filename: scriptRecord.filename, scriptRecord };
+    }
+  }
+  const sampleLua = `-- [RONIGUARD] Universal Roblox Script
+print("[RONIGUARD] Executing Protected Script Payload: ${scriptRecord.filename}")
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     print("[RONIGUARD] Active Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
 end
-print("[RONIGUARD] Successfully authenticated and running!")`;
-    try {
-      const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || "bld_" + scriptRecord.id}.lua`);
-      fs2.writeFileSync(pPath, sampleLua, "utf-8");
-      return { content: sampleLua, filename: scriptRecord.filename, scriptRecord, buildRecord };
-    } catch {
-    }
+print("[RONIGUARD] Script payload authenticated and running!")`;
+  try {
+    const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || "bld_" + scriptRecord.id}.lua`);
+    fs2.writeFileSync(pPath, sampleLua, "utf-8");
+    return { content: sampleLua, filename: scriptRecord.filename, scriptRecord };
+  } catch {
   }
   return null;
 }
 async function handleRawLoaderRequest(req, res) {
-  const rawId = req.query.script || req.query.id || req.params.id || req.params.scriptId || "latest";
-  const id = rawId.trim();
-  const state = db.get();
   const userAgent = (req.headers["user-agent"] || "").toLowerCase();
   const acceptHeader = (req.headers["accept"] || "").toLowerCase();
-  const isBrowser = acceptHeader.includes("text/html") || userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("opera") || userAgent.includes("mobile") || userAgent.includes("android") || userAgent.includes("iphone") || userAgent.includes("ipad");
-  const isExecutor = !isBrowser && (userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("wave") || userAgent.includes("delta") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || !!req.headers["x-hwid"] || !!req.headers["x-roblox-user-id"] || !!req.headers["roblox-game-id"]);
-  if (isBrowser || !isExecutor) {
+  const secFetchDest = (req.headers["sec-fetch-dest"] || "").toLowerCase();
+  const secFetchMode = (req.headers["sec-fetch-mode"] || "").toLowerCase();
+  const hasBrowserDest = secFetchDest === "document" || secFetchMode === "navigate";
+  const acceptsHtml = acceptHeader.includes("text/html") || acceptHeader.includes("application/xhtml+xml");
+  const isBrowserUA = (userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("curl") && !userAgent.includes("httpclient");
+  const hasExecutorHeaders = Boolean(req.headers["x-hwid"]) || Boolean(req.headers["x-roblox-user-id"]) || Boolean(req.headers["roblox-game-id"]) || Boolean(req.headers["roblox-place-id"]) || Boolean(req.headers["x-fingerprint"]) || userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("delta") || userAgent.includes("wave") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || userAgent.includes("krnl") || userAgent.includes("solara") || userAgent.includes("xeno") || userAgent.includes("celery");
+  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
+  if (isBrowser) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(renderUnauthorizedHtml(id || "Protected Script", id || "loader"));
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return res.status(200).send(renderUnauthorizedHtml());
   }
-  let resolved = resolveScriptContentAndMeta(id);
-  const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key)?.trim();
-  if (!resolved && licenseKeyInput) {
+  const rawId = req.query.script || req.query.id || req.params.id || req.params.scriptId || "";
+  const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key || req.headers["x-api-key"])?.trim();
+  const panelIdInput = (req.query.panel || req.query.panel_id || req.headers["x-panel-id"])?.trim();
+  const hwid = (req.headers["x-hwid"] || req.query.hwid)?.trim();
+  const robloxUser = (req.headers["x-roblox-user-id"] || req.query.user_id || req.query.player)?.trim();
+  const state = db.get();
+  let targetScriptId = rawId.replace(/\.lua$/i, "").trim();
+  let keyRecordMatched = null;
+  if (licenseKeyInput) {
     const keyRec = state.keys.find(
       (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
     );
-    if (keyRec && keyRec.scriptId) {
-      resolved = resolveScriptContentAndMeta(keyRec.scriptId);
+    if (keyRec) {
+      keyRecordMatched = keyRec;
+      if (!targetScriptId || targetScriptId === "latest") {
+        targetScriptId = keyRec.scriptId || "";
+      }
     }
   }
-  if (!resolved && state.scripts.length > 0) {
-    resolved = resolveScriptContentAndMeta(state.scripts[0].id);
+  if ((!targetScriptId || targetScriptId === "latest") && panelIdInput) {
+    const panelScript = state.scripts.find((s) => s.panelId === panelIdInput);
+    if (panelScript) {
+      targetScriptId = panelScript.id;
+    }
+  }
+  let resolved = targetScriptId ? resolveScriptContentAndMeta(targetScriptId, licenseKeyInput) : null;
+  if (!resolved && (targetScriptId === "latest" || !targetScriptId && !licenseKeyInput)) {
+    if (state.scripts.length > 0) {
+      resolved = resolveScriptContentAndMeta(state.scripts[0].id, licenseKeyInput);
+    }
   }
   if (!resolved) {
-    if (isBrowser) {
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      return res.status(404).send(renderUnauthorizedHtml(id, id));
-    }
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    return res.status(404).send(`-- [RONIGUARD] 404: Script "${id}" not found.`);
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return res.status(200).send(`-- [RONIGUARD] Error: Target script not found
+error("[RONIGUARD] 404: Script not found or removed. Check your script ID or contact the owner.", 0)`);
   }
   const { content, filename, scriptRecord } = resolved;
-  const authUser = getAuthenticatedUser(req);
-  const isAuthorizedOwner = Boolean(
-    authUser && (authUser.role === "admin" || scriptRecord && scriptRecord.userId === authUser.id)
-  );
-  const hwid = (req.headers["x-hwid"] || req.query.hwid)?.trim();
-  const robloxUser = (req.headers["x-roblox-user-id"] || req.query.user_id)?.trim();
-  const targetScriptId = scriptRecord?.id;
-  const isBlacklisted = hwid && db.isUserBlacklisted(hwid, targetScriptId).blacklisted || robloxUser && db.isUserBlacklisted(robloxUser, targetScriptId).blacklisted || licenseKeyInput && db.isUserBlacklisted(licenseKeyInput, targetScriptId).blacklisted;
+  const scriptId = scriptRecord?.id || targetScriptId;
+  const panel = state.panels.find((p) => p.id === scriptRecord?.panelId);
+  const isBlacklisted = hwid && db.isUserBlacklisted(hwid, scriptId).blacklisted || robloxUser && db.isUserBlacklisted(robloxUser, scriptId).blacklisted || licenseKeyInput && db.isUserBlacklisted(licenseKeyInput, scriptId).blacklisted;
   if (isBlacklisted) {
     db.logSecurityEvent({
-      scriptId: targetScriptId,
+      scriptId,
       apiKey: licenseKeyInput,
       eventType: "user_blacklisted",
       severity: "critical",
-      reason: `Blacklisted user or device (${robloxUser || hwid || licenseKeyInput || "Target"}) attempted to execute script`,
+      reason: `Blacklisted user or device attempted script execution: ${robloxUser || hwid || licenseKeyInput}`,
       ip: req.ip,
       hwid
     });
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    return res.status(200).send(`-- [RONIGUARD] Blacklisted User Kick
+    return res.status(200).send(`-- [RONIGUARD] Blacklist Enforcement
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     game:GetService("Players").LocalPlayer:Kick("You have been blacklisted from this script by the owner.")
 else
-    error("You have been blacklisted from this script by the owner.")
+    error("[RONIGUARD] Blacklisted user: Access denied.", 0)
 end`);
   }
-  let isAuthorizedExecutor = false;
-  let keyRecordMatched = null;
+  let isAuthorized = false;
+  if (panel && panel.keyAuthEnabled === false && panel.whitelistEnabled === false) {
+    isAuthorized = true;
+  }
   const cleanKey = (licenseKeyInput || "").toLowerCase().trim();
   const isTrialKey = cleanKey === "trial" || cleanKey === "trail";
   if (isTrialKey) {
-    if (scriptRecord && scriptRecord.trialEnabled) {
-      isAuthorizedExecutor = true;
+    if (scriptRecord?.trialEnabled) {
+      isAuthorized = true;
     } else {
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      return res.status(200).send(`-- [RONIGUARD] Script Trial Disabled
+      return res.status(200).send(`-- [RONIGUARD] Trial Inactive
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     game:GetService("Players").LocalPlayer:Kick("Script trial has been turned off by owner.")
 else
-    error("Script trial has been turned off by owner.")
+    error("[RONIGUARD] Script trial has been turned off by owner.", 0)
 end`);
     }
   }
-  if (!isAuthorizedExecutor && licenseKeyInput && !isTrialKey) {
-    const keyRec = state.keys.find(
-      (k) => k.key.toUpperCase() === licenseKeyInput.toUpperCase() || k.id === licenseKeyInput
-    );
-    if (keyRec && keyRec.status === "active") {
-      if (scriptRecord && keyRec.scriptId && keyRec.scriptId !== scriptRecord.id) {
-        isAuthorizedExecutor = false;
-      } else {
-        const notExpired = !keyRec.expiresAt || new Date(keyRec.expiresAt) > /* @__PURE__ */ new Date();
+  if (!isAuthorized && licenseKeyInput && !isTrialKey) {
+    if (keyRecordMatched && keyRecordMatched.status === "active") {
+      if (!keyRecordMatched.scriptId || keyRecordMatched.scriptId === scriptId) {
+        const notExpired = !keyRecordMatched.expiresAt || new Date(keyRecordMatched.expiresAt) > /* @__PURE__ */ new Date();
         if (notExpired) {
-          if (!keyRec.hwidLocked || !keyRec.boundHwid || keyRec.boundHwid === hwid) {
-            isAuthorizedExecutor = true;
-            keyRecordMatched = keyRec;
+          const isHwidLocked = keyRecordMatched.hwidLocked || panel?.hwidLockEnabled;
+          if (!isHwidLocked || !keyRecordMatched.boundHwid || keyRecordMatched.boundHwid === hwid) {
+            isAuthorized = true;
+            if (isHwidLocked && !keyRecordMatched.boundHwid && hwid) {
+              keyRecordMatched.boundHwid = hwid;
+            }
+            keyRecordMatched.currentUses = (keyRecordMatched.currentUses || 0) + 1;
+            keyRecordMatched.lastUsedAt = (/* @__PURE__ */ new Date()).toISOString();
+            db.save();
+          } else {
+            res.setHeader("Content-Type", "text/plain; charset=utf-8");
+            return res.status(200).send(`-- [RONIGUARD] HWID Mismatch
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    game:GetService("Players").LocalPlayer:Kick("HWID Mismatch: License key is locked to another hardware device.")
+else
+    error("[RONIGUARD] HWID Mismatch: License key is bound to another hardware device.", 0)
+end`);
           }
         }
       }
     }
   }
-  if (!isAuthorizedExecutor && robloxUser) {
+  if (!isAuthorized && robloxUser) {
     const wl = state.whitelist.find(
-      (w) => (w.identifier === robloxUser || w.identifier === `@${robloxUser}`) && w.status === "active"
+      (w) => (w.identifier === robloxUser || w.identifier === `@${robloxUser}`) && w.status === "active" && (!w.panelId || w.panelId === scriptRecord?.panelId)
     );
     if (wl) {
-      isAuthorizedExecutor = true;
+      isAuthorized = true;
       wl.lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
       if (hwid && !wl.boundHwid) wl.boundHwid = hwid;
       db.save();
     }
   }
-  if (keyRecordMatched) {
-    keyRecordMatched.currentUses = (keyRecordMatched.currentUses || 0) + 1;
-    keyRecordMatched.lastUsedAt = (/* @__PURE__ */ new Date()).toISOString();
-    if (keyRecordMatched.hwidLocked && !keyRecordMatched.boundHwid && hwid) {
-      keyRecordMatched.boundHwid = hwid;
-    }
-    db.save();
-  }
-  if (!isAuthorizedExecutor && !isAuthorizedOwner) {
-    if (isBrowser) {
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      return res.status(401).send(renderUnauthorizedHtml(filename, id));
-    }
+  if (!isAuthorized) {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     return res.status(200).send(`-- [RONIGUARD] Unauthorized Executor Access
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     game:GetService("Players").LocalPlayer:Kick("You are not whitelisted on this script! Redeem a license key or contact the owner.")
 else
-    error("[RONIGUARD] Access Denied: Valid script-specific API key required.")
+    error("[RONIGUARD] Access Denied: Valid script-specific license key required.", 0)
 end`);
   }
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("X-Roniguard-Engine", "RONIGUARD-MAX");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-  const robloxPreamble = `-- [RONIGUARD] Protected Lua Execution Gateway
+  const robloxPreamble = `-- [RONIGUARD] Secured Lua Execution Gateway
 local _rgPlayer = "Unknown"
 pcall(function()
     if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
@@ -5388,18 +5464,20 @@ pcall(function()
     end
 end)
 print("[RONIGUARD] Player: " .. _rgPlayer)
-print("[RONIGUARD] Status: Connected & Confirmed")
-print("[RONIGUARD] Loading secured script payload...")
+print("[RONIGUARD] Status: Authenticated & Running")
 
 `;
   return res.send(robloxPreamble + content);
 }
+router.get("/loader", handleRawLoaderRequest);
+router.get("/loader.lua", handleRawLoaderRequest);
+router.get("/loader/raw", handleRawLoaderRequest);
 router.get("/loader/raw/:id", handleRawLoaderRequest);
 router.get("/raw/:id", handleRawLoaderRequest);
 router.get("/load/:id", handleRawLoaderRequest);
-router.get("/scripts/:id/raw", handleRawLoaderRequest);
-router.get("/loader.lua", handleRawLoaderRequest);
 router.get("/raw/latest.lua", handleRawLoaderRequest);
+router.get("/raw/latest", handleRawLoaderRequest);
+router.get("/scripts/:id/raw", handleRawLoaderRequest);
 router.get("/loader/details/:id", requireOwnerAuth, (req, res) => {
   const { id } = req.params;
   const state = db.get();
@@ -5766,11 +5844,28 @@ var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);
+var rawLoaderEndpoints = [
+  "/loader.lua",
+  "/loader",
+  "/raw/:id",
+  "/load/:id",
+  "/raw/latest.lua",
+  "/raw/latest",
+  "/api/loader",
+  "/api/loader.lua",
+  "/api/loader/raw",
+  "/api/loader/raw/:id",
+  "/api/raw/:id",
+  "/api/load/:id",
+  "/api/raw/latest.lua",
+  "/api/raw/latest",
+  "/api/scripts/:id/raw",
+  "/scripts/:id/raw"
+];
+rawLoaderEndpoints.forEach((ep) => {
+  app.get(ep, handleRawLoaderRequest);
+});
 app.use("/api", routes_default);
-app.get("/loader.lua", handleRawLoaderRequest);
-app.get("/raw/:id", handleRawLoaderRequest);
-app.get("/load/:id", handleRawLoaderRequest);
-app.get("/raw/latest.lua", handleRawLoaderRequest);
 app.get("/health", (_req, res) => {
   res.redirect("/api/health");
 });
