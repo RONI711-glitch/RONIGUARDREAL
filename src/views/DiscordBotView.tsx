@@ -199,7 +199,7 @@ export const DiscordBotView: React.FC<DiscordBotViewProps> = ({ onShowToast }) =
             </span>
           </div>
           <p className="text-[10px] text-neutral-500">
-            {status?.lastPing ? `Discord Gateway Round-Trip: ${status.lastPing}ms` : 'No ping data recorded'}
+            {status?.isConnected ? 'Presence: Listening to roniguard' : (status?.lastPing ? `Discord Gateway Round-Trip: ${status.lastPing}ms` : 'No ping data recorded')}
           </p>
         </div>
 

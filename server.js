@@ -2224,236 +2224,264 @@ var DiscordBotService = class {
     state.botConfig.isConnected = false;
     db.save();
   }
+  getSlashCommandDefinitions() {
+    return [
+      {
+        name: "lic",
+        description: "Configure script API key and manager role for all bot management commands",
+        options: [
+          {
+            type: 3,
+            // STRING
+            name: "api_key",
+            description: "Website API key for the script (e.g. RONI-API-...)",
+            required: true
+          },
+          {
+            type: 8,
+            // ROLE
+            name: "role",
+            description: "Manager role allowed to run /generatekey, /whitelist, /panelsetup, /hwdireset",
+            required: true
+          }
+        ]
+      },
+      {
+        name: "generatekey",
+        description: "Generate new license keys for your whitelisted script",
+        options: [
+          {
+            type: 3,
+            // STRING
+            name: "panel_id",
+            description: "Exact Panel ID to generate keys for (required)",
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "type",
+            description: "License duration type (Lifetime, 30 Days, 7 Days, 24 Hours)",
+            required: false,
+            choices: [
+              { name: "Lifetime", value: "lifetime" },
+              { name: "30 Days", value: "30d" },
+              { name: "7 Days", value: "7d" },
+              { name: "24 Hours", value: "24h" }
+            ]
+          },
+          {
+            type: 4,
+            // INTEGER
+            name: "count",
+            description: "Number of keys to generate (default: 1)",
+            required: false
+          },
+          {
+            type: 5,
+            // BOOLEAN
+            name: "hwid_locked",
+            description: "Lock key to first executing device hardware ID (default: true)",
+            required: false
+          }
+        ]
+      },
+      {
+        name: "whitelist",
+        description: "Manage user whitelist access for script execution",
+        options: [
+          {
+            type: 3,
+            // STRING
+            name: "action",
+            description: "Action to perform: add, remove, or check",
+            required: true,
+            choices: [
+              { name: "Add", value: "add" },
+              { name: "Remove", value: "remove" },
+              { name: "Check", value: "check" }
+            ]
+          },
+          {
+            type: 6,
+            // USER
+            name: "discord_user",
+            description: "Target Discord user to manage on the whitelist",
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "panel_id",
+            description: "Exact Panel ID to manage whitelist on (required)",
+            required: true
+          }
+        ]
+      },
+      {
+        name: "panelsetup",
+        description: "Deploy the interactive RONIGUARD control panel for a website panel ID",
+        options: [
+          {
+            type: 3,
+            // STRING
+            name: "name",
+            description: "Title of the panel embed (e.g. RONIHUB PANEL)",
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "description",
+            description: "Description of the panel embed (e.g. THE BEST FREEMIUM EVER)",
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "panel_id",
+            description: "Exact Panel ID created on the website (e.g. pnl_...)",
+            required: true
+          }
+        ]
+      },
+      {
+        name: "panel",
+        description: "Deploy or manage RONIGUARD interactive panels",
+        options: [
+          {
+            type: 1,
+            // SUB_COMMAND
+            name: "setup",
+            description: "Deploy the interactive RONIGUARD control panel for a website panel ID",
+            options: [
+              {
+                type: 3,
+                name: "name",
+                description: "Title of the panel embed (e.g. RONIHUB PANEL)",
+                required: true
+              },
+              {
+                type: 3,
+                name: "description",
+                description: "Description of the panel embed (e.g. THE BEST FREEMIUM EVER)",
+                required: true
+              },
+              {
+                type: 3,
+                name: "panel_id",
+                description: "Exact Panel ID created on the website (e.g. pnl_...)",
+                required: true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        name: "whitelistrole",
+        description: "Whitelist all members holding a Discord role for a duration",
+        options: [
+          {
+            type: 8,
+            // ROLE
+            name: "role",
+            description: "Role whose members will be granted script execution access",
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "time",
+            description: "Whitelist duration (Lifetime, 30 Days, 7 Days, 24 Hours)",
+            required: true,
+            choices: [
+              { name: "Lifetime", value: "lifetime" },
+              { name: "30 Days", value: "30d" },
+              { name: "7 Days", value: "7d" },
+              { name: "24 Hours", value: "24h" }
+            ]
+          },
+          {
+            type: 3,
+            // STRING
+            name: "panel_id",
+            description: "Exact Panel ID to restrict this role whitelist to (required)",
+            required: true
+          }
+        ]
+      },
+      {
+        name: "blacklistuser",
+        description: "Blacklist a user by ID from a script (stops access and kicks on Roblox)",
+        options: [
+          {
+            type: 3,
+            // STRING
+            name: "user_id",
+            description: "Discord user ID, mention, or Roblox username to blacklist",
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "script",
+            description: 'Target Script ID or name to blacklist from (or "all")',
+            required: true
+          },
+          {
+            type: 3,
+            // STRING
+            name: "reason",
+            description: "Reason for blacklisting",
+            required: false
+          }
+        ]
+      },
+      {
+        name: "hwdireset",
+        description: "Reset device hardware ID lock for a user",
+        options: [
+          {
+            type: 6,
+            // USER
+            name: "target_user",
+            description: "Discord user whose HWID lock will be reset",
+            required: true
+          }
+        ]
+      }
+    ];
+  }
+  async registerCommandsForGuild(guildId) {
+    if (!this.token || !this.applicationId || !guildId) return false;
+    try {
+      const commands = this.getSlashCommandDefinitions();
+      const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/guilds/${guildId}/commands`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bot ${this.token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(commands)
+      });
+      if (res.ok) {
+        console.log(`[RONIGUARD-BOT] \u2705 Slash commands registered INSTANTLY for Guild ${guildId}!`);
+        return true;
+      } else {
+        const text = await res.text();
+        console.warn(`[RONIGUARD-BOT] Guild ${guildId} slash command sync notice:`, res.status, text);
+        return false;
+      }
+    } catch (err) {
+      console.error(`[RONIGUARD-BOT] Failed to register slash commands for guild ${guildId}:`, err);
+      return false;
+    }
+  }
   async registerSlashCommands() {
     if (!this.token) return;
     try {
       console.log("[RONIGUARD-BOT] Synchronizing slash commands with Discord API...");
-      const commands = [
-        {
-          name: "lic",
-          description: "Configure script API key and manager role for all bot management commands",
-          options: [
-            {
-              type: 3,
-              // STRING
-              name: "api_key",
-              description: "Website API key for the script (e.g. RONI-API-...)",
-              required: true
-            },
-            {
-              type: 8,
-              // ROLE
-              name: "role",
-              description: "Manager role allowed to run /generatekey, /whitelist, /panelsetup, /hwdireset",
-              required: true
-            }
-          ]
-        },
-        {
-          name: "generatekey",
-          description: "Generate new license keys for your whitelisted script",
-          options: [
-            {
-              type: 3,
-              // STRING
-              name: "panel_id",
-              description: "Exact Panel ID to generate keys for (required)",
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "type",
-              description: "License duration type (Lifetime, 30 Days, 7 Days, 24 Hours)",
-              required: false,
-              choices: [
-                { name: "Lifetime", value: "lifetime" },
-                { name: "30 Days", value: "30d" },
-                { name: "7 Days", value: "7d" },
-                { name: "24 Hours", value: "24h" }
-              ]
-            },
-            {
-              type: 4,
-              // INTEGER
-              name: "count",
-              description: "Number of keys to generate (default: 1)",
-              required: false
-            },
-            {
-              type: 5,
-              // BOOLEAN
-              name: "hwid_locked",
-              description: "Lock key to first executing device hardware ID (default: true)",
-              required: false
-            }
-          ]
-        },
-        {
-          name: "whitelist",
-          description: "Manage user whitelist access for script execution",
-          options: [
-            {
-              type: 3,
-              // STRING
-              name: "action",
-              description: "Action to perform: add, remove, or check",
-              required: true,
-              choices: [
-                { name: "Add", value: "add" },
-                { name: "Remove", value: "remove" },
-                { name: "Check", value: "check" }
-              ]
-            },
-            {
-              type: 6,
-              // USER
-              name: "discord_user",
-              description: "Target Discord user to manage on the whitelist",
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "panel_id",
-              description: "Exact Panel ID to manage whitelist on (required)",
-              required: true
-            }
-          ]
-        },
-        {
-          name: "panelsetup",
-          description: "Deploy the interactive RONIGUARD control panel for a website panel ID",
-          options: [
-            {
-              type: 3,
-              // STRING
-              name: "name",
-              description: "Title of the panel embed (e.g. RONIHUB PANEL)",
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "description",
-              description: "Description of the panel embed (e.g. THE BEST FREEMIUM EVER)",
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "panel_id",
-              description: "Exact Panel ID created on the website (e.g. pnl_...)",
-              required: true
-            }
-          ]
-        },
-        {
-          name: "panel",
-          description: "Deploy or manage RONIGUARD interactive panels",
-          options: [
-            {
-              type: 1,
-              // SUB_COMMAND
-              name: "setup",
-              description: "Deploy the interactive RONIGUARD control panel for a website panel ID",
-              options: [
-                {
-                  type: 3,
-                  name: "name",
-                  description: "Title of the panel embed (e.g. RONIHUB PANEL)",
-                  required: true
-                },
-                {
-                  type: 3,
-                  name: "description",
-                  description: "Description of the panel embed (e.g. THE BEST FREEMIUM EVER)",
-                  required: true
-                },
-                {
-                  type: 3,
-                  name: "panel_id",
-                  description: "Exact Panel ID created on the website (e.g. pnl_...)",
-                  required: true
-                }
-              ]
-            }
-          ]
-        },
-        {
-          name: "whitelistrole",
-          description: "Whitelist all members holding a Discord role for a duration",
-          options: [
-            {
-              type: 8,
-              // ROLE
-              name: "role",
-              description: "Role whose members will be granted script execution access",
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "time",
-              description: "Whitelist duration (Lifetime, 30 Days, 7 Days, 24 Hours)",
-              required: true,
-              choices: [
-                { name: "Lifetime", value: "lifetime" },
-                { name: "30 Days", value: "30d" },
-                { name: "7 Days", value: "7d" },
-                { name: "24 Hours", value: "24h" }
-              ]
-            },
-            {
-              type: 3,
-              // STRING
-              name: "panel_id",
-              description: "Exact Panel ID to restrict this role whitelist to (required)",
-              required: true
-            }
-          ]
-        },
-        {
-          name: "blacklistuser",
-          description: "Blacklist a user by ID from a script (stops access and kicks on Roblox)",
-          options: [
-            {
-              type: 3,
-              // STRING
-              name: "user_id",
-              description: "Discord user ID, mention, or Roblox username to blacklist",
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "script",
-              description: 'Target Script ID or name to blacklist from (or "all")',
-              required: true
-            },
-            {
-              type: 3,
-              // STRING
-              name: "reason",
-              description: "Reason for blacklisting",
-              required: false
-            }
-          ]
-        },
-        {
-          name: "hwdireset",
-          description: "Reset device hardware ID lock for a user",
-          options: [
-            {
-              type: 6,
-              // USER
-              name: "target_user",
-              description: "Discord user whose HWID lock will be reset",
-              required: true
-            }
-          ]
-        }
-      ];
+      const commands = this.getSlashCommandDefinitions();
       const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/commands`, {
         method: "PUT",
         headers: {
@@ -2463,10 +2491,14 @@ var DiscordBotService = class {
         body: JSON.stringify(commands)
       });
       if (res.ok) {
-        console.log("[RONIGUARD-BOT] Flat slash commands (/lic, /generatekey, /whitelist, /panelsetup, /hwdireset) registered successfully on Discord!");
+        console.log("[RONIGUARD-BOT] Global slash commands registered successfully on Discord!");
       } else {
         const text = await res.text();
-        console.warn("[RONIGUARD-BOT] Slash command registration response:", res.status, text);
+        console.warn("[RONIGUARD-BOT] Global slash command registration response:", res.status, text);
+      }
+      const configuredGuildId = db.get().botConfig.guildId;
+      if (configuredGuildId && configuredGuildId.trim()) {
+        await this.registerCommandsForGuild(configuredGuildId.trim());
       }
     } catch (err) {
       console.error("[RONIGUARD-BOT] Failed to register slash commands:", err);
@@ -2660,9 +2692,9 @@ var DiscordBotService = class {
           since: null,
           activities: [
             {
-              name: "RONIGUARD | /lic",
-              type: 0
-              // Playing
+              name: "roniguard",
+              type: 2
+              // 2 = Listening to
             }
           ]
         }
@@ -2670,7 +2702,7 @@ var DiscordBotService = class {
     };
     this.ws.send(JSON.stringify(identifyPayload));
   }
-  updatePresence(status = "online", activity = "RONIGUARD | /lic") {
+  updatePresence(status = "online", activity = "roniguard", type = 2) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       this.ws.send(
@@ -2681,7 +2713,8 @@ var DiscordBotService = class {
             activities: [
               {
                 name: activity,
-                type: 0
+                type
+                // 2 = Listening to
               }
             ],
             status,
@@ -2689,7 +2722,7 @@ var DiscordBotService = class {
           }
         })
       );
-      console.log(`[RONIGUARD-BOT] Sent OP 3 presence update: ${status} (${activity})`);
+      console.log(`[RONIGUARD-BOT] Sent OP 3 presence update: ${status} (Listening to ${activity})`);
     } catch (err) {
       console.warn("[RONIGUARD-BOT] Could not send presence update:", err);
     }
@@ -2708,24 +2741,23 @@ var DiscordBotService = class {
       state.botConfig.lastTestedAt = (/* @__PURE__ */ new Date()).toISOString();
       db.save();
       db.logAudit("bot_sync", `Discord Bot connected to Gateway as @${data.user.username}`, "Gateway", "Discord Bot Service", "info");
-      this.updatePresence("online", "RONIGUARD | /lic");
+      this.updatePresence("online", "roniguard", 2);
       if (Array.isArray(data.guilds) && this.token) {
         for (const g of data.guilds) {
           if (g && g.id) {
-            fetch(`https://discord.com/api/v10/applications/${this.applicationId}/guilds/${g.id}/commands`, {
-              method: "PUT",
-              headers: {
-                Authorization: `Bot ${this.token}`,
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify([])
-            }).catch(() => {
+            this.registerCommandsForGuild(g.id).catch(() => {
             });
           }
         }
       }
+    } else if (eventName === "GUILD_CREATE") {
+      if (data && data.id) {
+        this.registerCommandsForGuild(data.id).catch(() => {
+        });
+      }
     } else if (eventName === "RESUMED") {
       console.log("[RONIGUARD-BOT] \u{1F7E2} Session resumed successfully! Bot is active without interruption.");
+      this.updatePresence("online", "roniguard", 2);
       const state = db.get();
       state.botConfig.isConnected = true;
       db.save();
@@ -5101,14 +5133,25 @@ router.post("/discord/test", requireOwnerAuth, async (req, res) => {
   const { token } = req.body;
   const result = await testDiscordBotConnection(token);
   if (result.connected) {
-    discordBotService.start(token).catch(console.error);
+    const state = db.get();
+    if (token && token.trim()) {
+      state.botConfig.botToken = token.trim();
+      state.botConfig.authError = void 0;
+      db.save();
+    }
+    discordBotService.start(token || state.botConfig.botToken).catch(console.error);
   }
   res.json(result);
 });
 router.post("/discord/update-config", requireOwnerAuth, (req, res) => {
   const { botToken, clientId, guildId, webhookUrl, bridgeUrl, bridgeSecret } = req.body;
   const state = db.get();
-  if (botToken !== void 0) state.botConfig.botToken = botToken.trim();
+  if (botToken !== void 0) {
+    state.botConfig.botToken = botToken.trim();
+    if (botToken.trim()) {
+      state.botConfig.authError = void 0;
+    }
+  }
   if (clientId !== void 0) state.botConfig.clientId = clientId.trim();
   if (guildId !== void 0) state.botConfig.guildId = guildId.trim();
   if (webhookUrl !== void 0) state.botConfig.webhookUrl = webhookUrl.trim();

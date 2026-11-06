@@ -1702,7 +1702,13 @@ router.post('/discord/test', requireOwnerAuth, async (req, res) => {
   const { token } = req.body;
   const result = await testDiscordBotConnection(token);
   if (result.connected) {
-    discordBotService.start(token).catch(console.error);
+    const state = db.get();
+    if (token && token.trim()) {
+      state.botConfig.botToken = token.trim();
+      state.botConfig.authError = undefined;
+      db.save();
+    }
+    discordBotService.start(token || state.botConfig.botToken).catch(console.error);
   }
   res.json(result);
 });
@@ -1711,7 +1717,12 @@ router.post('/discord/update-config', requireOwnerAuth, (req, res) => {
   const { botToken, clientId, guildId, webhookUrl, bridgeUrl, bridgeSecret } = req.body;
   const state = db.get();
 
-  if (botToken !== undefined) state.botConfig.botToken = botToken.trim();
+  if (botToken !== undefined) {
+    state.botConfig.botToken = botToken.trim();
+    if (botToken.trim()) {
+      state.botConfig.authError = undefined;
+    }
+  }
   if (clientId !== undefined) state.botConfig.clientId = clientId.trim();
   if (guildId !== undefined) state.botConfig.guildId = guildId.trim();
   if (webhookUrl !== undefined) state.botConfig.webhookUrl = webhookUrl.trim();
