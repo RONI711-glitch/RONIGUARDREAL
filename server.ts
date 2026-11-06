@@ -16,7 +16,22 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 // Trust reverse proxies for IP detection (e.g. Cloud Run)
 app.set('trust proxy', 1);
 
-// Mount API routes
+// Top-level loader interception middleware: catches any requests to loader.lua or raw endpoints
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase();
+  if (
+    p === '/loader.lua' ||
+    p === '/loader' ||
+    p.startsWith('/raw/') ||
+    p.startsWith('/load/') ||
+    p.startsWith('/api/loader') ||
+    p.startsWith('/api/raw/')
+  ) {
+    return handleRawLoaderRequest(req, res);
+  }
+  next();
+});
+
 // Direct root & API endpoints for Roblox loadstrings and raw script delivery
 const rawLoaderEndpoints = [
   '/loader.lua',

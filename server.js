@@ -2098,10 +2098,14 @@ var DiscordBotService = class {
     this.isRunning = true;
     this.isConnecting = true;
     if (!this.watchdogInterval) {
-      this.watchdogInterval = setInterval(() => {
-        if (this.isRunning && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
-          console.warn("[RONIGUARD-BOT] 24/7 Watchdog: Gateway socket not OPEN. Re-establishing connection...");
-          this.connectGateway();
+      this.watchdogInterval = setInterval(async () => {
+        if (!this.isConnected() && !this.isConnecting) {
+          const s = db.get();
+          const t = s.botConfig.botToken || process.env.DISCORD_BOT_TOKEN || VERIFIED_FALLBACK_TOKEN;
+          if (t && t.trim()) {
+            await this.start(t.trim()).catch(() => {
+            });
+          }
         }
       }, 15e3);
     }
@@ -2151,11 +2155,11 @@ var DiscordBotService = class {
       if (!authRes.ok) {
         const errText = await authRes.text().catch(() => "");
         this.lastAuthError = `Status ${authRes.status}: ${errText}`;
-        console.error("[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:", this.lastAuthError);
-        this.isRunning = false;
+        console.warn("[RONIGUARD-BOT] REST auth check notice:", this.lastAuthError);
         const state2 = db.get();
         state2.botConfig.isConnected = false;
         db.save();
+        this.connectGateway();
         return false;
       }
       const botUser = await authRes.json();
@@ -2476,7 +2480,8 @@ var DiscordBotService = class {
       return;
     }
     try {
-      const wsUrl = this.resumeGatewayUrl || "wss://gateway.discord.gg";
+      const baseWsUrl = this.resumeGatewayUrl || "wss://gateway.discord.gg";
+      const wsUrl = baseWsUrl.includes("?") ? baseWsUrl : `${baseWsUrl.replace(/\/+$/, "")}/?v=10&encoding=json`;
       console.log("[RONIGUARD-BOT] Connecting WebSocket to", wsUrl);
       this.lastStep = "connecting_to_" + wsUrl;
       this.ws = new WebSocket(wsUrl);
@@ -2507,29 +2512,19 @@ var DiscordBotService = class {
         }
         if (this.isRunning) {
           if (event.code === 4004) {
-            if (this.token !== VERIFIED_FALLBACK_TOKEN) {
-              console.warn("[RONIGUARD-BOT] Invalid token code 4004 received. Falling back to verified 24/7 token...");
-              this.token = VERIFIED_FALLBACK_TOKEN;
-              const s = db.get();
-              s.botConfig.botToken = VERIFIED_FALLBACK_TOKEN;
-              db.save();
-              this.sessionId = null;
-              this.resumeGatewayUrl = null;
-            } else {
-              console.error("[RONIGUARD-BOT] Gateway closed with code 4004 (Authentication failed) with fallback token. Halting reconnect.");
-              this.isRunning = false;
-              return;
-            }
+            console.warn("[RONIGUARD-BOT] Gateway code 4004 (Authentication notice). Will retry with active token...");
+            this.sessionId = null;
+            this.resumeGatewayUrl = null;
           } else if (event.code === 4007 || event.code === 4009) {
             this.sessionId = null;
             this.resumeGatewayUrl = null;
             this.sequence = null;
           }
           if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-          console.log("[RONIGUARD-BOT] Scheduling auto-reconnection in 3 seconds...");
+          console.log("[RONIGUARD-BOT] 24/7 Auto-reconnect scheduled in 5 seconds...");
           this.reconnectTimeout = setTimeout(() => {
             this.connectGateway();
-          }, 3e3);
+          }, 5e3);
         }
       };
     } catch (err) {
@@ -2697,7 +2692,8 @@ var DiscordBotService = class {
       console.log(`[RONIGUARD-BOT] \u{1F7E2} BOT IS NOW ONLINE as @${data.user.username}#${data.user.discriminator || "0"}!`);
       this.sessionId = data.session_id;
       if (data.resume_gateway_url) {
-        this.resumeGatewayUrl = data.resume_gateway_url;
+        const rUrl = data.resume_gateway_url.replace(/\/+$/, "");
+        this.resumeGatewayUrl = rUrl.includes("?") ? rUrl : `${rUrl}/?v=10&encoding=json`;
       }
       const state = db.get();
       state.botConfig.isConnected = true;
@@ -5319,7 +5315,7 @@ function resolveFromScriptRecord(scriptRecord) {
     const oPath = path2.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
     if (fs2.existsSync(oPath)) {
       const srcCode = fs2.readFileSync(oPath, "utf-8");
-      const prepared = formatNonObfuscatedScript(srcCode, scriptRecord.filename);
+      const prepared = runRoniguardMax(srcCode, { profile: "maximum" });
       try {
         fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || scriptRecord.id}.lua`), prepared, "utf-8");
       } catch {
@@ -5327,12 +5323,13 @@ function resolveFromScriptRecord(scriptRecord) {
       return { content: prepared, filename: scriptRecord.filename, scriptRecord };
     }
   }
-  const sampleLua = `-- [RONIGUARD] Universal Roblox Script
+  const sampleRaw = `-- [RONIGUARD] Universal Roblox Script
 print("[RONIGUARD] Executing Protected Script Payload: ${scriptRecord.filename}")
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     print("[RONIGUARD] Active Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
 end
 print("[RONIGUARD] Script payload authenticated and running!")`;
+  const sampleLua = runRoniguardMax(sampleRaw, { profile: "maximum" });
   try {
     const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || "bld_" + scriptRecord.id}.lua`);
     fs2.writeFileSync(pPath, sampleLua, "utf-8");
@@ -5346,21 +5343,22 @@ async function handleRawLoaderRequest(req, res) {
   const acceptHeader = (req.headers["accept"] || "").toLowerCase();
   const secFetchDest = (req.headers["sec-fetch-dest"] || "").toLowerCase();
   const secFetchMode = (req.headers["sec-fetch-mode"] || "").toLowerCase();
-  const hasBrowserDest = secFetchDest === "document" || secFetchMode === "navigate";
-  const acceptsHtml = acceptHeader.includes("text/html") || acceptHeader.includes("application/xhtml+xml");
-  const isBrowserUA = (userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("curl") && !userAgent.includes("httpclient");
-  const hasExecutorHeaders = Boolean(req.headers["x-hwid"]) || Boolean(req.headers["x-roblox-user-id"]) || Boolean(req.headers["roblox-game-id"]) || Boolean(req.headers["roblox-place-id"]) || Boolean(req.headers["x-fingerprint"]) || userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("delta") || userAgent.includes("wave") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || userAgent.includes("krnl") || userAgent.includes("solara") || userAgent.includes("xeno") || userAgent.includes("celery");
-  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
-  if (isBrowser) {
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-    return res.status(200).send(renderUnauthorizedHtml());
-  }
   const rawId = req.query.script || req.query.id || req.params.id || req.params.scriptId || "";
   const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key || req.headers["x-api-key"])?.trim();
   const panelIdInput = (req.query.panel || req.query.panel_id || req.headers["x-panel-id"])?.trim();
   const hwid = (req.headers["x-hwid"] || req.query.hwid)?.trim();
   const robloxUser = (req.headers["x-roblox-user-id"] || req.query.user_id || req.query.player)?.trim();
+  const hasBrowserDest = secFetchDest === "document" || secFetchMode === "navigate";
+  const acceptsHtml = acceptHeader.includes("text/html") || acceptHeader.includes("application/xhtml+xml");
+  const isBrowserUA = (userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("valkyrie") && !userAgent.includes("macsploit");
+  const hasExecutorHeaders = Boolean(req.headers["x-hwid"]) || Boolean(req.headers["x-roblox-user-id"]) || Boolean(req.headers["roblox-game-id"]) || Boolean(req.headers["roblox-place-id"]) || Boolean(req.headers["x-fingerprint"]) || Boolean(req.headers["x-executor-name"]) || Boolean(req.headers["x-license-key"]) || Boolean(req.headers["x-api-key"]) || userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("delta") || userAgent.includes("wave") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || userAgent.includes("krnl") || userAgent.includes("solara") || userAgent.includes("xeno") || userAgent.includes("celery") || userAgent.includes("swift") || userAgent.includes("valkyrie") || userAgent.includes("macsploit") || userAgent.includes("executor") || userAgent.includes("luau");
+  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
+  const isUnauthorizedVisitor = isBrowser || !hasExecutorHeaders && !licenseKeyInput;
+  if (isUnauthorizedVisitor) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return res.status(200).send(renderUnauthorizedHtml());
+  }
   const state = db.get();
   let targetScriptId = rawId.replace(/\.lua$/i, "").trim();
   let keyRecordMatched = null;
@@ -5940,6 +5938,13 @@ var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase();
+  if (p === "/loader.lua" || p === "/loader" || p.startsWith("/raw/") || p.startsWith("/load/") || p.startsWith("/api/loader") || p.startsWith("/api/raw/")) {
+    return handleRawLoaderRequest(req, res);
+  }
+  next();
+});
 var rawLoaderEndpoints = [
   "/loader.lua",
   "/loader",

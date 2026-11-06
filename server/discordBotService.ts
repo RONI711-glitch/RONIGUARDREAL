@@ -55,10 +55,13 @@ class DiscordBotService {
 
     // Start 24/7 active connection watchdog (checks every 15 seconds)
     if (!this.watchdogInterval) {
-      this.watchdogInterval = setInterval(() => {
-        if (this.isRunning && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
-          console.warn('[RONIGUARD-BOT] 24/7 Watchdog: Gateway socket not OPEN. Re-establishing connection...');
-          this.connectGateway();
+      this.watchdogInterval = setInterval(async () => {
+        if (!this.isConnected() && !this.isConnecting) {
+          const s = db.get();
+          const t = s.botConfig.botToken || process.env.DISCORD_BOT_TOKEN || VERIFIED_FALLBACK_TOKEN;
+          if (t && t.trim()) {
+            await this.start(t.trim()).catch(() => {});
+          }
         }
       }, 15000);
     }
@@ -112,11 +115,12 @@ class DiscordBotService {
       if (!authRes.ok) {
         const errText = await authRes.text().catch(() => '');
         this.lastAuthError = `Status ${authRes.status}: ${errText}`;
-        console.error('[RONIGUARD-BOT] Failed to authenticate token with Discord REST API:', this.lastAuthError);
-        this.isRunning = false;
+        console.warn('[RONIGUARD-BOT] REST auth check notice:', this.lastAuthError);
         const state = db.get();
         state.botConfig.isConnected = false;
         db.save();
+        // Still attempt direct WebSocket connection to Gateway!
+        this.connectGateway();
         return false;
       }
 
@@ -436,7 +440,8 @@ class DiscordBotService {
     }
 
     try {
-      const wsUrl = this.resumeGatewayUrl || 'wss://gateway.discord.gg';
+      const baseWsUrl = this.resumeGatewayUrl || 'wss://gateway.discord.gg';
+      const wsUrl = baseWsUrl.includes('?') ? baseWsUrl : `${baseWsUrl.replace(/\/+$/, '')}/?v=10&encoding=json`;
       console.log('[RONIGUARD-BOT] Connecting WebSocket to', wsUrl);
       this.lastStep = 'connecting_to_' + wsUrl;
 
@@ -472,34 +477,23 @@ class DiscordBotService {
           this.heartbeatInterval = null;
         }
 
-        // Auto-reconnect if not explicitly stopped
+        // Auto-reconnect 24/7
         if (this.isRunning) {
           if (event.code === 4004) {
-            if (this.token !== VERIFIED_FALLBACK_TOKEN) {
-              console.warn('[RONIGUARD-BOT] Invalid token code 4004 received. Falling back to verified 24/7 token...');
-              this.token = VERIFIED_FALLBACK_TOKEN;
-              const s = db.get();
-              s.botConfig.botToken = VERIFIED_FALLBACK_TOKEN;
-              db.save();
-              this.sessionId = null;
-              this.resumeGatewayUrl = null;
-            } else {
-              console.error('[RONIGUARD-BOT] Gateway closed with code 4004 (Authentication failed) with fallback token. Halting reconnect.');
-              this.isRunning = false;
-              return;
-            }
+            console.warn('[RONIGUARD-BOT] Gateway code 4004 (Authentication notice). Will retry with active token...');
+            this.sessionId = null;
+            this.resumeGatewayUrl = null;
           } else if (event.code === 4007 || event.code === 4009) {
-            // Cannot resume, clear session
             this.sessionId = null;
             this.resumeGatewayUrl = null;
             this.sequence = null;
           }
 
           if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-          console.log('[RONIGUARD-BOT] Scheduling auto-reconnection in 3 seconds...');
+          console.log('[RONIGUARD-BOT] 24/7 Auto-reconnect scheduled in 5 seconds...');
           this.reconnectTimeout = setTimeout(() => {
             this.connectGateway();
-          }, 3000);
+          }, 5000);
         }
       };
     } catch (err) {
@@ -687,7 +681,8 @@ class DiscordBotService {
       console.log(`[RONIGUARD-BOT] 🟢 BOT IS NOW ONLINE as @${data.user.username}#${data.user.discriminator || '0'}!`);
       this.sessionId = data.session_id;
       if (data.resume_gateway_url) {
-        this.resumeGatewayUrl = data.resume_gateway_url;
+        const rUrl = data.resume_gateway_url.replace(/\/+$/, '');
+        this.resumeGatewayUrl = rUrl.includes('?') ? rUrl : `${rUrl}/?v=10&encoding=json`;
       }
 
       const state = db.get();

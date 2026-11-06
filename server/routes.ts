@@ -1977,7 +1977,7 @@ function resolveFromScriptRecord(scriptRecord: any): { content: string; filename
     const oPath = path.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
     if (fs.existsSync(oPath)) {
       const srcCode = fs.readFileSync(oPath, 'utf-8');
-      const prepared = formatNonObfuscatedScript(srcCode, scriptRecord.filename);
+      const prepared = runRoniguardMax(srcCode, { profile: 'maximum' });
       // Ensure build file is cached
       try {
         fs.writeFileSync(path.join(BUILDS_DIR, `${scriptRecord.protectedFileId || scriptRecord.id}.lua`), prepared, 'utf-8');
@@ -1986,13 +1986,14 @@ function resolveFromScriptRecord(scriptRecord: any): { content: string; filename
     }
   }
 
-  // 4. Fallback guaranteed operational payload for registered script
-  const sampleLua = `-- [RONIGUARD] Universal Roblox Script
+  // 4. Fallback guaranteed operational obfuscated payload for registered script
+  const sampleRaw = `-- [RONIGUARD] Universal Roblox Script
 print("[RONIGUARD] Executing Protected Script Payload: ${scriptRecord.filename}")
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     print("[RONIGUARD] Active Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
 end
 print("[RONIGUARD] Script payload authenticated and running!")`;
+  const sampleLua = runRoniguardMax(sampleRaw, { profile: 'maximum' });
   try {
     const pPath = path.join(BUILDS_DIR, `${scriptRecord.protectedFileId || ('bld_' + scriptRecord.id)}.lua`);
     fs.writeFileSync(pPath, sampleLua, 'utf-8');
@@ -2009,7 +2010,15 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
   const secFetchDest = ((req.headers['sec-fetch-dest'] as string) || '').toLowerCase();
   const secFetchMode = ((req.headers['sec-fetch-mode'] as string) || '').toLowerCase();
 
-  // 1. Precise Browser Detection
+  const rawId = (req.query.script as string) || (req.query.id as string) || req.params.id || req.params.scriptId || '';
+  const licenseKeyInput = (
+    (req.query.key || req.headers['x-license-key'] || req.query.license_key || req.query.api_key || req.headers['x-api-key']) as string
+  )?.trim();
+  const panelIdInput = ((req.query.panel || req.query.panel_id || req.headers['x-panel-id']) as string)?.trim();
+  const hwid = ((req.headers['x-hwid'] || req.query.hwid) as string)?.trim();
+  const robloxUser = ((req.headers['x-roblox-user-id'] || req.query.user_id || req.query.player) as string)?.trim();
+
+  // 1. Precise Browser & Executor Detection
   // Browser navigation, document fetch, or standard browser Accept/UA without executor signals
   const hasBrowserDest = secFetchDest === 'document' || secFetchMode === 'navigate';
   const acceptsHtml = acceptHeader.includes('text/html') || acceptHeader.includes('application/xhtml+xml');
@@ -2036,8 +2045,8 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
     !userAgent.includes('xeno') &&
     !userAgent.includes('celery') &&
     !userAgent.includes('swift') &&
-    !userAgent.includes('curl') &&
-    !userAgent.includes('httpclient');
+    !userAgent.includes('valkyrie') &&
+    !userAgent.includes('macsploit');
 
   const hasExecutorHeaders =
     Boolean(req.headers['x-hwid']) ||
@@ -2045,6 +2054,9 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
     Boolean(req.headers['roblox-game-id']) ||
     Boolean(req.headers['roblox-place-id']) ||
     Boolean(req.headers['x-fingerprint']) ||
+    Boolean(req.headers['x-executor-name']) ||
+    Boolean(req.headers['x-license-key']) ||
+    Boolean(req.headers['x-api-key']) ||
     userAgent.includes('roblox') ||
     userAgent.includes('synapse') ||
     userAgent.includes('delta') ||
@@ -2056,31 +2068,25 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
     userAgent.includes('krnl') ||
     userAgent.includes('solara') ||
     userAgent.includes('xeno') ||
-    userAgent.includes('celery');
+    userAgent.includes('celery') ||
+    userAgent.includes('swift') ||
+    userAgent.includes('valkyrie') ||
+    userAgent.includes('macsploit') ||
+    userAgent.includes('executor') ||
+    userAgent.includes('luau');
 
   const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
 
-  // Requirement 1: UNAUTHORIZED ACCESS PAGE
-  // When someone opens a Loadstring URL directly in their browser without executor context,
-  // they should ALWAYS see the official RONIGUARD unauthorized-access page.
-  // This must be consistent for everyone (including the project owner!).
-  // Private scripts or raw Lua code are NEVER returned to browser visits.
-  if (isBrowser) {
+  // Requirement: If opened in a regular web browser (or without a valid Roblox execution header/key),
+  // it MUST render the "ACCESS UNAUTHORIZED" block/page view.
+  const isUnauthorizedVisitor = isBrowser || (!hasExecutorHeaders && !licenseKeyInput);
+  if (isUnauthorizedVisitor) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     return res.status(200).send(renderUnauthorizedHtml());
   }
 
   // 2. EXECUTOR REQUEST PROCESSING
-  // Extract parameters
-  const rawId = (req.query.script as string) || (req.query.id as string) || req.params.id || req.params.scriptId || '';
-  const licenseKeyInput = (
-    (req.query.key || req.headers['x-license-key'] || req.query.license_key || req.query.api_key || req.headers['x-api-key']) as string
-  )?.trim();
-  const panelIdInput = ((req.query.panel || req.query.panel_id || req.headers['x-panel-id']) as string)?.trim();
-  const hwid = ((req.headers['x-hwid'] || req.query.hwid) as string)?.trim();
-  const robloxUser = ((req.headers['x-roblox-user-id'] || req.query.user_id || req.query.player) as string)?.trim();
-
   const state = db.get();
 
   // A. Resolve Script:
