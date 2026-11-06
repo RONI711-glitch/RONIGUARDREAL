@@ -20,6 +20,8 @@ class DiscordBotService {
   private lastHeartbeatAcked = true;
   private isConnecting = false;
   private lastAuthError: string | null = null;
+  private authFailed = false;
+  private lastTestedToken: string | null = null;
   private lastStep = 'init';
 
   public async start(providedToken?: string): Promise<boolean> {
@@ -34,10 +36,26 @@ class DiscordBotService {
     const rawToken =
       providedToken ||
       db.get().botConfig.botToken ||
-      VERIFIED_FALLBACK_TOKEN;
-    const tokenToUse = (rawToken && rawToken.trim()) ? rawToken.trim() : VERIFIED_FALLBACK_TOKEN;
+      process.env.DISCORD_BOT_TOKEN;
 
+    if (!rawToken || !rawToken.trim()) {
+      this.lastStep = 'awaiting_token';
+      console.log('[RONIGUARD-BOT] Awaiting Discord bot token in Discord Bot Settings.');
+      return false;
+    }
+
+    const tokenToUse = rawToken.trim();
     this.token = tokenToUse.replace(/^Bot\s+/i, '');
+
+    // If this token was already tested and failed authentication, avoid spamming Discord
+    if (this.authFailed && this.token === this.lastTestedToken && !providedToken) {
+      return false;
+    }
+
+    // New token or manual trigger: reset auth failure state
+    if (providedToken || this.token !== this.lastTestedToken) {
+      this.authFailed = false;
+    }
 
     // Stop previous connection if active
     if (this.ws) {
@@ -49,7 +67,7 @@ class DiscordBotService {
       this.heartbeatInterval = null;
     }
 
-    console.log('[RONIGUARD-BOT] Initializing Discord Gateway connection...');
+    console.log('[RONIGUARD-BOT] Validating Discord Bot credentials...');
     this.isRunning = true;
     this.isConnecting = true;
 
@@ -58,9 +76,9 @@ class DiscordBotService {
       this.watchdogInterval = setInterval(async () => {
         if (!this.isConnected() && !this.isConnecting) {
           const s = db.get();
-          const t = s.botConfig.botToken || process.env.DISCORD_BOT_TOKEN || VERIFIED_FALLBACK_TOKEN;
-          if (t && t.trim()) {
-            await this.start(t.trim()).catch(() => {});
+          const currentToken = (s.botConfig.botToken || process.env.DISCORD_BOT_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+          if (currentToken && (!this.authFailed || currentToken !== this.lastTestedToken)) {
+            await this.start(currentToken).catch(() => {});
           }
         }
       }, 15000);
@@ -101,26 +119,16 @@ class DiscordBotService {
         }
       }
 
-      if (!authRes.ok && this.token !== VERIFIED_FALLBACK_TOKEN) {
-        console.warn('[RONIGUARD-BOT] Current token failed REST auth. Testing fallback verified 24/7 token...');
-        const fbRes = await fetch('https://discord.com/api/v10/users/@me', {
-          headers: { Authorization: `Bot ${VERIFIED_FALLBACK_TOKEN}` },
-        });
-        if (fbRes.ok) {
-          this.token = VERIFIED_FALLBACK_TOKEN;
-          authRes = fbRes;
-        }
-      }
-
       if (!authRes.ok) {
         const errText = await authRes.text().catch(() => '');
-        this.lastAuthError = `Status ${authRes.status}: ${errText}`;
-        console.warn('[RONIGUARD-BOT] REST auth check notice:', this.lastAuthError);
+        this.lastAuthError = `Status ${authRes.status}: ${errText || 'Unauthorized'}`;
+        this.authFailed = true;
+        this.lastTestedToken = this.token;
+        console.warn(`[RONIGUARD-BOT] Bot token authentication failed (${this.lastAuthError}). Standing by for a valid token in Discord Bot Settings.`);
         const state = db.get();
         state.botConfig.isConnected = false;
+        state.botConfig.authError = this.lastAuthError;
         db.save();
-        // Still attempt direct WebSocket connection to Gateway!
-        this.connectGateway();
         return false;
       }
 
@@ -166,6 +174,8 @@ class DiscordBotService {
       hasWs: this.ws !== null,
       wsState: this.ws ? this.ws.readyState : null,
       tokenConfigured: !!this.token,
+      authFailed: this.authFailed,
+      lastAuthError: this.lastAuthError,
       lastStep: this.lastStep,
     };
   }

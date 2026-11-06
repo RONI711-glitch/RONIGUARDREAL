@@ -213,6 +213,7 @@ export interface DiscordBotConfig {
   bridgeUrl: string;
   bridgeSecret: string;
   isConnected: boolean;
+  authError?: string;
   botUsername?: string;
   botAvatar?: string;
   lastPing?: number;

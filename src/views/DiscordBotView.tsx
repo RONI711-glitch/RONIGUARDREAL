@@ -163,6 +163,27 @@ export const DiscordBotView: React.FC<DiscordBotViewProps> = ({ onShowToast }) =
         </button>
       </div>
 
+      {status?.authError && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <div className="font-bold text-amber-300">Discord Bot Authentication Required</div>
+            <p className="text-neutral-300">
+              The current bot token was not accepted by Discord (Error 4004 / 401). Please go to the{' '}
+              <a
+                href="https://discord.com/developers/applications"
+                target="_blank"
+                rel="noreferrer"
+                className="text-purple-400 underline hover:text-purple-300"
+              >
+                Discord Developer Portal
+              </a>
+              {' '}&rarr; select your bot application &rarr; <strong>Bot</strong> &rarr; click <strong>Reset Token</strong>, and paste the fresh token into the form below to bring the bot online.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Bot Live Telemetry Status Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl bg-[#0f0a1c] border border-purple-900/25 space-y-1">

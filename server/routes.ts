@@ -1681,6 +1681,7 @@ router.post('/hwid/revoke/:id', requireOwnerAuth, (req, res) => {
 
 router.get('/discord/status', requireOwnerAuth, (_req, res) => {
   const config = db.get().botConfig;
+  const botStats = discordBotService.getStatus();
   res.json({
     isConnected: config.isConnected,
     botUsername: config.botUsername,
@@ -1688,6 +1689,8 @@ router.get('/discord/status', requireOwnerAuth, (_req, res) => {
     lastPing: config.lastPing,
     lastTestedAt: config.lastTestedAt,
     hasTokenConfigured: !!config.botToken,
+    authError: botStats.lastAuthError || config.authError,
+    authFailed: botStats.authFailed,
     clientId: config.clientId,
     guildId: config.guildId,
     webhookConfigured: !!config.webhookUrl,

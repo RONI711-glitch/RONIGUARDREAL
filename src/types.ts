@@ -209,6 +209,8 @@ export interface DiscordBotStatus {
   lastPing?: number;
   lastTestedAt?: string;
   hasTokenConfigured: boolean;
+  authError?: string;
+  authFailed?: boolean;
   clientId: string;
   guildId: string;
   webhookConfigured: boolean;

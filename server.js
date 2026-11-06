@@ -2070,6 +2070,8 @@ var DiscordBotService = class {
     this.lastHeartbeatAcked = true;
     this.isConnecting = false;
     this.lastAuthError = null;
+    this.authFailed = false;
+    this.lastTestedToken = null;
     this.lastStep = "init";
   }
   async start(providedToken) {
@@ -2080,9 +2082,20 @@ var DiscordBotService = class {
       return true;
     }
     this.lastStep = "start_entered";
-    const rawToken = providedToken || db.get().botConfig.botToken || VERIFIED_FALLBACK_TOKEN;
-    const tokenToUse = rawToken && rawToken.trim() ? rawToken.trim() : VERIFIED_FALLBACK_TOKEN;
+    const rawToken = providedToken || db.get().botConfig.botToken || process.env.DISCORD_BOT_TOKEN;
+    if (!rawToken || !rawToken.trim()) {
+      this.lastStep = "awaiting_token";
+      console.log("[RONIGUARD-BOT] Awaiting Discord bot token in Discord Bot Settings.");
+      return false;
+    }
+    const tokenToUse = rawToken.trim();
     this.token = tokenToUse.replace(/^Bot\s+/i, "");
+    if (this.authFailed && this.token === this.lastTestedToken && !providedToken) {
+      return false;
+    }
+    if (providedToken || this.token !== this.lastTestedToken) {
+      this.authFailed = false;
+    }
     if (this.ws) {
       try {
         this.ws.close();
@@ -2094,16 +2107,16 @@ var DiscordBotService = class {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
-    console.log("[RONIGUARD-BOT] Initializing Discord Gateway connection...");
+    console.log("[RONIGUARD-BOT] Validating Discord Bot credentials...");
     this.isRunning = true;
     this.isConnecting = true;
     if (!this.watchdogInterval) {
       this.watchdogInterval = setInterval(async () => {
         if (!this.isConnected() && !this.isConnecting) {
           const s = db.get();
-          const t = s.botConfig.botToken || process.env.DISCORD_BOT_TOKEN || VERIFIED_FALLBACK_TOKEN;
-          if (t && t.trim()) {
-            await this.start(t.trim()).catch(() => {
+          const currentToken = (s.botConfig.botToken || process.env.DISCORD_BOT_TOKEN || "").trim().replace(/^Bot\s+/i, "");
+          if (currentToken && (!this.authFailed || currentToken !== this.lastTestedToken)) {
+            await this.start(currentToken).catch(() => {
             });
           }
         }
@@ -2142,24 +2155,16 @@ var DiscordBotService = class {
           }
         }
       }
-      if (!authRes.ok && this.token !== VERIFIED_FALLBACK_TOKEN) {
-        console.warn("[RONIGUARD-BOT] Current token failed REST auth. Testing fallback verified 24/7 token...");
-        const fbRes = await fetch("https://discord.com/api/v10/users/@me", {
-          headers: { Authorization: `Bot ${VERIFIED_FALLBACK_TOKEN}` }
-        });
-        if (fbRes.ok) {
-          this.token = VERIFIED_FALLBACK_TOKEN;
-          authRes = fbRes;
-        }
-      }
       if (!authRes.ok) {
         const errText = await authRes.text().catch(() => "");
-        this.lastAuthError = `Status ${authRes.status}: ${errText}`;
-        console.warn("[RONIGUARD-BOT] REST auth check notice:", this.lastAuthError);
+        this.lastAuthError = `Status ${authRes.status}: ${errText || "Unauthorized"}`;
+        this.authFailed = true;
+        this.lastTestedToken = this.token;
+        console.warn(`[RONIGUARD-BOT] Bot token authentication failed (${this.lastAuthError}). Standing by for a valid token in Discord Bot Settings.`);
         const state2 = db.get();
         state2.botConfig.isConnected = false;
+        state2.botConfig.authError = this.lastAuthError;
         db.save();
-        this.connectGateway();
         return false;
       }
       const botUser = await authRes.json();
@@ -2193,6 +2198,8 @@ var DiscordBotService = class {
       hasWs: this.ws !== null,
       wsState: this.ws ? this.ws.readyState : null,
       tokenConfigured: !!this.token,
+      authFailed: this.authFailed,
+      lastAuthError: this.lastAuthError,
       lastStep: this.lastStep
     };
   }
@@ -5074,6 +5081,7 @@ router.post("/hwid/revoke/:id", requireOwnerAuth, (req, res) => {
 });
 router.get("/discord/status", requireOwnerAuth, (_req, res) => {
   const config = db.get().botConfig;
+  const botStats = discordBotService.getStatus();
   res.json({
     isConnected: config.isConnected,
     botUsername: config.botUsername,
@@ -5081,6 +5089,8 @@ router.get("/discord/status", requireOwnerAuth, (_req, res) => {
     lastPing: config.lastPing,
     lastTestedAt: config.lastTestedAt,
     hasTokenConfigured: !!config.botToken,
+    authError: botStats.lastAuthError || config.authError,
+    authFailed: botStats.authFailed,
     clientId: config.clientId,
     guildId: config.guildId,
     webhookConfigured: !!config.webhookUrl,
