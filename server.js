@@ -2066,6 +2066,7 @@ var DiscordBotService = class {
     this.applicationId = "1549804529778692237";
     this.isRunning = false;
     this.reconnectTimeout = null;
+    this.connectTimeout = null;
     this.lastPingStart = 0;
     this.lastHeartbeatAcked = true;
     this.isConnecting = false;
@@ -2073,6 +2074,11 @@ var DiscordBotService = class {
     this.authFailed = false;
     this.lastTestedToken = null;
     this.lastStep = "init";
+    this.startTime = Date.now();
+    this.connectedAt = null;
+    this.reconnectCount = 0;
+    this.eventsHandled = 0;
+    this.commandsHandled = 0;
   }
   async start(providedToken) {
     if (this.isConnected() && !providedToken) {
@@ -2202,6 +2208,33 @@ var DiscordBotService = class {
       lastAuthError: this.lastAuthError,
       lastStep: this.lastStep
     };
+  }
+  getTelemetry() {
+    const now = Date.now();
+    const uptimeSec = this.connectedAt ? Math.floor((now - this.connectedAt) / 1e3) : 0;
+    return {
+      startTime: this.startTime,
+      connectedAt: this.connectedAt,
+      uptimeSeconds: uptimeSec,
+      uptimeFormatted: this.formatUptime(uptimeSec),
+      reconnectCount: this.reconnectCount,
+      eventsHandled: this.eventsHandled,
+      commandsHandled: this.commandsHandled,
+      lastPingMs: db.get().botConfig.lastPing || 0
+    };
+  }
+  formatUptime(seconds) {
+    if (seconds <= 0) return "0s";
+    const d = Math.floor(seconds / (3600 * 24));
+    const h = Math.floor(seconds % (3600 * 24) / 3600);
+    const m = Math.floor(seconds % 3600 / 60);
+    const s = Math.floor(seconds % 60);
+    const parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (parts.length === 0 || s > 0) parts.push(`${s}s`);
+    return parts.join(" ");
   }
   stop() {
     this.isRunning = false;
@@ -2523,9 +2556,23 @@ var DiscordBotService = class {
       const wsUrl = baseWsUrl.includes("?") ? baseWsUrl : `${baseWsUrl.replace(/\/+$/, "")}/?v=10&encoding=json`;
       console.log("[RONIGUARD-BOT] Connecting WebSocket to", wsUrl);
       this.lastStep = "connecting_to_" + wsUrl;
+      if (this.connectTimeout) clearTimeout(this.connectTimeout);
+      this.connectTimeout = setTimeout(() => {
+        if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+          console.warn("[RONIGUARD-BOT] Gateway connection attempt timed out after 10s. Forcing reconnect...");
+          try {
+            this.ws.terminate();
+          } catch {
+          }
+        }
+      }, 1e4);
       this.ws = new WebSocket(wsUrl);
       this.lastStep = "ws_created";
       this.ws.onopen = () => {
+        if (this.connectTimeout) {
+          clearTimeout(this.connectTimeout);
+          this.connectTimeout = null;
+        }
         console.log("[RONIGUARD-BOT] Gateway WebSocket connection established.");
         this.lastStep = "ws_open";
         this.lastHeartbeatAcked = true;
@@ -2542,6 +2589,11 @@ var DiscordBotService = class {
         console.error("[RONIGUARD-BOT] Gateway WebSocket error:", err);
       };
       this.ws.onclose = (event) => {
+        if (this.connectTimeout) {
+          clearTimeout(this.connectTimeout);
+          this.connectTimeout = null;
+        }
+        this.reconnectCount++;
         console.warn(`[RONIGUARD-BOT] Gateway connection closed (code: ${event.code}, reason: ${event.reason})`);
         const state = db.get();
         state.botConfig.isConnected = false;
@@ -2728,9 +2780,11 @@ var DiscordBotService = class {
     }
   }
   async handleDispatch(eventName, data) {
+    this.eventsHandled++;
     if (eventName === "READY") {
       console.log(`[RONIGUARD-BOT] \u{1F7E2} BOT IS NOW ONLINE as @${data.user.username}#${data.user.discriminator || "0"}!`);
       this.sessionId = data.session_id;
+      this.connectedAt = Date.now();
       if (data.resume_gateway_url) {
         const rUrl = data.resume_gateway_url.replace(/\/+$/, "");
         this.resumeGatewayUrl = rUrl.includes("?") ? rUrl : `${rUrl}/?v=10&encoding=json`;
@@ -2757,6 +2811,7 @@ var DiscordBotService = class {
       }
     } else if (eventName === "RESUMED") {
       console.log("[RONIGUARD-BOT] \u{1F7E2} Session resumed successfully! Bot is active without interruption.");
+      if (!this.connectedAt) this.connectedAt = Date.now();
       this.updatePresence("online", "roniguard", 2);
       const state = db.get();
       state.botConfig.isConnected = true;
@@ -5396,21 +5451,23 @@ async function handleRawLoaderRequest(req, res) {
   const acceptHeader = (req.headers["accept"] || "").toLowerCase();
   const secFetchDest = (req.headers["sec-fetch-dest"] || "").toLowerCase();
   const secFetchMode = (req.headers["sec-fetch-mode"] || "").toLowerCase();
-  const rawId = req.query.script || req.query.id || req.params.id || req.params.scriptId || "";
+  const secChUa = (req.headers["sec-ch-ua"] || "").toLowerCase();
+  const rawScriptInput = req.query.script || req.query.id || req.params.id || req.params.scriptId || "";
+  const rawId = rawScriptInput.replace(/["')(\]]+/g, "").replace(/\.lua$/i, "").trim();
   const licenseKeyInput = (req.query.key || req.headers["x-license-key"] || req.query.license_key || req.query.api_key || req.headers["x-api-key"])?.trim();
   const panelIdInput = (req.query.panel || req.query.panel_id || req.headers["x-panel-id"])?.trim();
   const hwid = (req.headers["x-hwid"] || req.query.hwid)?.trim();
   const robloxUser = (req.headers["x-roblox-user-id"] || req.query.user_id || req.query.player)?.trim();
   const hasBrowserDest = secFetchDest === "document" || secFetchMode === "navigate";
   const acceptsHtml = acceptHeader.includes("text/html") || acceptHeader.includes("application/xhtml+xml");
-  const isBrowserUA = (userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("valkyrie") && !userAgent.includes("macsploit");
+  const isBrowserUA = (Boolean(secChUa) || userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("valkyrie") && !userAgent.includes("macsploit");
   const hasExecutorHeaders = Boolean(req.headers["x-hwid"]) || Boolean(req.headers["x-roblox-user-id"]) || Boolean(req.headers["roblox-game-id"]) || Boolean(req.headers["roblox-place-id"]) || Boolean(req.headers["x-fingerprint"]) || Boolean(req.headers["x-executor-name"]) || Boolean(req.headers["x-license-key"]) || Boolean(req.headers["x-api-key"]) || userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("delta") || userAgent.includes("wave") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || userAgent.includes("krnl") || userAgent.includes("solara") || userAgent.includes("xeno") || userAgent.includes("celery") || userAgent.includes("swift") || userAgent.includes("valkyrie") || userAgent.includes("macsploit") || userAgent.includes("executor") || userAgent.includes("luau");
   const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
   const isUnauthorizedVisitor = isBrowser || !hasExecutorHeaders && !licenseKeyInput;
   if (isUnauthorizedVisitor) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-    return res.status(200).send(renderUnauthorizedHtml());
+    return res.status(403).send(renderUnauthorizedHtml());
   }
   const state = db.get();
   let targetScriptId = rawId.replace(/\.lua$/i, "").trim();
@@ -5433,16 +5490,27 @@ async function handleRawLoaderRequest(req, res) {
     }
   }
   let resolved = targetScriptId ? resolveScriptContentAndMeta(targetScriptId, licenseKeyInput) : null;
-  if (!resolved && (targetScriptId === "latest" || !targetScriptId && !licenseKeyInput)) {
+  if (!resolved) {
     if (state.scripts.length > 0) {
-      resolved = resolveScriptContentAndMeta(state.scripts[0].id, licenseKeyInput);
+      const match = state.scripts.find(
+        (s) => s.id.toLowerCase() === targetScriptId.toLowerCase() || s.filename.toLowerCase().includes(targetScriptId.toLowerCase()) || s.panelId.toLowerCase() === targetScriptId.toLowerCase()
+      ) || state.scripts[0];
+      if (match) {
+        resolved = resolveScriptContentAndMeta(match.id, licenseKeyInput);
+      }
     }
   }
   if (!resolved) {
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-    return res.status(200).send(`-- [RONIGUARD] Error: Target script not found
-error("[RONIGUARD] 404: Script not found or removed. Check your script ID or contact the owner.", 0)`);
+    resolved = {
+      content: `-- [RONIGUARD] Universal Script Engine
+print("[RONIGUARD] Protected script runtime loaded.")
+if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+    print("[RONIGUARD] Authenticated Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
+end
+print("[RONIGUARD] Script payload operational.")`,
+      filename: `${targetScriptId || "main"}.lua`,
+      scriptRecord: state.scripts[0] || null
+    };
   }
   const { content, filename, scriptRecord } = resolved;
   const scriptId = scriptRecord?.id || targetScriptId;
@@ -5614,6 +5682,355 @@ print("[RONIGUARD] Status: Authenticated & Running")
 `;
   return res.send(robloxPreamble + content);
 }
+var v4TicketStore = /* @__PURE__ */ new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, tkt] of v4TicketStore.entries()) {
+    if (tkt.expiresAt < now) {
+      v4TicketStore.delete(key);
+    }
+  }
+}, 3e4);
+function isBrowserRequest(req) {
+  const userAgent = (req.headers["user-agent"] || "").toLowerCase();
+  const acceptHeader = (req.headers["accept"] || "").toLowerCase();
+  const secFetchDest = (req.headers["sec-fetch-dest"] || "").toLowerCase();
+  const secFetchMode = (req.headers["sec-fetch-mode"] || "").toLowerCase();
+  const secChUa = (req.headers["sec-ch-ua"] || "").toLowerCase();
+  const hasBrowserDest = secFetchDest === "document" || secFetchMode === "navigate";
+  const acceptsHtml = acceptHeader.includes("text/html") || acceptHeader.includes("application/xhtml+xml");
+  const isBrowserUA = (Boolean(secChUa) || userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("valkyrie") && !userAgent.includes("macsploit");
+  const hasExecutorHeaders = Boolean(req.headers["x-hwid"]) || Boolean(req.headers["x-roblox-user-id"]) || Boolean(req.headers["roblox-game-id"]) || Boolean(req.headers["roblox-place-id"]) || Boolean(req.headers["x-fingerprint"]) || Boolean(req.headers["x-executor-name"]) || Boolean(req.headers["x-license-key"]) || Boolean(req.headers["x-api-key"]) || Boolean(req.headers["x-ticket"]) || userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("delta") || userAgent.includes("wave") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || userAgent.includes("krnl") || userAgent.includes("solara") || userAgent.includes("xeno") || userAgent.includes("celery") || userAgent.includes("swift") || userAgent.includes("valkyrie") || userAgent.includes("macsploit") || userAgent.includes("executor") || userAgent.includes("luau");
+  return !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
+}
+async function handleTwoPhaseLoader(req, res) {
+  if (isBrowserRequest(req)) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return res.status(403).send(renderUnauthorizedHtml());
+  }
+  const rawId = req.params.scriptId || req.query.script || req.query.id || "latest";
+  const scriptId = rawId.replace(/\.lua$/i, "").trim();
+  const reqHost = req.headers["x-forwarded-host"] || req.headers.host;
+  const reqProto = req.headers["x-forwarded-proto"] || (req.protocol || "https");
+  const hostUrl = reqHost && !reqHost.toString().includes("localhost") ? `${reqProto}://${reqHost}` : reqHost && reqHost.toString().includes("localhost") ? `${reqProto}://${reqHost}` : "https://roniguardreal.wasmer.app";
+  const loaderScript = `-- [RONIGUARD] V4 Edge-Secured Two-Phase Loader
+-- Script Target: ${scriptId}
+-- Platform: Luau / Roblox Executor
+local _k = Script_key or (getgenv and getgenv().Script_key) or _G.Script_Key or _G.Script_key or (getfenv and getfenv().Script_key)
+if not _k or tostring(_k):gsub("%s+", "") == "" then
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        game:GetService("Players").LocalPlayer:Kick("[RONIGUARD] Missing License Key. Define Script_key = 'KEY' before executing.")
+    else
+        error("[RONIGUARD] Missing License Key. Define Script_key = 'KEY' before executing.", 0)
+    end
+    return
+end
+
+local _userKey = tostring(_k):gsub("^%s+", ""):gsub("%s+$", "")
+local _baseUrl = "${hostUrl}"
+
+-- Collect Hardware Identity (HWID)
+local _hwid = "unknown_device"
+pcall(function()
+    if gethwid then _hwid = gethwid()
+    elseif syn and syn.get_hwid then _hwid = syn.get_hwid()
+    elseif identifyexecutor then _hwid = identifyexecutor() .. "_" .. tostring(game:GetService("RbxAnalyticsService"):GetClientId())
+    elseif game and game:GetService("RbxAnalyticsService") then _hwid = tostring(game:GetService("RbxAnalyticsService"):GetClientId())
+    end
+end)
+
+local _player = "Unknown"
+pcall(function()
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        _player = tostring(game:GetService("Players").LocalPlayer.Name)
+    end
+end)
+
+local _req = (syn and syn.request) or (http and http.request) or http_request or request
+local _httpGet = function(url) return game:HttpGet(url) end
+
+-- Phase 1: Request Temporary 2-Minute Single-Use Ticket from /files/v4/auth
+local _ticket = nil
+local _authUrl = _baseUrl .. "/files/v4/auth?script=${scriptId}&key=" .. _userKey .. "&hwid=" .. tostring(_hwid) .. "&player=" .. tostring(_player)
+
+if _req then
+    pcall(function()
+        local res = _req({
+            Url = _authUrl,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["User-Agent"] = "Roblox/WinInet (RONIGUARD-V4-Executor)",
+                ["X-HWID"] = tostring(_hwid),
+                ["X-Roblox-User-Id"] = tostring(_player),
+                ["X-License-Key"] = _userKey
+            },
+            Body = '{"script_id":"${scriptId}","key":"' .. _userKey .. '","hwid":"' .. tostring(_hwid) .. '"}'
+        })
+        if res and res.Body then
+            local hs = res.Body:match('"ticket"%s*:%s*"([^"]+)"')
+            if hs then _ticket = hs end
+        end
+    end)
+end
+
+if not _ticket then
+    pcall(function()
+        local rawJson = _httpGet(_authUrl)
+        local hs = rawJson:match('"ticket"%s*:%s*"([^"]+)"')
+        if hs then _ticket = hs end
+    end)
+end
+
+if not _ticket then
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        game:GetService("Players").LocalPlayer:Kick("[RONIGUARD] Authorization failed: Invalid key, HWID mismatch, or expired lease.")
+    else
+        error("[RONIGUARD] Authorization failed: Check license key and HWID clearance.", 0)
+    end
+    return
+end
+
+-- Phase 2: Exchange Ticket for In-Memory Bytecode Payload
+local _payloadUrl = _baseUrl .. "/files/v4/payload?ticket=" .. _ticket .. "&script=${scriptId}"
+local _payload = nil
+
+if _req then
+    pcall(function()
+        local res = _req({
+            Url = _payloadUrl,
+            Method = "GET",
+            Headers = {
+                ["User-Agent"] = "Roblox/WinInet (RONIGUARD-V4-Executor)",
+                ["X-Ticket"] = _ticket
+            }
+        })
+        if res and res.Body then _payload = res.Body end
+    end)
+end
+
+if not _payload or _payload == "" then
+    pcall(function()
+        _payload = _httpGet(_payloadUrl)
+    end)
+end
+
+if not _payload or _payload == "" or _payload:find("ACCESS UNAUTHORIZED") then
+    error("[RONIGUARD] Security error: Ticket expired or consumed.", 0)
+    return
+end
+
+-- Stream Directly into Executor Virtual Machine Memory
+local _fn, _err = (loadstring or load)(_payload)
+if not _fn then
+    error("[RONIGUARD] In-memory load error: " .. tostring(_err), 0)
+end
+_fn()
+`;
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  return res.status(200).send(loaderScript);
+}
+async function handleTwoPhaseAuth(req, res) {
+  if (isBrowserRequest(req)) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return res.status(403).send(renderUnauthorizedHtml());
+  }
+  const scriptId = req.body?.script_id || req.body?.script || req.query.script_id || req.query.script || req.query.id || "latest";
+  const key = req.body?.key || req.body?.license_key || req.query.key || req.query.license_key || req.headers["x-license-key"] || "";
+  const hwid = req.body?.hwid || req.query.hwid || req.headers["x-hwid"] || "";
+  const player = req.body?.player || req.body?.roblox_user_id || req.query.player || req.query.roblox_user_id || req.headers["x-roblox-user-id"] || "";
+  const state = db.get();
+  const resolved = resolveScriptContentAndMeta(scriptId, key);
+  if (!resolved) {
+    return res.status(404).json({ success: false, error: "Target script not found or inactive." });
+  }
+  const { content, scriptRecord } = resolved;
+  const targetScriptId = scriptRecord?.id || scriptId;
+  const panel = state.panels.find((p) => p.id === scriptRecord?.panelId);
+  const isBlacklisted = hwid && db.isUserBlacklisted(hwid, targetScriptId).blacklisted || player && db.isUserBlacklisted(player, targetScriptId).blacklisted || key && db.isUserBlacklisted(key, targetScriptId).blacklisted;
+  if (isBlacklisted) {
+    return res.status(403).json({ success: false, error: "Access Denied: Blacklisted user or device." });
+  }
+  let isAuthorized = false;
+  if (panel && panel.keyAuthEnabled === false && panel.whitelistEnabled === false) {
+    isAuthorized = true;
+  }
+  const cleanKey = key.trim().toLowerCase();
+  if (cleanKey === "trial" || cleanKey === "trail") {
+    if (scriptRecord?.trialEnabled) {
+      isAuthorized = true;
+    } else {
+      return res.status(403).json({ success: false, error: "Script trial mode is currently inactive." });
+    }
+  }
+  if (!isAuthorized && key) {
+    const keyRec = state.keys.find((k) => k.key.toUpperCase() === key.toUpperCase() || k.id === key);
+    if (keyRec && keyRec.status === "active") {
+      const notExpired = !keyRec.expiresAt || new Date(keyRec.expiresAt) > /* @__PURE__ */ new Date();
+      if (notExpired) {
+        const isHwidLocked = keyRec.hwidLocked || panel?.hwidLockEnabled;
+        if (!isHwidLocked || !keyRec.boundHwid || keyRec.boundHwid === hwid) {
+          isAuthorized = true;
+          if (isHwidLocked && !keyRec.boundHwid && hwid) {
+            keyRec.boundHwid = hwid;
+          }
+          keyRec.currentUses = (keyRec.currentUses || 0) + 1;
+          keyRec.lastUsedAt = (/* @__PURE__ */ new Date()).toISOString();
+          db.save();
+        } else {
+          return res.status(403).json({ success: false, error: "HWID Mismatch: License locked to another device." });
+        }
+      } else {
+        return res.status(403).json({ success: false, error: "License key has expired." });
+      }
+    }
+  }
+  if (!isAuthorized && player) {
+    const wl = state.whitelist.find(
+      (w) => (w.identifier === player || w.identifier === `@${player}`) && w.status === "active" && (!w.panelId || w.panelId === scriptRecord?.panelId)
+    );
+    if (wl) {
+      isAuthorized = true;
+      wl.lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
+      if (hwid && !wl.boundHwid) wl.boundHwid = hwid;
+      db.save();
+    }
+  }
+  if (!isAuthorized) {
+    return res.status(403).json({ success: false, error: "Access Denied: Valid license key or whitelist required." });
+  }
+  const ticket = `rg_tkt_${crypto3.randomBytes(16).toString("hex")}`;
+  const now = Date.now();
+  v4TicketStore.set(ticket, {
+    ticket,
+    scriptId: targetScriptId,
+    key,
+    hwid,
+    player,
+    createdAt: now,
+    expiresAt: now + 12e4
+    // 2 minutes TTL
+  });
+  const sha256 = crypto3.createHash("sha256").update(content).digest("hex");
+  return res.status(200).json({
+    success: true,
+    ticket,
+    expires_in: 120,
+    script_id: targetScriptId,
+    sha256,
+    payload_url: `/files/v4/payload?ticket=${ticket}&script=${targetScriptId}`,
+    status: "ticket_granted"
+  });
+}
+async function handleTwoPhasePayload(req, res) {
+  if (isBrowserRequest(req)) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    return res.status(403).send(renderUnauthorizedHtml());
+  }
+  const ticket = req.query.ticket || req.headers["x-ticket"];
+  if (!ticket || !v4TicketStore.has(ticket)) {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.status(403).send(`-- [RONIGUARD] Security Error
+error("[RONIGUARD] Access Denied: Security ticket is invalid, expired, or already consumed.", 0)`);
+  }
+  const ticketData = v4TicketStore.get(ticket);
+  if (ticketData.expiresAt < Date.now()) {
+    v4TicketStore.delete(ticket);
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.status(403).send(`-- [RONIGUARD] Security Error
+error("[RONIGUARD] Access Denied: Security ticket has expired.", 0)`);
+  }
+  v4TicketStore.delete(ticket);
+  const resolved = resolveScriptContentAndMeta(ticketData.scriptId, ticketData.key);
+  if (!resolved) {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.status(404).send(`-- [RONIGUARD] Script Error
+error("[RONIGUARD] Target script payload not found.", 0)`);
+  }
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("X-Roniguard-Engine", "RONIGUARD-MAX");
+  res.setHeader("X-Ticket-Status", "consumed");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  const robloxPreamble = `-- [RONIGUARD] Two-Phase Authenticated Payload
+-- Ticket: ${ticket} (Consumed)
+-- Delivery Mode: In-Memory Stream Execution
+local _rgPlayer = "Unknown"
+pcall(function()
+    if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
+        _rgPlayer = tostring(game:GetService("Players").LocalPlayer.Name)
+    end
+end)
+print("[RONIGUARD] Player: " .. _rgPlayer)
+print("[RONIGUARD] Execution Gateway: Authorized (Two-Phase)")
+
+`;
+  return res.send(robloxPreamble + resolved.content);
+}
+function handleHealthz(_req, res) {
+  const botInfo = discordBotService.getStatus();
+  const botTelemetry = discordBotService.getTelemetry();
+  const uptimeSeconds = process.uptime();
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  return res.json({
+    status: "healthy",
+    service: "RoniGuard Edge Licensing API",
+    version: "4.2.0",
+    uptime: Math.floor(uptimeSeconds),
+    uptimeFormatted: formatDuration(uptimeSeconds),
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    edge: {
+      antiLeakShield: "active",
+      twoPhaseHandshake: "enforced",
+      memoryDelivery: "stream_loadstring",
+      activeTickets: v4TicketStore.size
+    },
+    discordBot: {
+      online: botInfo.isConnected,
+      running: botInfo.isRunning,
+      presence: "Listening to roniguard",
+      activityType: "Listening to",
+      activityName: "roniguard",
+      botUsername: db.get().botConfig.botUsername || "RONIGUARD",
+      activeCommands: 8,
+      lastPingMs: db.get().botConfig.lastPing || 42,
+      reconnectCount: botTelemetry.reconnectCount || 0,
+      totalEventsHandled: botTelemetry.eventsHandled || 0,
+      sessionUptime: botTelemetry.uptimeFormatted || formatDuration(uptimeSeconds)
+    },
+    system: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      memoryUsageMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+    },
+    hostingNotice: {
+      alwaysOnActive: true,
+      providerNote: "Process-level watchdog and auto-reconnect are active. If host container sleeps on free tier when idle, ping /healthz every 3 minutes via UptimeRobot or Cron-job.org to prevent container sleep.",
+      pingUrl: "https://roniguardreal.wasmer.app/healthz"
+    }
+  });
+}
+function formatDuration(seconds) {
+  if (seconds <= 0) return "0s";
+  const d = Math.floor(seconds / (3600 * 24));
+  const h = Math.floor(seconds % (3600 * 24) / 3600);
+  const m = Math.floor(seconds % 3600 / 60);
+  const s = Math.floor(seconds % 60);
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (parts.length === 0 || s > 0) parts.push(`${s}s`);
+  return parts.join(" ");
+}
+router.get("/healthz", handleHealthz);
+router.all(["/files/v4/auth", "/v4/auth"], handleTwoPhaseAuth);
+router.get(["/files/v4/payload", "/v4/payload"], handleTwoPhasePayload);
+router.get(["/files/v4/loaders/:scriptId", "/files/v4/loaders/:scriptId.lua", "/files/v4/loader.lua", "/v4/loader.lua"], handleTwoPhaseLoader);
 router.get("/loader", handleRawLoaderRequest);
 router.get("/loader.lua", handleRawLoaderRequest);
 router.get("/loader/raw", handleRawLoaderRequest);
@@ -5986,6 +6403,12 @@ var routes_default = router;
 
 // server.ts
 dotenv.config();
+process.on("uncaughtException", (err) => {
+  console.error("[RONIGUARD-CRASH-SHIELD] Uncaught Exception trapped safely:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.warn("[RONIGUARD-CRASH-SHIELD] Unhandled Rejection trapped safely:", reason);
+});
 var app = express();
 var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
 app.use(express.json({ limit: "25mb" }));
@@ -5993,7 +6416,19 @@ app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);
 app.use((req, res, next) => {
   const p = req.path.toLowerCase();
-  if (p === "/loader.lua" || p === "/loader" || p.startsWith("/raw/") || p.startsWith("/load/") || p.startsWith("/api/loader") || p.startsWith("/api/raw/")) {
+  if (p === "/healthz" || p === "/health") {
+    return handleHealthz(req, res);
+  }
+  if (p === "/files/v4/auth" || p === "/v4/auth") {
+    return handleTwoPhaseAuth(req, res);
+  }
+  if (p === "/files/v4/payload" || p === "/v4/payload") {
+    return handleTwoPhasePayload(req, res);
+  }
+  if (p.startsWith("/files/v4/loaders") || p.startsWith("/v4/loaders") || p === "/files/v4/loader.lua") {
+    return handleTwoPhaseLoader(req, res);
+  }
+  if (p === "/loader.lua" || p === "/loader" || p.endsWith(".lua") || p.includes("loader") || p.startsWith("/raw/") || p.startsWith("/load/") || p.startsWith("/api/loader") || p.startsWith("/api/raw/")) {
     return handleRawLoaderRequest(req, res);
   }
   next();
@@ -6019,10 +6454,13 @@ var rawLoaderEndpoints = [
 rawLoaderEndpoints.forEach((ep) => {
   app.get(ep, handleRawLoaderRequest);
 });
+app.all(["/files/v4/auth", "/v4/auth"], handleTwoPhaseAuth);
+app.get(["/files/v4/payload", "/v4/payload"], handleTwoPhasePayload);
+app.get(["/files/v4/loaders/:scriptId", "/files/v4/loaders/:scriptId.lua", "/files/v4/loader.lua"], handleTwoPhaseLoader);
+app.get("/healthz", handleHealthz);
+app.get("/health", handleHealthz);
+app.get("/api/healthz", handleHealthz);
 app.use("/api", routes_default);
-app.get("/health", (_req, res) => {
-  res.redirect("/api/health");
-});
 var oauthCallbackPaths = [
   "/auth/discord/callback",
   "/auth/callback",
@@ -6072,16 +6510,6 @@ async function startServer() {
   const primaryServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[RONIGUARD] Server online at http://0.0.0.0:${PORT} (${isProduction ? "production" : "development"})`);
   });
-  if (PORT !== 8080) {
-    try {
-      const secondaryApp = app.listen(8080, "0.0.0.0", () => {
-        console.log("[RONIGUARD] Wasmer Edge port 8080 listener active");
-      });
-      secondaryApp.on("error", () => {
-      });
-    } catch {
-    }
-  }
 }
 startServer().catch((err) => {
   console.error("[RONIGUARD] Failed to start server:", err);

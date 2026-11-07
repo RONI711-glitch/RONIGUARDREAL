@@ -26,6 +26,8 @@ export default function App() {
       window.location.pathname === '/raw/latest.lua' ||
       window.location.pathname === '/raw/latest' ||
       window.location.pathname.startsWith('/load/') ||
+      window.location.pathname.startsWith('/files/v4/') ||
+      window.location.pathname.startsWith('/v4/') ||
       (window.location.pathname.startsWith('/scripts/') && window.location.pathname.endsWith('/raw')) ||
       (window.location.pathname.startsWith('/api/scripts/') && window.location.pathname.endsWith('/raw')) ||
       window.location.pathname === '/unauthorized' ||

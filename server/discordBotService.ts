@@ -16,6 +16,7 @@ class DiscordBotService {
   private applicationId: string = '1549804529778692237';
   private isRunning = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private connectTimeout: NodeJS.Timeout | null = null;
   private lastPingStart = 0;
   private lastHeartbeatAcked = true;
   private isConnecting = false;
@@ -23,6 +24,11 @@ class DiscordBotService {
   private authFailed = false;
   private lastTestedToken: string | null = null;
   private lastStep = 'init';
+  private startTime: number = Date.now();
+  private connectedAt: number | null = null;
+  private reconnectCount: number = 0;
+  private eventsHandled: number = 0;
+  private commandsHandled: number = 0;
 
   public async start(providedToken?: string): Promise<boolean> {
     if (this.isConnected() && !providedToken) {
@@ -178,6 +184,35 @@ class DiscordBotService {
       lastAuthError: this.lastAuthError,
       lastStep: this.lastStep,
     };
+  }
+
+  public getTelemetry() {
+    const now = Date.now();
+    const uptimeSec = this.connectedAt ? Math.floor((now - this.connectedAt) / 1000) : 0;
+    return {
+      startTime: this.startTime,
+      connectedAt: this.connectedAt,
+      uptimeSeconds: uptimeSec,
+      uptimeFormatted: this.formatUptime(uptimeSec),
+      reconnectCount: this.reconnectCount,
+      eventsHandled: this.eventsHandled,
+      commandsHandled: this.commandsHandled,
+      lastPingMs: db.get().botConfig.lastPing || 0,
+    };
+  }
+
+  private formatUptime(seconds: number): string {
+    if (seconds <= 0) return '0s';
+    const d = Math.floor(seconds / (3600 * 24));
+    const h = Math.floor((seconds % (3600 * 24)) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (parts.length === 0 || s > 0) parts.push(`${s}s`);
+    return parts.join(' ');
   }
 
   public stop() {
@@ -493,10 +528,25 @@ class DiscordBotService {
       console.log('[RONIGUARD-BOT] Connecting WebSocket to', wsUrl);
       this.lastStep = 'connecting_to_' + wsUrl;
 
+      // Arm 10-second connection timeout to avoid hanging in CONNECTING state
+      if (this.connectTimeout) clearTimeout(this.connectTimeout);
+      this.connectTimeout = setTimeout(() => {
+        if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+          console.warn('[RONIGUARD-BOT] Gateway connection attempt timed out after 10s. Forcing reconnect...');
+          try {
+            this.ws.terminate();
+          } catch {}
+        }
+      }, 10000);
+
       this.ws = new WebSocket(wsUrl);
       this.lastStep = 'ws_created';
 
       this.ws.onopen = () => {
+        if (this.connectTimeout) {
+          clearTimeout(this.connectTimeout);
+          this.connectTimeout = null;
+        }
         console.log('[RONIGUARD-BOT] Gateway WebSocket connection established.');
         this.lastStep = 'ws_open';
         this.lastHeartbeatAcked = true;
@@ -516,6 +566,11 @@ class DiscordBotService {
       };
 
       this.ws.onclose = (event) => {
+        if (this.connectTimeout) {
+          clearTimeout(this.connectTimeout);
+          this.connectTimeout = null;
+        }
+        this.reconnectCount++;
         console.warn(`[RONIGUARD-BOT] Gateway connection closed (code: ${event.code}, reason: ${event.reason})`);
         const state = db.get();
         state.botConfig.isConnected = false;
@@ -725,9 +780,11 @@ class DiscordBotService {
   }
 
   private async handleDispatch(eventName: string, data: any) {
+    this.eventsHandled++;
     if (eventName === 'READY') {
       console.log(`[RONIGUARD-BOT] 🟢 BOT IS NOW ONLINE as @${data.user.username}#${data.user.discriminator || '0'}!`);
       this.sessionId = data.session_id;
+      this.connectedAt = Date.now();
       if (data.resume_gateway_url) {
         const rUrl = data.resume_gateway_url.replace(/\/+$/, '');
         this.resumeGatewayUrl = rUrl.includes('?') ? rUrl : `${rUrl}/?v=10&encoding=json`;
@@ -757,6 +814,7 @@ class DiscordBotService {
       }
     } else if (eventName === 'RESUMED') {
       console.log('[RONIGUARD-BOT] 🟢 Session resumed successfully! Bot is active without interruption.');
+      if (!this.connectedAt) this.connectedAt = Date.now();
       this.updatePresence('online', 'roniguard', 2);
       const state = db.get();
       state.botConfig.isConnected = true;

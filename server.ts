@@ -1,10 +1,24 @@
 import express from 'express';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import apiRouter, { handleRawLoaderRequest } from './server/routes.ts';
+import apiRouter, {
+  handleRawLoaderRequest,
+  handleTwoPhaseLoader,
+  handleTwoPhaseAuth,
+  handleTwoPhasePayload,
+  handleHealthz,
+} from './server/routes.ts';
 import { discordBotService } from './server/discordBotService.ts';
 
 dotenv.config();
+
+// Crash Shield: Prevent unhandled errors or gateway socket glitches from terminating the Node process
+process.on('uncaughtException', (err) => {
+  console.error('[RONIGUARD-CRASH-SHIELD] Uncaught Exception trapped safely:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.warn('[RONIGUARD-CRASH-SHIELD] Unhandled Rejection trapped safely:', reason);
+});
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -13,15 +27,35 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Trust reverse proxies for IP detection (e.g. Cloud Run)
+// Trust reverse proxies for IP detection (e.g. Cloud Run, Wasmer Edge)
 app.set('trust proxy', 1);
 
-// Top-level loader interception middleware: catches any requests to loader.lua or raw endpoints
+// Top-level loader & V4 handshake interception: catches any requests before static/Vite middlewares
 app.use((req, res, next) => {
   const p = req.path.toLowerCase();
+
+  // Root health endpoints
+  if (p === '/healthz' || p === '/health') {
+    return handleHealthz(req, res);
+  }
+
+  // V4 Handshake Endpoints
+  if (p === '/files/v4/auth' || p === '/v4/auth') {
+    return handleTwoPhaseAuth(req, res);
+  }
+  if (p === '/files/v4/payload' || p === '/v4/payload') {
+    return handleTwoPhasePayload(req, res);
+  }
+  if (p.startsWith('/files/v4/loaders') || p.startsWith('/v4/loaders') || p === '/files/v4/loader.lua') {
+    return handleTwoPhaseLoader(req, res);
+  }
+
+  // Legacy, v4 & universal loader endpoints
   if (
     p === '/loader.lua' ||
     p === '/loader' ||
+    p.endsWith('.lua') ||
+    p.includes('loader') ||
     p.startsWith('/raw/') ||
     p.startsWith('/load/') ||
     p.startsWith('/api/loader') ||
@@ -55,10 +89,17 @@ rawLoaderEndpoints.forEach((ep) => {
   app.get(ep, handleRawLoaderRequest);
 });
 
+// V4 Two-Phase Edge Handshake Routes
+app.all(['/files/v4/auth', '/v4/auth'], handleTwoPhaseAuth);
+app.get(['/files/v4/payload', '/v4/payload'], handleTwoPhasePayload);
+app.get(['/files/v4/loaders/:scriptId', '/files/v4/loaders/:scriptId.lua', '/files/v4/loader.lua'], handleTwoPhaseLoader);
+
+// Central Healthz endpoints
+app.get('/healthz', handleHealthz);
+app.get('/health', handleHealthz);
+app.get('/api/healthz', handleHealthz);
+
 app.use('/api', apiRouter);
-app.get('/health', (_req, res) => {
-  res.redirect('/api/health');
-});
 
 // Root OAuth fallbacks to ensure zero-404 during Discord authorization redirects
 const oauthCallbackPaths = [
@@ -117,18 +158,6 @@ async function startServer() {
   const primaryServer = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[RONIGUARD] Server online at http://0.0.0.0:${PORT} (${isProduction ? 'production' : 'development'})`);
   });
-
-  // Dual listener for Wasmer Edge container environments which route to 8080
-  if (PORT !== 8080) {
-    try {
-      const secondaryApp = app.listen(8080, '0.0.0.0', () => {
-        console.log('[RONIGUARD] Wasmer Edge port 8080 listener active');
-      });
-      secondaryApp.on('error', () => {
-        // Port 8080 in use or restricted, primary listener on PORT is sufficient
-      });
-    } catch {}
-  }
 }
 
 startServer().catch((err) => {
