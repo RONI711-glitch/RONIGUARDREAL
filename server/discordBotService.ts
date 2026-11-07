@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { db } from './db.ts';
 import { executeBotCommand } from './discord.ts';
 
-const VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR0VLZXZULlRYdlc3LTVWa0JIcmFhMjF1cmQ0QWFnZWtLMHRPRnlKaGFpMkVJ', 'base64').toString('utf8');
+const VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR0tVaEhpLm85YXBsOVJtYXhGNzlZeDVwT3c5dmEweXViTG9lZWxYU3ZtMkFZ', 'base64').toString('utf8');
 
 class DiscordBotService {
   private ws: WebSocket | null = null;
