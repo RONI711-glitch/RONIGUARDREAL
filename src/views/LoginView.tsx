@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink } from 'lucide-react';
+import { ShieldAlert, AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink, ArrowLeft } from 'lucide-react';
 import { api, setStoredToken } from '../api.ts';
 
 interface LoginViewProps {
   onLoginSuccess: (user: any) => void;
+  onBackToHome?: () => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHome }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
@@ -126,6 +127,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       <div className="relative w-full max-w-md">
         {/* Main Card */}
         <div className="bg-[#0e071e]/95 border border-purple-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-purple-950/70 relative backdrop-blur-xl">
+          {onBackToHome && (
+            <button
+              onClick={onBackToHome}
+              className="mb-4 inline-flex items-center gap-1.5 text-xs text-purple-300 hover:text-white transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Home</span>
+            </button>
+          )}
+
           {/* Brand Header */}
           <div className="flex flex-col items-center text-center mb-6">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-purple-950 flex items-center justify-center text-white shadow-xl shadow-purple-600/40 mb-3.5 border border-purple-400/30">

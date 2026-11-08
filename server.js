@@ -329,6 +329,9 @@ var Store = class {
         if (parsed.owner) parsed.owner.email = null;
         parsed.users.forEach((u) => {
           u.email = null;
+          if (!u.masterApiKey) {
+            u.masterApiKey = "RONI-MASTER-" + crypto.randomBytes(8).toString("hex").toUpperCase();
+          }
         });
         if (!parsed.users.some((u) => u.role === "admin")) {
           parsed.users.unshift({
@@ -339,6 +342,7 @@ var Store = class {
             avatar: null,
             email: null,
             role: "admin",
+            masterApiKey: "RONI-MASTER-" + crypto.randomBytes(8).toString("hex").toUpperCase(),
             sessionTokens: [],
             createdAt: (/* @__PURE__ */ new Date()).toISOString(),
             lastLoginAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -505,7 +509,8 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         role: discordUser.role || (isOwner ? "admin" : "user"),
         sessionTokens: [],
         createdAt: now,
-        lastLoginAt: now
+        lastLoginAt: now,
+        masterApiKey: "RONI-MASTER-" + crypto.randomBytes(6).toString("hex").toUpperCase()
       };
       this.state.users.push(user);
       this.logAudit("login", `New public user registered via Discord: @${discordUser.username} (${dId})`);
@@ -516,6 +521,9 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
       user.email = null;
       if (discordUser.role) user.role = discordUser.role;
       user.lastLoginAt = now;
+      if (!user.masterApiKey) {
+        user.masterApiKey = "RONI-MASTER-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+      }
     }
     this.save();
     return user;
@@ -529,6 +537,10 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     }
     if (user) {
       user.email = null;
+      if (!user.masterApiKey) {
+        user.masterApiKey = "RONI-MASTER-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+        this.save();
+      }
       return user;
     }
     if (this.state.owner.sessionTokens && this.state.owner.sessionTokens.includes(token)) {
@@ -540,12 +552,31 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         });
       }
       ownerUser.email = null;
+      if (!ownerUser.masterApiKey) {
+        ownerUser.masterApiKey = "RONI-MASTER-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+        this.save();
+      }
       return ownerUser;
     }
     return null;
   }
   getUserById(userId) {
-    return this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    const user = this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    if (user && !user.masterApiKey) {
+      user.masterApiKey = "RONI-MASTER-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+      this.save();
+    }
+    return user;
+  }
+  resetUserMasterApiKey(userId) {
+    const user = this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    if (!user) {
+      throw new Error("User account not found");
+    }
+    const newKey = "RONI-MASTER-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+    user.masterApiKey = newKey;
+    this.save();
+    return newKey;
   }
   // Job Management
   createJob(data) {
@@ -2485,35 +2516,34 @@ var DiscordBotService = class {
       }
     ];
   }
-  async registerCommandsForGuild(guildId) {
+  async purgeGuildDuplicates(guildId) {
     if (!this.token || !this.applicationId || !guildId) return false;
     try {
-      const commands = this.getSlashCommandDefinitions();
       const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/guilds/${guildId}/commands`, {
         method: "PUT",
         headers: {
           Authorization: `Bot ${this.token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(commands)
+        body: JSON.stringify([])
       });
       if (res.ok) {
-        console.log(`[RONIGUARD-BOT] \u2705 Slash commands registered INSTANTLY for Guild ${guildId}!`);
+        console.log(`[RONIGUARD-BOT] \u{1F9F9} Purged duplicate guild commands for Guild ${guildId}!`);
         return true;
       } else {
         const text = await res.text();
-        console.warn(`[RONIGUARD-BOT] Guild ${guildId} slash command sync notice:`, res.status, text);
+        console.warn(`[RONIGUARD-BOT] Guild ${guildId} duplicate purge response:`, res.status, text);
         return false;
       }
     } catch (err) {
-      console.error(`[RONIGUARD-BOT] Failed to register slash commands for guild ${guildId}:`, err);
+      console.error(`[RONIGUARD-BOT] Failed to purge duplicate slash commands for guild ${guildId}:`, err);
       return false;
     }
   }
   async registerSlashCommands() {
     if (!this.token) return;
     try {
-      console.log("[RONIGUARD-BOT] Synchronizing slash commands with Discord API...");
+      console.log("[RONIGUARD-BOT] Synchronizing global slash commands with Discord API (deduplicated)...");
       const commands = this.getSlashCommandDefinitions();
       const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/commands`, {
         method: "PUT",
@@ -2531,7 +2561,7 @@ var DiscordBotService = class {
       }
       const configuredGuildId = db.get().botConfig.guildId;
       if (configuredGuildId && configuredGuildId.trim()) {
-        await this.registerCommandsForGuild(configuredGuildId.trim());
+        await this.purgeGuildDuplicates(configuredGuildId.trim());
       }
     } catch (err) {
       console.error("[RONIGUARD-BOT] Failed to register slash commands:", err);
@@ -2799,14 +2829,14 @@ var DiscordBotService = class {
       if (Array.isArray(data.guilds) && this.token) {
         for (const g of data.guilds) {
           if (g && g.id) {
-            this.registerCommandsForGuild(g.id).catch(() => {
+            this.purgeGuildDuplicates(g.id).catch(() => {
             });
           }
         }
       }
     } else if (eventName === "GUILD_CREATE") {
       if (data && data.id) {
-        this.registerCommandsForGuild(data.id).catch(() => {
+        this.purgeGuildDuplicates(data.id).catch(() => {
         });
       }
     } else if (eventName === "RESUMED") {
@@ -4144,6 +4174,10 @@ router.post("/auth/discord/demo-login", (req, res) => {
 });
 router.get("/auth/me", requireAuth, (req, res) => {
   const user = req.user;
+  if (!user.masterApiKey) {
+    user.masterApiKey = "RONI-MASTER-" + crypto3.randomBytes(6).toString("hex").toUpperCase();
+    db.save();
+  }
   res.json({
     id: user.id,
     discordId: user.discordId,
@@ -4152,10 +4186,25 @@ router.get("/auth/me", requireAuth, (req, res) => {
     avatar: user.avatar,
     email: null,
     role: user.role,
+    masterApiKey: user.masterApiKey,
     lastLoginAt: user.lastLoginAt,
     activeSessionsCount: user.sessionTokens?.length || 1,
     quotas: db.getUserQuotas(user.id)
   });
+});
+router.get("/account/key", requireAuth, (req, res) => {
+  const user = req.user;
+  if (!user.masterApiKey) {
+    user.masterApiKey = "RONI-MASTER-" + crypto3.randomBytes(6).toString("hex").toUpperCase();
+    db.save();
+  }
+  res.json({ masterApiKey: user.masterApiKey });
+});
+router.post("/account/key/reset", requireAuth, (req, res) => {
+  const user = req.user;
+  const newKey = db.resetUserMasterApiKey(user.id);
+  db.logAudit("key_regenerated", `User @${user.username} reset Master Account API Key`, req.ip, user.id);
+  res.json({ success: true, masterApiKey: newKey });
 });
 router.post("/auth/logout", (req, res) => {
   const token = getUserSessionToken(req);
@@ -5462,8 +5511,8 @@ async function handleRawLoaderRequest(req, res) {
   const acceptsHtml = acceptHeader.includes("text/html") || acceptHeader.includes("application/xhtml+xml");
   const isBrowserUA = (Boolean(secChUa) || userAgent.includes("mozilla") || userAgent.includes("chrome") || userAgent.includes("safari") || userAgent.includes("firefox") || userAgent.includes("edge") || userAgent.includes("edg/") || userAgent.includes("opera") || userAgent.includes("opr/") || userAgent.includes("mobile")) && !userAgent.includes("roblox") && !userAgent.includes("synapse") && !userAgent.includes("delta") && !userAgent.includes("wave") && !userAgent.includes("fluxus") && !userAgent.includes("codex") && !userAgent.includes("arceus") && !userAgent.includes("hydrogen") && !userAgent.includes("krnl") && !userAgent.includes("solara") && !userAgent.includes("xeno") && !userAgent.includes("celery") && !userAgent.includes("swift") && !userAgent.includes("valkyrie") && !userAgent.includes("macsploit");
   const hasExecutorHeaders = Boolean(req.headers["x-hwid"]) || Boolean(req.headers["x-roblox-user-id"]) || Boolean(req.headers["roblox-game-id"]) || Boolean(req.headers["roblox-place-id"]) || Boolean(req.headers["x-fingerprint"]) || Boolean(req.headers["x-executor-name"]) || Boolean(req.headers["x-license-key"]) || Boolean(req.headers["x-api-key"]) || userAgent.includes("roblox") || userAgent.includes("synapse") || userAgent.includes("delta") || userAgent.includes("wave") || userAgent.includes("fluxus") || userAgent.includes("codex") || userAgent.includes("arceus") || userAgent.includes("hydrogen") || userAgent.includes("krnl") || userAgent.includes("solara") || userAgent.includes("xeno") || userAgent.includes("celery") || userAgent.includes("swift") || userAgent.includes("valkyrie") || userAgent.includes("macsploit") || userAgent.includes("executor") || userAgent.includes("luau");
-  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
-  const isUnauthorizedVisitor = isBrowser || !hasExecutorHeaders && !licenseKeyInput;
+  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml && isBrowserUA);
+  const isUnauthorizedVisitor = isBrowser;
   if (isUnauthorizedVisitor) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
@@ -5554,7 +5603,13 @@ end`);
     }
   }
   if (!isAuthorized && licenseKeyInput && !isTrialKey) {
-    if (keyRecordMatched && keyRecordMatched.status === "active") {
+    const masterUser = state.users.find(
+      (u) => u.masterApiKey && u.masterApiKey.toUpperCase() === licenseKeyInput.toUpperCase()
+    );
+    if (masterUser) {
+      isAuthorized = true;
+    }
+    if (!isAuthorized && keyRecordMatched && keyRecordMatched.status === "active") {
       if (!keyRecordMatched.scriptId || keyRecordMatched.scriptId === scriptId) {
         const notExpired = !keyRecordMatched.expiresAt || new Date(keyRecordMatched.expiresAt) > /* @__PURE__ */ new Date();
         if (notExpired) {

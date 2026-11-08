@@ -14,6 +14,7 @@ import { LicensesView } from './views/LicensesView.tsx';
 import { AccountView } from './views/AccountView.tsx';
 import { AntiTamperView } from './views/AntiTamperView.tsx';
 import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
+import { PublicLandingView } from './views/PublicLandingView.tsx';
 import { CosmicAudioPlayer } from './components/CosmicAudioPlayer.tsx';
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
   }
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [showLoginView, setShowLoginView] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -158,9 +160,22 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
+    if (!showLoginView) {
+      return (
+        <>
+          <PublicLandingView
+            onSignInClick={() => setShowLoginView(true)}
+            botConnected={botConnected}
+          />
+          <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
+        </>
+      );
+    }
+
     return (
       <>
         <LoginView
+          onBackToHome={() => setShowLoginView(false)}
           onLoginSuccess={(user) => {
             setCurrentUser(user);
             setIsAuthenticated(true);

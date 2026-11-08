@@ -8,8 +8,15 @@ import {
   RefreshCw,
   KeyRound,
   ShieldAlert,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  RotateCcw,
+  Code2,
+  Sparkles,
 } from 'lucide-react';
-import { api } from '../api.ts';
+import { api, WASMER_APP_URL } from '../api.ts';
 import { UserProfile } from '../types.ts';
 
 interface AccountViewProps {
@@ -20,17 +27,63 @@ interface AccountViewProps {
 export const AccountView: React.FC<AccountViewProps> = ({ onLogout, onShowToast }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [avatarError, setAvatarError] = useState(false);
+  const [masterKey, setMasterKey] = useState<string>('');
+  const [showKey, setShowKey] = useState<boolean>(false);
+  const [resettingKey, setResettingKey] = useState<boolean>(false);
+  const [copiedKey, setCopiedKey] = useState<boolean>(false);
+  const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
 
   const loadProfile = async () => {
     setLoading(true);
     try {
       const data = await api.getMe();
       setProfile(data);
+      if (data?.masterApiKey) {
+        setMasterKey(data.masterApiKey);
+      } else {
+        const keyData = await api.getMasterApiKey();
+        if (keyData?.masterApiKey) {
+          setMasterKey(keyData.masterApiKey);
+        }
+      }
     } catch (err: any) {
       onShowToast('error', 'Failed to load profile', err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetMasterKey = async () => {
+    if (!window.confirm('Are you sure you want to regenerate your Master Account API Key? Previous loaders referencing your old master key will need to be updated.')) {
+      return;
+    }
+    setResettingKey(true);
+    try {
+      const res = await api.resetMasterApiKey();
+      if (res?.masterApiKey) {
+        setMasterKey(res.masterApiKey);
+        if (profile) {
+          setProfile({ ...profile, masterApiKey: res.masterApiKey });
+        }
+        onShowToast('success', 'Master API Key Reset', 'Your master account key has been regenerated and saved.');
+      }
+    } catch (err: any) {
+      onShowToast('error', 'Failed to reset key', err.message);
+    } finally {
+      setResettingKey(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, isSnippet = false) => {
+    navigator.clipboard.writeText(text);
+    if (isSnippet) {
+      setCopiedSnippet(true);
+      setTimeout(() => setCopiedSnippet(false), 2000);
+      onShowToast('success', 'Copied Template', 'Loadstring snippet copied to clipboard');
+    } else {
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+      onShowToast('success', 'Copied Key', 'Master API Key copied to clipboard');
     }
   };
 
@@ -128,6 +181,94 @@ export const AccountView: React.FC<AccountViewProps> = ({ onLogout, onShowToast 
                 <LogOut className="w-4 h-4 text-red-300" />
                 Sign Out
               </button>
+            </div>
+          </div>
+
+          {/* Master Account API Key Card */}
+          <div className="relative overflow-hidden rounded-2xl p-7 bg-gradient-to-br from-[#1b1035]/90 via-[#120924]/95 to-[#0b0518] border border-purple-500/30 shadow-[0_10px_35px_-5px_rgba(168,85,247,0.2)] backdrop-blur-xl space-y-5">
+            <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-purple-400/60 to-transparent" />
+            <div className="absolute -bottom-24 -left-24 w-56 h-56 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2.5 tracking-tight">
+                  <KeyRound className="w-5 h-5 text-purple-400" />
+                  <span>Master Account API Key</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    CENTRALIZED LICENSE
+                  </span>
+                </h3>
+                <p className="text-xs text-purple-200/70 mt-1 max-w-xl">
+                  Each developer account has 1 unified master API key that authorizes execution for all your protected scripts. No more juggling cluttered individual script keys.
+                </p>
+              </div>
+
+              <button
+                onClick={handleResetMasterKey}
+                disabled={resettingKey}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/40 text-purple-200 text-xs font-bold transition-all shadow-md hover:shadow-purple-900/50 cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 text-purple-300 ${resettingKey ? 'animate-spin' : ''}`} />
+                {resettingKey ? 'Regenerating...' : 'Reset / Regenerate Key'}
+              </button>
+            </div>
+
+            {/* Key Field & Actions */}
+            <div className="p-4 rounded-xl bg-[#0d061c]/80 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <span className="text-xs font-mono font-bold text-neutral-400 uppercase tracking-wider shrink-0">
+                  Master Key:
+                </span>
+                <span className="font-mono text-sm font-bold text-purple-200 truncate select-all">
+                  {masterKey ? (showKey ? masterKey : `${masterKey.slice(0, 12)}••••••••••••••••`) : 'RONI-MASTER-PENDING'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setShowKey(!showKey)}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title={showKey ? 'Hide key' : 'Show key'}
+                >
+                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-purple-400" />}
+                  <span>{showKey ? 'Hide' : 'Reveal'}</span>
+                </button>
+
+                <button
+                  onClick={() => copyToClipboard(masterKey || '')}
+                  className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-purple-900/40 cursor-pointer"
+                >
+                  {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedKey ? 'Copied!' : 'Copy Key'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Universal Master Roblox Loadstring */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
+                  <Code2 className="w-3.5 h-3.5 text-purple-400" />
+                  Roblox Executor Loadstring Format
+                </span>
+                <button
+                  onClick={() =>
+                    copyToClipboard(
+                      `Script_key = "${masterKey || 'RONI-MASTER-KEY'}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=YOUR_SCRIPT_ID"))()`,
+                      true
+                    )
+                  }
+                  className="text-xs font-semibold text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  {copiedSnippet ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedSnippet ? 'Copied' : 'Copy Loadstring'}</span>
+                </button>
+              </div>
+
+              <pre className="p-3.5 rounded-xl bg-[#090314] border border-white/5 font-mono text-[11px] text-purple-300/90 overflow-x-auto whitespace-pre leading-relaxed select-all">
+{`Script_key = "${masterKey || 'RONI-MASTER-YOUR-KEY'}"
+loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=YOUR_SCRIPT_ID"))()`}
+              </pre>
             </div>
           </div>
 

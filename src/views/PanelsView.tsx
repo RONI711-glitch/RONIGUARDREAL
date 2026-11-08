@@ -12,8 +12,11 @@ import {
   CheckCircle2,
   FileCode2,
   X,
+  Copy,
+  Check,
+  Code2,
 } from 'lucide-react';
-import { api } from '../api.ts';
+import { api, WASMER_APP_URL } from '../api.ts';
 import { Panel, ScriptItem } from '../types.ts';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
 
@@ -24,6 +27,8 @@ interface PanelsViewProps {
 export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [scripts, setScripts] = useState<ScriptItem[]>([]);
+  const [masterApiKey, setMasterApiKey] = useState<string>('');
+  const [copiedPanelId, setCopiedPanelId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -45,9 +50,16 @@ export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [panelsData, scriptsData] = await Promise.all([api.getPanels(), api.getScripts()]);
+      const [panelsData, scriptsData, keyData] = await Promise.all([
+        api.getPanels(),
+        api.getScripts(),
+        api.getMasterApiKey().catch(() => ({ masterApiKey: '' })),
+      ]);
       setPanels(panelsData);
       setScripts(scriptsData);
+      if (keyData?.masterApiKey) {
+        setMasterApiKey(keyData.masterApiKey);
+      }
     } catch (err: any) {
       onShowToast('error', 'Failed to load panels', err.message);
     } finally {
@@ -295,6 +307,35 @@ export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
                       className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-[10px] font-bold text-white shadow transition-all shrink-0 cursor-pointer"
                     >
                       Copy /panelsetup
+                    </button>
+                  </div>
+
+                  {/* Dynamic Roblox Loadstring Helper */}
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-[#090414] border border-white/10 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                        <Code2 className="w-3 h-3" />
+                        Roblox Loadstring
+                      </div>
+                      <div className="text-[11px] font-mono text-purple-200 truncate">
+                        Target: <span className="text-white font-bold">{associatedScripts[0]?.id || panel.id}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetId = associatedScripts[0]?.id || panel.id;
+                        const key = masterApiKey || 'RONI-MASTER-KEY';
+                        const loadstring = `Script_key = "${key}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${targetId}"))()`;
+                        navigator.clipboard.writeText(loadstring);
+                        setCopiedPanelId(panel.id);
+                        setTimeout(() => setCopiedPanelId(null), 2000);
+                        onShowToast('success', 'Copied Roblox Loadstring', `Using script ID: ${targetId}`);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-[10px] font-bold text-white shadow transition-all shrink-0 cursor-pointer flex items-center gap-1"
+                    >
+                      {copiedPanelId === panel.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedPanelId === panel.id ? 'Copied!' : 'Copy Loadstring'}</span>
                     </button>
                   </div>
                 </div>

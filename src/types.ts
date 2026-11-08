@@ -20,6 +20,7 @@ export interface UserProfile {
   email: string | null;
   role: 'user' | 'admin';
   lastLoginAt: string;
+  masterApiKey?: string;
   activeSessionsCount?: number;
   quotas?: UserQuotas;
 }

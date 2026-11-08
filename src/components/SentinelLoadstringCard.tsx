@@ -17,18 +17,21 @@ import { api, WASMER_APP_URL } from '../api.ts';
 interface SentinelLoadstringCardProps {
   scriptId: string;
   filename: string;
+  apiKey?: string;
   onShowToast: (type: 'success' | 'error' | 'warning' | 'info', title: string, desc?: string) => void;
 }
 
 export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
   scriptId,
   filename,
+  apiKey,
   onShowToast,
 }) => {
   const [copiedLoadstring, setCopiedLoadstring] = useState(false);
   const [copiedStaticUrl, setCopiedStaticUrl] = useState(false);
   const [copiedKeyUrl, setCopiedKeyUrl] = useState(false);
   const [copiedRawCode, setCopiedRawCode] = useState(false);
+  const [masterKey, setMasterKey] = useState<string>('');
   const [simulationResult, setSimulationResult] = useState<{
     status: number;
     authorized: boolean;
@@ -39,10 +42,20 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
   } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
+  React.useEffect(() => {
+    if (!apiKey) {
+      api.getMasterApiKey().then((res) => {
+        if (res?.masterApiKey) setMasterKey(res.masterApiKey);
+      }).catch(() => {});
+    }
+  }, [apiKey]);
+
+  const effectiveKey = apiKey || masterKey || 'RONI-MASTER-KEY';
+
   // Universal Roblox Execution Loadstrings with Script ID & Key Separation
   const staticLoaderUrl = `${WASMER_APP_URL}/loader.lua?script=${scriptId}`;
-  const primaryLoadstring = `Script_key = "RONI-API-DEFAULT-KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
-  const executorCodeWithKey = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
+  const primaryLoadstring = `Script_key = "${effectiveKey}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
+  const executorCodeWithKey = `Script_key = "${effectiveKey}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
 
   const copyToClipboard = (text: string, type: 'loadstring' | 'raw' | 'key' | 'directCode') => {
     navigator.clipboard.writeText(text);

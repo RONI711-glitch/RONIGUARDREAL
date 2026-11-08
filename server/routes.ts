@@ -397,6 +397,10 @@ router.post('/auth/discord/demo-login', (req, res) => {
 // Get current user profile
 router.get('/auth/me', requireAuth, (req, res) => {
   const user = (req as any).user;
+  if (!user.masterApiKey) {
+    user.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+    db.save();
+  }
   res.json({
     id: user.id,
     discordId: user.discordId,
@@ -405,10 +409,28 @@ router.get('/auth/me', requireAuth, (req, res) => {
     avatar: user.avatar,
     email: null,
     role: user.role,
+    masterApiKey: user.masterApiKey,
     lastLoginAt: user.lastLoginAt,
     activeSessionsCount: user.sessionTokens?.length || 1,
     quotas: db.getUserQuotas(user.id),
   });
+});
+
+// User Master Account API Key endpoints
+router.get('/account/key', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  if (!user.masterApiKey) {
+    user.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+    db.save();
+  }
+  res.json({ masterApiKey: user.masterApiKey });
+});
+
+router.post('/account/key/reset', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const newKey = db.resetUserMasterApiKey(user.id);
+  db.logAudit('key_regenerated', `User @${user.username} reset Master Account API Key`, req.ip, user.id);
+  res.json({ success: true, masterApiKey: newKey });
 });
 
 // Logout (unconditionally clears all session cookies and removes token)
@@ -2096,11 +2118,11 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
     userAgent.includes('executor') ||
     userAgent.includes('luau');
 
-  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || acceptsHtml || isBrowserUA);
+  const isBrowser = !hasExecutorHeaders && (hasBrowserDest || (acceptsHtml && isBrowserUA));
 
-  // Requirement: If opened in a regular web browser (or without a valid Roblox execution header/key),
+  // Requirement: If opened in a regular web browser,
   // it MUST render the "ACCESS UNAUTHORIZED" block/page view with HTTP status 403 Forbidden.
-  const isUnauthorizedVisitor = isBrowser || (!hasExecutorHeaders && !licenseKeyInput);
+  const isUnauthorizedVisitor = isBrowser;
   if (isUnauthorizedVisitor) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -2222,9 +2244,18 @@ end`);
     }
   }
 
-  // Check 3: Active License Key Check
+  // Check 3: Active License Key Check or Master Account API Key Check
   if (!isAuthorized && licenseKeyInput && !isTrialKey) {
-    if (keyRecordMatched && keyRecordMatched.status === 'active') {
+    // 3a. Master Account API Key Check (Account-level license)
+    const masterUser = state.users.find(
+      (u) => u.masterApiKey && u.masterApiKey.toUpperCase() === licenseKeyInput.toUpperCase()
+    );
+    if (masterUser) {
+      isAuthorized = true;
+    }
+
+    // 3b. Script-level or Panel-level Key Check
+    if (!isAuthorized && keyRecordMatched && keyRecordMatched.status === 'active') {
       // Validate key is for this script (if key is script-specific)
       if (!keyRecordMatched.scriptId || keyRecordMatched.scriptId === scriptId) {
         const notExpired = !keyRecordMatched.expiresAt || new Date(keyRecordMatched.expiresAt) > new Date();

@@ -445,29 +445,28 @@ class DiscordBotService {
     ];
   }
 
-  public async registerCommandsForGuild(guildId: string): Promise<boolean> {
+  public async purgeGuildDuplicates(guildId: string): Promise<boolean> {
     if (!this.token || !this.applicationId || !guildId) return false;
     try {
-      const commands = this.getSlashCommandDefinitions();
       const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/guilds/${guildId}/commands`, {
         method: 'PUT',
         headers: {
           Authorization: `Bot ${this.token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(commands),
+        body: JSON.stringify([]),
       });
 
       if (res.ok) {
-        console.log(`[RONIGUARD-BOT] ✅ Slash commands registered INSTANTLY for Guild ${guildId}!`);
+        console.log(`[RONIGUARD-BOT] 🧹 Purged duplicate guild commands for Guild ${guildId}!`);
         return true;
       } else {
         const text = await res.text();
-        console.warn(`[RONIGUARD-BOT] Guild ${guildId} slash command sync notice:`, res.status, text);
+        console.warn(`[RONIGUARD-BOT] Guild ${guildId} duplicate purge response:`, res.status, text);
         return false;
       }
     } catch (err) {
-      console.error(`[RONIGUARD-BOT] Failed to register slash commands for guild ${guildId}:`, err);
+      console.error(`[RONIGUARD-BOT] Failed to purge duplicate slash commands for guild ${guildId}:`, err);
       return false;
     }
   }
@@ -475,10 +474,10 @@ class DiscordBotService {
   public async registerSlashCommands() {
     if (!this.token) return;
     try {
-      console.log('[RONIGUARD-BOT] Synchronizing slash commands with Discord API...');
+      console.log('[RONIGUARD-BOT] Synchronizing global slash commands with Discord API (deduplicated)...');
       const commands = this.getSlashCommandDefinitions();
 
-      // 1. Register globally (persists everywhere)
+      // 1. Register globally (persists everywhere across all servers without duplicates)
       const res = await fetch(`https://discord.com/api/v10/applications/${this.applicationId}/commands`, {
         method: 'PUT',
         headers: {
@@ -495,10 +494,10 @@ class DiscordBotService {
         console.warn('[RONIGUARD-BOT] Global slash command registration response:', res.status, text);
       }
 
-      // 2. Register for configured guild immediately
+      // 2. Ensure configured guild does not have stale guild-level duplicate commands
       const configuredGuildId = db.get().botConfig.guildId;
       if (configuredGuildId && configuredGuildId.trim()) {
-        await this.registerCommandsForGuild(configuredGuildId.trim());
+        await this.purgeGuildDuplicates(configuredGuildId.trim());
       }
     } catch (err) {
       console.error('[RONIGUARD-BOT] Failed to register slash commands:', err);
@@ -800,17 +799,17 @@ class DiscordBotService {
       // Immediately broadcast explicit OP 3 presence: Listening to roniguard
       this.updatePresence('online', 'roniguard', 2);
 
-      // Register slash commands INSTANTLY on all current guilds so commands exist immediately!
+      // Purge any stale guild-level duplicate commands so only global commands appear!
       if (Array.isArray(data.guilds) && this.token) {
         for (const g of data.guilds) {
           if (g && g.id) {
-            this.registerCommandsForGuild(g.id).catch(() => {});
+            this.purgeGuildDuplicates(g.id).catch(() => {});
           }
         }
       }
     } else if (eventName === 'GUILD_CREATE') {
       if (data && data.id) {
-        this.registerCommandsForGuild(data.id).catch(() => {});
+        this.purgeGuildDuplicates(data.id).catch(() => {});
       }
     } else if (eventName === 'RESUMED') {
       console.log('[RONIGUARD-BOT] 🟢 Session resumed successfully! Bot is active without interruption.');

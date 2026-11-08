@@ -13,6 +13,7 @@ export interface UserRecord {
   sessionTokens: string[];
   createdAt: string;
   lastLoginAt: string;
+  masterApiKey?: string;
   monthlyObfuscations?: number;
   obfuscationMonth?: string;
 }
@@ -635,6 +636,9 @@ class Store {
         if (parsed.owner) parsed.owner.email = null;
         parsed.users.forEach((u: UserRecord) => {
           u.email = null;
+          if (!u.masterApiKey) {
+            u.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+          }
         });
 
         // Ensure default owner user exists in users table with NO email
@@ -647,6 +651,7 @@ class Store {
             avatar: null,
             email: null,
             role: 'admin',
+            masterApiKey: 'RONI-MASTER-' + crypto.randomBytes(8).toString('hex').toUpperCase(),
             sessionTokens: [],
             createdAt: new Date().toISOString(),
             lastLoginAt: new Date().toISOString(),
@@ -840,6 +845,7 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         sessionTokens: [],
         createdAt: now,
         lastLoginAt: now,
+        masterApiKey: 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase(),
       };
       this.state.users.push(user);
       this.logAudit('login', `New public user registered via Discord: @${discordUser.username} (${dId})`);
@@ -850,6 +856,9 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
       user.email = null;
       if (discordUser.role) user.role = discordUser.role;
       user.lastLoginAt = now;
+      if (!user.masterApiKey) {
+        user.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+      }
     }
 
     this.save();
@@ -865,6 +874,10 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     }
     if (user) {
       user.email = null;
+      if (!user.masterApiKey) {
+        user.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+        this.save();
+      }
       return user;
     }
 
@@ -878,13 +891,33 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         });
       }
       ownerUser.email = null;
+      if (!ownerUser.masterApiKey) {
+        ownerUser.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+        this.save();
+      }
       return ownerUser;
     }
     return null;
   }
 
   public getUserById(userId: string): UserRecord | undefined {
-    return this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    const user = this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    if (user && !user.masterApiKey) {
+      user.masterApiKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+      this.save();
+    }
+    return user;
+  }
+
+  public resetUserMasterApiKey(userId: string): string {
+    const user = this.state.users.find((u) => u.id === userId || u.discordId === userId);
+    if (!user) {
+      throw new Error('User account not found');
+    }
+    const newKey = 'RONI-MASTER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+    user.masterApiKey = newKey;
+    this.save();
+    return newKey;
   }
 
   // Job Management

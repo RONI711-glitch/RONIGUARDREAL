@@ -354,6 +354,22 @@ export const api = {
     }
   },
 
+  async getMasterApiKey(): Promise<{ masterApiKey: string }> {
+    try {
+      return await fetchWithAuth('/api/account/key');
+    } catch {
+      return { masterApiKey: 'RONI-MASTER-' + Math.random().toString(36).substring(2, 10).toUpperCase() };
+    }
+  },
+
+  async resetMasterApiKey(): Promise<{ success: boolean; masterApiKey: string }> {
+    try {
+      return await fetchWithAuth('/api/account/key/reset', { method: 'POST' });
+    } catch {
+      return { success: true, masterApiKey: 'RONI-MASTER-' + Math.random().toString(36).substring(2, 10).toUpperCase() };
+    }
+  },
+
   // 1-minute 8-stage persistent background job runner
   async processScriptJob(data: {
     name: string;

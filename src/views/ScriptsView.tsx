@@ -88,6 +88,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
   // Delete modal
   const [scriptToDelete, setScriptToDelete] = useState<ScriptItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [masterApiKey, setMasterApiKey] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
@@ -96,9 +97,16 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [scriptsData, panelsData] = await Promise.all([api.getScripts(), api.getPanels()]);
+      const [scriptsData, panelsData, keyData] = await Promise.all([
+        api.getScripts(),
+        api.getPanels(),
+        api.getMasterApiKey().catch(() => ({ masterApiKey: '' })),
+      ]);
       setScripts(scriptsData);
       setPanels(panelsData);
+      if (keyData?.masterApiKey) {
+        setMasterApiKey(keyData.masterApiKey);
+      }
       if (panelsData.length > 0 && !selectedPanelId) {
         setSelectedPanelId(panelsData[0].id);
       }
@@ -379,7 +387,8 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredScripts.map((script) => {
             const panel = panels.find((p) => p.id === script.panelId);
-            const loadstringSnippet = buildLoadstring(script.id, script.apiKey || 'YOUR_KEY');
+            const effectiveKey = masterApiKey || script.apiKey || 'RONI-MASTER-KEY';
+            const loadstringSnippet = buildLoadstring(script.id, effectiveKey);
 
             return (
               <div
@@ -428,16 +437,16 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-neutral-500">API Key:</span>
+                      <span className="text-neutral-500">License Key:</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[130px]">
-                          {script.apiKey || 'RONI-API-DEFAULT-KEY'}
+                        <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[130px]" title={masterApiKey ? 'Master Account Key' : 'API Key'}>
+                          {effectiveKey}
                         </span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(script.apiKey || 'RONI-API-DEFAULT-KEY', `key_${script.id}`)}
+                          onClick={() => copyToClipboard(effectiveKey, `key_${script.id}`)}
                           className="p-1 hover:text-purple-300 text-neutral-400 hover:bg-purple-900/30 rounded transition-colors"
-                          title="Copy API Key"
+                          title="Copy Master License Key"
                         >
                           {copiedId === `key_${script.id}` ? (
                             <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -524,9 +533,9 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={() => copyToClipboard(script.apiKey || 'RONI-API-DEFAULT-KEY', `key_btn_${script.id}`)}
+                      onClick={() => copyToClipboard(effectiveKey, `key_btn_${script.id}`)}
                       className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-300 text-xs font-semibold transition-all"
-                      title="Copy script-specific API key"
+                      title="Copy Master License key"
                     >
                       {copiedId === `key_btn_${script.id}` ? (
                         <>
