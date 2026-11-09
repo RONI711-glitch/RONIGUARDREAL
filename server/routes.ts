@@ -35,7 +35,7 @@ setTimeout(() => {
 
 // 24/7 Keep-alive and health check endpoint
 router.get('/health', (_req, res) => {
-  if (!discordBotService.isConnected() && !discordBotService.getStatus().isRunning) {
+  if (!discordBotService.isConnected()) {
     discordBotService.start().catch(() => {});
   }
   const botInfo = discordBotService.getStatus();

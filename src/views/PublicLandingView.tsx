@@ -1,24 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   ShieldCheck,
   Lock,
   Cpu,
   Bot,
-  Zap,
-  Code2,
   ExternalLink,
   ChevronRight,
   Radio,
-  Copy,
-  Check,
   ShieldAlert,
-  Server,
   Layers,
   Sparkles,
   ArrowRight,
   UserCheck,
 } from 'lucide-react';
-import { WASMER_APP_URL } from '../api.ts';
 
 interface PublicLandingViewProps {
   onSignInClick: () => void;
@@ -29,19 +23,6 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
   onSignInClick,
   botConnected = true,
 }) => {
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'features' | 'status'>('overview');
-
-  const demoSnippet = `-- [RONIGUARD UNIVERSAL LOADER]
-Script_key = "RONI-MASTER-KEY-DEMO"
-loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=scr_demo"))()`;
-
-  const copyDemoCode = () => {
-    navigator.clipboard.writeText(demoSnippet);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
   const botInviteUrl =
     'https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands';
 
@@ -91,7 +72,7 @@ loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=scr_demo"))()`;
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-950/60 border border-purple-500/40 text-xs text-purple-200 font-semibold shadow-md shadow-purple-950">
             <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-            <span>Next-Gen Luau Bytecode Protection & HWID Licensing</span>
+            <span>Next-Gen Script Security & Access Licensing</span>
           </div>
 
           {/* Main Title */}
@@ -104,7 +85,7 @@ loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=scr_demo"))()`;
 
           {/* Subtitle */}
           <p className="text-sm sm:text-base text-neutral-300 leading-relaxed max-w-2xl mx-auto">
-            RoniGuard provides military-grade polymorphic VM obfuscation, hardware-locked (HWID) licensing, automated 24/7 Discord bot integration, and an anti-leak browser shield for Roblox developers.
+            RoniGuard delivers enterprise-grade script protection, hardware-locked (HWID) licensing, automated 24/7 Discord bot integration, and an anti-leak browser shield for Roblox developers.
           </p>
 
           {/* Action CTAs */}
@@ -147,10 +128,10 @@ loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=scr_demo"))()`;
             </div>
           </div>
           <div className="p-3 text-center sm:text-left">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">VM Obfuscation</span>
+            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Script Security</span>
             <div className="text-sm font-extrabold text-white flex items-center justify-center sm:justify-start gap-1.5 mt-1">
               <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Vykus Polymorphic</span>
+              <span>Proprietary Shield</span>
             </div>
           </div>
           <div className="p-3 text-center sm:text-left">
@@ -162,33 +143,6 @@ loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=scr_demo"))()`;
           </div>
         </div>
 
-        {/* Interactive Loadstring Code Block */}
-        <div className="rounded-2xl p-6 bg-gradient-to-b from-[#130a27] to-[#0a0515] border border-purple-500/25 shadow-2xl space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-purple-950 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                <Code2 className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Universal Roblox Execution Format</h3>
-                <p className="text-[11px] text-neutral-400">Execute verified scripts dynamically via loadstring and your master account key</p>
-              </div>
-            </div>
-
-            <button
-              onClick={copyDemoCode}
-              className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-purple-900/40 cursor-pointer self-start sm:self-auto"
-            >
-              {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedCode ? 'Copied!' : 'Copy Loadstring'}</span>
-            </button>
-          </div>
-
-          <pre className="p-4 rounded-xl bg-[#06030c] border border-white/5 font-mono text-xs text-purple-200 overflow-x-auto whitespace-pre leading-relaxed select-all">
-{demoSnippet}
-          </pre>
-        </div>
-
         {/* Feature Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Card 1 */}
@@ -196,9 +150,9 @@ loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=scr_demo"))()`;
             <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-purple-400">
               <Cpu className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-white">Polymorphic VM Obfuscation</h3>
+            <h3 className="text-base font-bold text-white">Proprietary Code Security</h3>
             <p className="text-xs text-neutral-400 leading-relaxed">
-              Virtualizes raw Luau AST into dynamic register-based instructions with control-flow flattening and XOR string encryption to thwart decompilers.
+              Shields your intellectual property with multi-layered execution barriers and runtime integrity protection to prevent decompilation and unauthorized modifications.
             </p>
           </div>
 

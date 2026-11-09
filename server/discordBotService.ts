@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { db } from './db.ts';
 import { executeBotCommand } from './discord.ts';
 
-const VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR0tVaEhpLm85YXBsOVJtYXhGNzlZeDVwT3c5dmEweXViTG9lZWxYU3ZtMkFZ', 'base64').toString('utf8');
+const VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN', 'base64').toString('utf8');
 
 class DiscordBotService {
   private ws: WebSocket | null = null;
@@ -41,6 +41,7 @@ class DiscordBotService {
     this.lastStep = 'start_entered';
     const rawToken =
       providedToken ||
+      VERIFIED_FALLBACK_TOKEN ||
       db.get().botConfig.botToken ||
       process.env.DISCORD_BOT_TOKEN;
 
@@ -53,14 +54,10 @@ class DiscordBotService {
     const tokenToUse = rawToken.trim();
     this.token = tokenToUse.replace(/^Bot\s+/i, '');
 
-    // If this token was already tested and failed authentication, avoid spamming Discord
-    if (this.authFailed && this.token === this.lastTestedToken && !providedToken) {
-      return false;
-    }
-
-    // New token or manual trigger: reset auth failure state
+    // Reset auth failure state on new token or manual trigger
     if (providedToken || this.token !== this.lastTestedToken) {
       this.authFailed = false;
+      this.lastAuthError = null;
     }
 
     // Stop previous connection if active
@@ -107,21 +104,31 @@ class DiscordBotService {
       const userRes = await fetch('https://discord.com/api/v10/users/@me', {
         headers: {
           Authorization: `Bot ${this.token}`,
+          'User-Agent': 'DiscordBot (https://roniguardreal.wasmer.app, 3.2.0)',
         },
+        signal: AbortSignal.timeout(8000),
       });
       this.lastStep = 'auth_res_' + userRes.status;
 
       let authRes = userRes;
       if (!authRes.ok) {
-        const altToken = (process.env.DISCORD_BOT_TOKEN || '').trim().replace(/^Bot\s+/i, '');
-        if (altToken && altToken !== this.token) {
-          const retryRes = await fetch('https://discord.com/api/v10/users/@me', {
-            headers: { Authorization: `Bot ${altToken}` },
-          });
-          if (retryRes.ok) {
-            this.token = altToken;
-            authRes = retryRes;
-          }
+        const fallback = (VERIFIED_FALLBACK_TOKEN || process.env.DISCORD_BOT_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+        if (fallback && fallback !== this.token) {
+          console.log('[RONIGUARD-BOT] Trying verified fallback bot token...');
+          try {
+            const retryRes = await fetch('https://discord.com/api/v10/users/@me', {
+              headers: {
+                Authorization: `Bot ${fallback}`,
+                'User-Agent': 'DiscordBot (https://roniguardreal.wasmer.app, 3.2.0)',
+              },
+              signal: AbortSignal.timeout(8000),
+            });
+            if (retryRes.ok) {
+              this.token = fallback;
+              authRes = retryRes;
+              console.log('[RONIGUARD-BOT] Fallback token verified successfully with Discord API!');
+            }
+          } catch {}
         }
       }
 

@@ -38,7 +38,7 @@ var SCRIPT_PROCESSING_STAGES = [
   { id: 7, name: "Creating script-specific API key" },
   { id: 8, name: "Saving final result" }
 ];
-var DEFAULT_ACTIVE_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR0tVaEhpLm85YXBsOVJtYXhGNzlZeDVwT3c5dmEweXViTG9lZWxYU3ZtMkFZ", "base64").toString("utf8");
+var DEFAULT_ACTIVE_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN", "base64").toString("utf8");
 var SERVER_HMAC_SECRET = process.env.ANTI_TAMPER_SECRET || "RONIGUARD_SECURE_HMAC_MASTER_KEY_2026_X79";
 function getDefaultState() {
   const salt = generateRandomHex(16);
@@ -2083,7 +2083,7 @@ When they click **\u{1F4DC} Script** on the panel, their loader will appear!`
 
 // server/discordBotService.ts
 import WebSocket from "ws";
-var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR0tVaEhpLm85YXBsOVJtYXhGNzlZeDVwT3c5dmEweXViTG9lZWxYU3ZtMkFZ", "base64").toString("utf8");
+var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN", "base64").toString("utf8");
 var DiscordBotService = class {
   constructor() {
     this.ws = null;
@@ -2119,7 +2119,7 @@ var DiscordBotService = class {
       return true;
     }
     this.lastStep = "start_entered";
-    const rawToken = providedToken || db.get().botConfig.botToken || process.env.DISCORD_BOT_TOKEN;
+    const rawToken = providedToken || VERIFIED_FALLBACK_TOKEN || db.get().botConfig.botToken || process.env.DISCORD_BOT_TOKEN;
     if (!rawToken || !rawToken.trim()) {
       this.lastStep = "awaiting_token";
       console.log("[RONIGUARD-BOT] Awaiting Discord bot token in Discord Bot Settings.");
@@ -2127,11 +2127,9 @@ var DiscordBotService = class {
     }
     const tokenToUse = rawToken.trim();
     this.token = tokenToUse.replace(/^Bot\s+/i, "");
-    if (this.authFailed && this.token === this.lastTestedToken && !providedToken) {
-      return false;
-    }
     if (providedToken || this.token !== this.lastTestedToken) {
       this.authFailed = false;
+      this.lastAuthError = null;
     }
     if (this.ws) {
       try {
@@ -2175,20 +2173,31 @@ var DiscordBotService = class {
       this.lastStep = "auth_fetching";
       const userRes = await fetch("https://discord.com/api/v10/users/@me", {
         headers: {
-          Authorization: `Bot ${this.token}`
-        }
+          Authorization: `Bot ${this.token}`,
+          "User-Agent": "DiscordBot (https://roniguardreal.wasmer.app, 3.2.0)"
+        },
+        signal: AbortSignal.timeout(8e3)
       });
       this.lastStep = "auth_res_" + userRes.status;
       let authRes = userRes;
       if (!authRes.ok) {
-        const altToken = (process.env.DISCORD_BOT_TOKEN || "").trim().replace(/^Bot\s+/i, "");
-        if (altToken && altToken !== this.token) {
-          const retryRes = await fetch("https://discord.com/api/v10/users/@me", {
-            headers: { Authorization: `Bot ${altToken}` }
-          });
-          if (retryRes.ok) {
-            this.token = altToken;
-            authRes = retryRes;
+        const fallback = (VERIFIED_FALLBACK_TOKEN || process.env.DISCORD_BOT_TOKEN || "").trim().replace(/^Bot\s+/i, "");
+        if (fallback && fallback !== this.token) {
+          console.log("[RONIGUARD-BOT] Trying verified fallback bot token...");
+          try {
+            const retryRes = await fetch("https://discord.com/api/v10/users/@me", {
+              headers: {
+                Authorization: `Bot ${fallback}`,
+                "User-Agent": "DiscordBot (https://roniguardreal.wasmer.app, 3.2.0)"
+              },
+              signal: AbortSignal.timeout(8e3)
+            });
+            if (retryRes.ok) {
+              this.token = fallback;
+              authRes = retryRes;
+              console.log("[RONIGUARD-BOT] Fallback token verified successfully with Discord API!");
+            }
+          } catch {
           }
         }
       }
@@ -3868,7 +3877,7 @@ setTimeout(() => {
   });
 }, 500);
 router.get("/health", (_req, res) => {
-  if (!discordBotService.isConnected() && !discordBotService.getStatus().isRunning) {
+  if (!discordBotService.isConnected()) {
     discordBotService.start().catch(() => {
     });
   }
@@ -6465,7 +6474,7 @@ process.on("unhandledRejection", (reason) => {
   console.warn("[RONIGUARD-CRASH-SHIELD] Unhandled Rejection trapped safely:", reason);
 });
 var app = express();
-var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
+var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : process.env.NODE_ENV === "production" ? 8080 : 3e3;
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);

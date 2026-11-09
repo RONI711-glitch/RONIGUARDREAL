@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node server.js",
-    "build": "vite build && esbuild server.ts --platform=node --format=esm --bundle --packages=external --outfile=server.js",
+    "bot": "tsx server/botRunner.ts",
+    "bot:vps": "node bot-vps.js",
+    "build": "vite build && esbuild server.ts --platform=node --format=esm --bundle --packages=external --outfile=server.js && esbuild server/botRunner.ts --platform=node --format=esm --bundle --packages=external --outfile=bot-vps.js",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist server.js bot-vps.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

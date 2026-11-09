@@ -43,9 +43,6 @@ const STAGES = [
 ];
 
 const getAppHost = () => {
-  if (typeof window !== 'undefined' && window.location.origin) {
-    return window.location.origin;
-  }
   return 'https://roniguardreal.wasmer.app';
 };
 

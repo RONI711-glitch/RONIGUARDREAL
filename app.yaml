@@ -1,3 +1,6 @@
 kind: wasmer.io/App.v0
 name: roniguardreal
 package: .
+env:
+  NODE_ENV: production
+  PORT: 8080
