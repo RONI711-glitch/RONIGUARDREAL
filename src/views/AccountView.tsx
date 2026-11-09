@@ -244,31 +244,33 @@ export const AccountView: React.FC<AccountViewProps> = ({ onLogout, onShowToast 
               </div>
             </div>
 
-            {/* Universal Master Roblox Loadstring */}
+            {/* Discord Bot Setup Command with Master Key */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
                   <Code2 className="w-3.5 h-3.5 text-purple-400" />
-                  Roblox Executor Loadstring Format
+                  Discord Bot Setup Command (<code className="text-purple-300 font-mono text-[11px]">/lic</code>)
                 </span>
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      `Script_key = "${masterKey || 'RONI-MASTER-KEY'}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=YOUR_SCRIPT_ID"))()`,
+                      `/lic api_key:${masterKey || 'RONI-MASTER-KEY'} role:@Manager`,
                       true
                     )
                   }
                   className="text-xs font-semibold text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   {copiedSnippet ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedSnippet ? 'Copied' : 'Copy Loadstring'}</span>
+                  <span>{copiedSnippet ? 'Copied' : 'Copy /lic Command'}</span>
                 </button>
               </div>
 
               <pre className="p-3.5 rounded-xl bg-[#090314] border border-white/5 font-mono text-[11px] text-purple-300/90 overflow-x-auto whitespace-pre leading-relaxed select-all">
-{`Script_key = "${masterKey || 'RONI-MASTER-YOUR-KEY'}"
-loadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=YOUR_SCRIPT_ID"))()`}
+{`/lic api_key:${masterKey || 'RONI-MASTER-YOUR-KEY'} role:@Manager`}
               </pre>
+              <p className="text-[11px] text-neutral-400 leading-normal">
+                This Master Key is used exclusively for Discord bot commands like <code className="text-purple-300 font-mono">/lic</code> to link your panels. Customer loadstrings use their own generated license keys (<code className="text-emerald-400 font-mono">Script_key = "CUSTOMER_KEY"</code>).
+              </p>
             </div>
           </div>
 

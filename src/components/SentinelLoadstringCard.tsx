@@ -50,7 +50,7 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
     }
   }, [apiKey]);
 
-  const effectiveKey = apiKey || masterKey || 'RONI-MASTER-KEY';
+  const effectiveKey = apiKey || 'YOUR_LICENSE_KEY';
 
   // Universal Roblox Execution Loadstrings with Script ID & Key Separation
   const staticLoaderUrl = `${WASMER_APP_URL}/loader.lua?script=${scriptId}`;

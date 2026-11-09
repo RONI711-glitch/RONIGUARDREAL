@@ -2160,38 +2160,42 @@ export async function handleRawLoaderRequest(req: Request, res: Response) {
   // Priority 3: Resolve script content & metadata
   let resolved = targetScriptId ? resolveScriptContentAndMeta(targetScriptId, licenseKeyInput) : null;
 
-  // Fallback 1: If caller requested 'latest' or script was not found, search by filename, panel, or fallback to primary script
+  // Fallback 1: If caller requested 'latest', use the latest script
   if (!resolved) {
-    if (state.scripts.length > 0) {
-      const match =
-        state.scripts.find(
-          (s) =>
-            s.id.toLowerCase() === targetScriptId.toLowerCase() ||
-            s.filename.toLowerCase().includes(targetScriptId.toLowerCase()) ||
-            s.panelId.toLowerCase() === targetScriptId.toLowerCase()
-        ) || state.scripts[0];
+    if (targetScriptId === 'latest' || !targetScriptId) {
+      const latestScript = state.scripts[state.scripts.length - 1] || state.scripts[0];
+      if (latestScript) {
+        resolved = resolveScriptContentAndMeta(latestScript.id, licenseKeyInput);
+      }
+    } else if (state.scripts.length > 0) {
+      const match = state.scripts.find(
+        (s) =>
+          s.id.toLowerCase() === targetScriptId.toLowerCase() ||
+          s.filename.toLowerCase() === targetScriptId.toLowerCase() ||
+          s.panelId.toLowerCase() === targetScriptId.toLowerCase()
+      );
       if (match) {
         resolved = resolveScriptContentAndMeta(match.id, licenseKeyInput);
       }
     }
   }
 
-  // Fallback 2: Universal executable payload guarantee — NEVER throw 404 in Roblox!
+  // Fallback 2: Universal executable payload guarantee — NEVER throw 404 in Roblox for ANY script!
   if (!resolved) {
     resolved = {
       content: `-- [RONIGUARD] Universal Script Engine
-print("[RONIGUARD] Protected script runtime loaded.")
+print("[RONIGUARD] Protected script runtime loaded for ${targetScriptId || 'main'}.")
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     print("[RONIGUARD] Authenticated Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
 end
 print("[RONIGUARD] Script payload operational.")`,
       filename: `${targetScriptId || 'main'}.lua`,
-      scriptRecord: state.scripts[0] || null,
+      scriptRecord: null,
     };
   }
 
   const { content, filename, scriptRecord } = resolved;
-  const scriptId = scriptRecord?.id || targetScriptId;
+  const scriptId = targetScriptId || scriptRecord?.id || 'main';
   const panel = state.panels.find((p) => p.id === scriptRecord?.panelId);
 
   // B. Blacklist Check

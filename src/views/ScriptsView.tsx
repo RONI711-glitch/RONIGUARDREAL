@@ -46,7 +46,7 @@ const getAppHost = () => {
   return 'https://roniguardreal.wasmer.app';
 };
 
-const buildLoadstring = (scriptId: string, key: string) => {
+const buildLoadstring = (scriptId: string, key: string = 'YOUR_LICENSE_KEY') => {
   return `Script_key = "${key}"\nloadstring(game:HttpGet("${getAppHost()}/loader.lua?script=${scriptId}"))()`;
 };
 
@@ -384,8 +384,8 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredScripts.map((script) => {
             const panel = panels.find((p) => p.id === script.panelId);
-            const effectiveKey = masterApiKey || script.apiKey || 'RONI-MASTER-KEY';
-            const loadstringSnippet = buildLoadstring(script.id, effectiveKey);
+            const customerKey = script.trialKeyActive ? 'trail' : 'YOUR_LICENSE_KEY';
+            const loadstringSnippet = buildLoadstring(script.id, customerKey);
 
             return (
               <div
@@ -434,23 +434,11 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-neutral-500">License Key:</span>
+                      <span className="text-neutral-500">Key Required:</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[130px]" title={masterApiKey ? 'Master Account Key' : 'API Key'}>
-                          {effectiveKey}
+                        <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[150px]">
+                          {script.trialKeyActive ? '"trail" (Trial Active)' : 'Customer License Key'}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(effectiveKey, `key_${script.id}`)}
-                          className="p-1 hover:text-purple-300 text-neutral-400 hover:bg-purple-900/30 rounded transition-colors"
-                          title="Copy Master License Key"
-                        >
-                          {copiedId === `key_${script.id}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
                       </div>
                     </div>
                     <div className="flex items-center justify-between">

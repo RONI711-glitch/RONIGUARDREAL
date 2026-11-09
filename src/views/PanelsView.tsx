@@ -325,8 +325,7 @@ export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
                       type="button"
                       onClick={() => {
                         const targetId = associatedScripts[0]?.id || panel.id;
-                        const key = masterApiKey || 'RONI-MASTER-KEY';
-                        const loadstring = `Script_key = "${key}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${targetId}"))()`;
+                        const loadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${targetId}"))()`;
                         navigator.clipboard.writeText(loadstring);
                         setCopiedPanelId(panel.id);
                         setTimeout(() => setCopiedPanelId(null), 2000);

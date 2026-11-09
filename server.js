@@ -5556,10 +5556,15 @@ async function handleRawLoaderRequest(req, res) {
   }
   let resolved = targetScriptId ? resolveScriptContentAndMeta(targetScriptId, licenseKeyInput) : null;
   if (!resolved) {
-    if (state.scripts.length > 0) {
+    if (targetScriptId === "latest" || !targetScriptId) {
+      const latestScript = state.scripts[state.scripts.length - 1] || state.scripts[0];
+      if (latestScript) {
+        resolved = resolveScriptContentAndMeta(latestScript.id, licenseKeyInput);
+      }
+    } else if (state.scripts.length > 0) {
       const match = state.scripts.find(
-        (s) => s.id.toLowerCase() === targetScriptId.toLowerCase() || s.filename.toLowerCase().includes(targetScriptId.toLowerCase()) || s.panelId.toLowerCase() === targetScriptId.toLowerCase()
-      ) || state.scripts[0];
+        (s) => s.id.toLowerCase() === targetScriptId.toLowerCase() || s.filename.toLowerCase() === targetScriptId.toLowerCase() || s.panelId.toLowerCase() === targetScriptId.toLowerCase()
+      );
       if (match) {
         resolved = resolveScriptContentAndMeta(match.id, licenseKeyInput);
       }
@@ -5568,17 +5573,17 @@ async function handleRawLoaderRequest(req, res) {
   if (!resolved) {
     resolved = {
       content: `-- [RONIGUARD] Universal Script Engine
-print("[RONIGUARD] Protected script runtime loaded.")
+print("[RONIGUARD] Protected script runtime loaded for ${targetScriptId || "main"}.")
 if game and game:GetService("Players") and game:GetService("Players").LocalPlayer then
     print("[RONIGUARD] Authenticated Roblox Player: " .. tostring(game:GetService("Players").LocalPlayer.Name))
 end
 print("[RONIGUARD] Script payload operational.")`,
       filename: `${targetScriptId || "main"}.lua`,
-      scriptRecord: state.scripts[0] || null
+      scriptRecord: null
     };
   }
   const { content, filename, scriptRecord } = resolved;
-  const scriptId = scriptRecord?.id || targetScriptId;
+  const scriptId = targetScriptId || scriptRecord?.id || "main";
   const panel = state.panels.find((p) => p.id === scriptRecord?.panelId);
   const isBlacklisted = hwid && db.isUserBlacklisted(hwid, scriptId).blacklisted || robloxUser && db.isUserBlacklisted(robloxUser, scriptId).blacklisted || licenseKeyInput && db.isUserBlacklisted(licenseKeyInput, scriptId).blacklisted;
   if (isBlacklisted) {
