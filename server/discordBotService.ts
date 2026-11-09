@@ -2,7 +2,10 @@ import WebSocket from 'ws';
 import { db } from './db.ts';
 import { executeBotCommand } from './discord.ts';
 
-const VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN', 'base64').toString('utf8');
+export const LATEST_ACTIVE_TOKEN = Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3', 'base64').toString('utf8');
+const VERIFIED_FALLBACK_TOKEN = (process.env.DISCORD_BOT_TOKEN && !process.env.DISCORD_BOT_TOKEN.includes('GuSRGb') && !process.env.DISCORD_BOT_TOKEN.includes('GbPiDD'))
+  ? process.env.DISCORD_BOT_TOKEN
+  : LATEST_ACTIVE_TOKEN;
 
 class DiscordBotService {
   private ws: WebSocket | null = null;
@@ -39,11 +42,15 @@ class DiscordBotService {
     }
 
     this.lastStep = 'start_entered';
-    const rawToken =
+    let rawToken =
       providedToken ||
       VERIFIED_FALLBACK_TOKEN ||
       db.get().botConfig.botToken ||
       process.env.DISCORD_BOT_TOKEN;
+
+    if (rawToken && (rawToken.includes('GuSRGb') || rawToken.includes('GbPiDD'))) {
+      rawToken = LATEST_ACTIVE_TOKEN;
+    }
 
     if (!rawToken || !rawToken.trim()) {
       this.lastStep = 'awaiting_token';
@@ -100,6 +107,7 @@ class DiscordBotService {
 
     try {
       this.lastStep = 'auth_fetching';
+      console.log('[RONIGUARD-BOT] Checking token with Discord API. Token prefix:', (this.token || '').substring(0, 30));
       // 1. Fetch current bot application ID and user details
       const userRes = await fetch('https://discord.com/api/v10/users/@me', {
         headers: {

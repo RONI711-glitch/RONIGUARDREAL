@@ -330,7 +330,11 @@ export const SCRIPT_PROCESSING_STAGES: { id: number; name: string }[] = [
   { id: 8, name: 'Saving final result' },
 ];
 
-export const DEFAULT_ACTIVE_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN', 'base64').toString('utf8');
+const LATEST_ACTIVE_TOKEN = Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3', 'base64').toString('utf8');
+const envCandidate = (process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || '').trim();
+export const DEFAULT_ACTIVE_BOT_TOKEN = (envCandidate && !envCandidate.includes('GuSRGb') && !envCandidate.includes('GbPiDD'))
+  ? envCandidate
+  : LATEST_ACTIVE_TOKEN;
 export const SERVER_HMAC_SECRET = process.env.ANTI_TAMPER_SECRET || 'RONIGUARD_SECURE_HMAC_MASTER_KEY_2026_X79';
 
 function getDefaultState(): RoniguardState {

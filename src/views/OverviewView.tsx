@@ -123,7 +123,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
             </span>
           </div>
           <p className="text-xs text-purple-200/90 mt-1.5 leading-relaxed max-w-xl font-medium">
-            Next-generation Lua/Luau register VM obfuscation, script-specific licensing, and 24/7 Discord Bot execution in an isolated workspace.
+            Next-generation proprietary code protection, script-specific licensing, and 24/7 Discord Bot execution in an isolated workspace.
           </p>
         </div>
 
@@ -188,7 +188,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
                 <span>Upload Lua Script</span>
               </div>
               <p className="text-[11px] text-neutral-400 leading-relaxed">
-                Upload your raw Lua code. RONIGUARD MAX wraps it into a Register VM with XOR polymorphic keys.
+                Upload your raw Lua code. RONIGUARD secures it with proprietary multi-layered execution barriers.
               </p>
             </div>
 

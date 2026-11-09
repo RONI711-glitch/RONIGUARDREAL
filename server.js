@@ -38,7 +38,9 @@ var SCRIPT_PROCESSING_STAGES = [
   { id: 7, name: "Creating script-specific API key" },
   { id: 8, name: "Saving final result" }
 ];
-var DEFAULT_ACTIVE_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN", "base64").toString("utf8");
+var LATEST_ACTIVE_TOKEN = Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3", "base64").toString("utf8");
+var envCandidate = (process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || "").trim();
+var DEFAULT_ACTIVE_BOT_TOKEN = envCandidate && !envCandidate.includes("GuSRGb") && !envCandidate.includes("GbPiDD") ? envCandidate : LATEST_ACTIVE_TOKEN;
 var SERVER_HMAC_SECRET = process.env.ANTI_TAMPER_SECRET || "RONIGUARD_SECURE_HMAC_MASTER_KEY_2026_X79";
 function getDefaultState() {
   const salt = generateRandomHex(16);
@@ -2083,7 +2085,8 @@ When they click **\u{1F4DC} Script** on the panel, their loader will appear!`
 
 // server/discordBotService.ts
 import WebSocket from "ws";
-var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN || Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuR2JQaURELlgxTEtLRnRZVFU1aG5ndUlyc1p2T3VsT0VwNTNsZXVWdUdwdUdN", "base64").toString("utf8");
+var LATEST_ACTIVE_TOKEN2 = Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3", "base64").toString("utf8");
+var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN && !process.env.DISCORD_BOT_TOKEN.includes("GuSRGb") && !process.env.DISCORD_BOT_TOKEN.includes("GbPiDD") ? process.env.DISCORD_BOT_TOKEN : LATEST_ACTIVE_TOKEN2;
 var DiscordBotService = class {
   constructor() {
     this.ws = null;
@@ -2119,7 +2122,10 @@ var DiscordBotService = class {
       return true;
     }
     this.lastStep = "start_entered";
-    const rawToken = providedToken || VERIFIED_FALLBACK_TOKEN || db.get().botConfig.botToken || process.env.DISCORD_BOT_TOKEN;
+    let rawToken = providedToken || VERIFIED_FALLBACK_TOKEN || db.get().botConfig.botToken || process.env.DISCORD_BOT_TOKEN;
+    if (rawToken && (rawToken.includes("GuSRGb") || rawToken.includes("GbPiDD"))) {
+      rawToken = LATEST_ACTIVE_TOKEN2;
+    }
     if (!rawToken || !rawToken.trim()) {
       this.lastStep = "awaiting_token";
       console.log("[RONIGUARD-BOT] Awaiting Discord bot token in Discord Bot Settings.");
@@ -2171,6 +2177,7 @@ var DiscordBotService = class {
     }
     try {
       this.lastStep = "auth_fetching";
+      console.log("[RONIGUARD-BOT] Checking token with Discord API. Token prefix:", (this.token || "").substring(0, 30));
       const userRes = await fetch("https://discord.com/api/v10/users/@me", {
         headers: {
           Authorization: `Bot ${this.token}`,
