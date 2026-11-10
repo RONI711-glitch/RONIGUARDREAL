@@ -384,7 +384,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredScripts.map((script) => {
             const panel = panels.find((p) => p.id === script.panelId);
-            const customerKey = script.trialKeyActive ? 'trail' : 'YOUR_LICENSE_KEY';
+            const customerKey = script.trialEnabled ? 'trail' : 'YOUR_LICENSE_KEY';
             const loadstringSnippet = buildLoadstring(script.id, customerKey);
 
             return (
@@ -437,7 +437,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                       <span className="text-neutral-500">Key Required:</span>
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-[11px] text-emerald-400 font-bold truncate max-w-[150px]">
-                          {script.trialKeyActive ? '"trail" (Trial Active)' : 'Customer License Key'}
+                          {script.trialEnabled ? '"trail" (Trial Active)' : 'Customer License Key'}
                         </span>
                       </div>
                     </div>
@@ -516,39 +516,21 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                     </button>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => copyToClipboard(effectiveKey, `key_btn_${script.id}`)}
-                      className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-300 text-xs font-semibold transition-all"
-                      title="Copy Master License key"
-                    >
-                      {copiedId === `key_btn_${script.id}` ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Copied Key!</span>
-                        </>
-                      ) : (
-                        <>
-                          <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Copy API Key</span>
-                        </>
-                      )}
-                    </button>
-
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => copyToClipboard(loadstringSnippet, `ls_${script.id}`)}
-                      className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-purple-900/30 hover:bg-purple-900/50 border border-purple-700/40 text-purple-200 text-xs font-semibold transition-all"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-md shadow-purple-900/30"
                       title="Copy Roblox loadstring code"
                     >
                       {copiedId === `ls_${script.id}` ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Copied Loader!</span>
+                          <Check className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Copied Loadstring!</span>
                         </>
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Loader</span>
+                          <span>Copy Roblox Loadstring</span>
                         </>
                       )}
                     </button>
