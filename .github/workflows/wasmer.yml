@@ -27,7 +27,11 @@ jobs:
         uses: wasmerio/setup-wasmer@v3
 
       - name: Deploy to Wasmer Edge
-        if: ${{ secrets.WASMER_TOKEN != '' }}
         env:
           WASMER_TOKEN: ${{ secrets.WASMER_TOKEN }}
-        run: wasmer deploy --no-confirm
+        run: |
+          if [ -n "$WASMER_TOKEN" ]; then
+            wasmer deploy --no-confirm
+          else
+            echo "WASMER_TOKEN secret is not set. If Wasmer is connected directly via Git in Wasmer dashboard, it deploys automatically."
+          fi
