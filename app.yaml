@@ -1,5 +1,5 @@
 kind: wasmer.io/App.v0
-name: roniguardreal
+name: ronigurd
 package: .
 env:
   NODE_ENV: production

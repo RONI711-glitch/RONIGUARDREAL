@@ -434,7 +434,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `**Script Licensing Information:**\n• **Script**: "${scriptRec?.filename || 'Unknown'}" (\`${scriptRec?.id || 'N/A'}\`)\n• **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || 'No key issued'}\`\n• **Status**: ${keyRec?.status === 'active' ? '🟢 ACTIVE' : '🔴 ' + (keyRec?.status || 'inactive')}\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${keyRec?.key || scriptRec?.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptRec?.id || ''}"))()\n\`\`\``,
+        message: `**Script Licensing Information:**\n• **Script**: "${scriptRec?.filename || 'Unknown'}" (\`${scriptRec?.id || 'N/A'}\`)\n• **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || 'No key issued'}\`\n• **Status**: ${keyRec?.status === 'active' ? '🟢 ACTIVE' : '🔴 ' + (keyRec?.status || 'inactive')}\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${keyRec?.key || scriptRec?.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptRec?.id || ''}"))()\n\`\`\``,
       };
     }
 
@@ -481,7 +481,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
       if (active.length === 0) {
         return {
           success: true,
-          message: 'No active script licenses found. Create and process a script at https://roniguardreal.wasmer.app to generate an API key.',
+          message: 'No active script licenses found. Create and process a script at https://ronigurd.wasmer.app to generate an API key.',
         };
       }
 
@@ -537,7 +537,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `✅ New API key generated for script **"${script.filename}"**:\n• **API Key**: \`${newKey}\`\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${newKey}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${script.id}"))()\n\`\`\``,
+        message: `✅ New API key generated for script **"${script.filename}"**:\n• **API Key**: \`${newKey}\`\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${newKey}"\nloadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${script.id}"))()\n\`\`\``,
         data: newKeyRec,
       };
     }
@@ -603,7 +603,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
+        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
         data: keyRec,
       };
     }

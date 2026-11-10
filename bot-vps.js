@@ -1216,7 +1216,7 @@ var DiscordBotService = class {
           const port = process.env.PORT || 3e3;
           fetch(`http://127.0.0.1:${port}/api/health`).catch(() => {
           });
-          fetch("https://roniguardreal.wasmer.app/api/health").catch(() => {
+          fetch("https://ronigurd.wasmer.app/api/health").catch(() => {
           });
         } catch {
         }
@@ -1228,7 +1228,7 @@ var DiscordBotService = class {
       const userRes = await fetch("https://discord.com/api/v10/users/@me", {
         headers: {
           Authorization: `Bot ${this.token}`,
-          "User-Agent": "DiscordBot (https://roniguardreal.wasmer.app, 3.2.0)"
+          "User-Agent": "DiscordBot (https://ronigurd.wasmer.app, 3.2.0)"
         },
         signal: AbortSignal.timeout(8e3)
       });
@@ -1242,7 +1242,7 @@ var DiscordBotService = class {
             const retryRes = await fetch("https://discord.com/api/v10/users/@me", {
               headers: {
                 Authorization: `Bot ${fallback}`,
-                "User-Agent": "DiscordBot (https://roniguardreal.wasmer.app, 3.2.0)"
+                "User-Agent": "DiscordBot (https://ronigurd.wasmer.app, 3.2.0)"
               },
               signal: AbortSignal.timeout(8e3)
             });
@@ -2042,7 +2042,7 @@ You are barred from viewing or executing this script.`,
 \u{1F4DC} **YOUR PERSONAL SCRIPT LOADER**
 \`\`\`lua
 Script_key = "${keyParam}"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
+loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 *Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
         } else if (targetScript && targetScript.trialEnabled === true) {
@@ -2051,7 +2051,7 @@ loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${sc
 \u{1F4DC} **TRIAL SCRIPT LOADER**
 \`\`\`lua
 Script_key = "trial"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
+loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 *Trial mode is enabled by the owner. Everyone can test this script!*`;
         } else {
@@ -2089,7 +2089,7 @@ Click **\u{1F511} Redeem Key** to enter your license key, or contact a server ad
           buttonReply = `\u26A0\uFE0F **No Active License Key Found**
 There is no registered license key bound to <@${callerId}>.
 \u2022 Click **\u{1F511} Redeem Key** to activate a key
-\u2022 Visit https://roniguardreal.wasmer.app to generate licenses.`;
+\u2022 Visit https://ronigurd.wasmer.app to generate licenses.`;
         }
         try {
           await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -2254,7 +2254,7 @@ Access Tier: **Active Script Executor**`;
 \u{1F4DC} **YOUR PERSONAL SCRIPT LOADER:**
 \`\`\`lua
 Script_key = "${keyRec.key}"
-loadstring(game:HttpGet("https://roniguardreal.wasmer.app/loader.lua?script=${scriptId}"))()
+loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()
 \`\`\`
 You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!`;
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
