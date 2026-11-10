@@ -16,10 +16,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci || npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build Assets & Bundles
         run: npm run build
@@ -28,7 +27,7 @@ jobs:
         uses: wasmerio/setup-wasmer@v3
 
       - name: Deploy to Wasmer Edge
-        if: env.WASMER_TOKEN != ''
+        if: ${{ secrets.WASMER_TOKEN != '' }}
         env:
           WASMER_TOKEN: ${{ secrets.WASMER_TOKEN }}
         run: wasmer deploy --no-confirm
