@@ -8,9 +8,13 @@ load(
 config = node_config(
     schema = 1,
     commands = {
+        "install": "npm install --legacy-peer-deps",
         "build": "npm run build",
         "start": "node server.js",
     },
+    node_package_manager = "npm",
+    node_build_command = "npm run build",
+    node_install_command = "npm install --legacy-peer-deps",
     node_server = "express",
     node_version = "20",
 )

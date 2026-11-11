@@ -4,3 +4,4 @@ package: .
 env:
   NODE_ENV: production
   PORT: 8080
+  HOST: 0.0.0.0
