@@ -14,7 +14,6 @@ config = node_config(
     },
     node_package_manager = "npm",
     node_build_command = "npm run build",
-    node_install_command = "npm install --legacy-peer-deps",
     node_server = "express",
     node_version = "20",
 )
