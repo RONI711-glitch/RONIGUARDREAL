@@ -434,7 +434,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `**Script Licensing Information:**\n• **Script**: "${scriptRec?.filename || 'Unknown'}" (\`${scriptRec?.id || 'N/A'}\`)\n• **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || 'No key issued'}\`\n• **Status**: ${keyRec?.status === 'active' ? '🟢 ACTIVE' : '🔴 ' + (keyRec?.status || 'inactive')}\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${keyRec?.key || scriptRec?.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptRec?.id || ''}"))()\n\`\`\``,
+        message: `**Script Licensing Information:**\n• **Script**: "${scriptRec?.filename || 'Unknown'}" (\`${scriptRec?.id || 'N/A'}\`)\n• **Active API Key**: \`${keyRec?.key || scriptRec?.apiKey || 'No key issued'}\`\n• **Status**: ${keyRec?.status === 'active' ? '🟢 ACTIVE' : '🔴 ' + (keyRec?.status || 'inactive')}\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${keyRec?.key || scriptRec?.apiKey || 'YOUR_KEY'}"\nloadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=${scriptRec?.id || ''}"))()\n\`\`\``,
       };
     }
 
@@ -481,7 +481,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
       if (active.length === 0) {
         return {
           success: true,
-          message: 'No active script licenses found. Create and process a script at https://ronigurd.wasmer.app to generate an API key.',
+          message: 'No active script licenses found. Create and process a script at https://roniguard-dfwh.onrender.com to generate an API key.',
         };
       }
 
@@ -537,7 +537,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `✅ New API key generated for script **"${script.filename}"**:\n• **API Key**: \`${newKey}\`\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${newKey}"\nloadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${script.id}"))()\n\`\`\``,
+        message: `✅ New API key generated for script **"${script.filename}"**:\n• **API Key**: \`${newKey}\`\n• **Loadstring**:\n\`\`\`lua\nScript_key = "${newKey}"\nloadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=${script.id}"))()\n\`\`\``,
         data: newKeyRec,
       };
     }
@@ -571,9 +571,11 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
       const discordUsername = execution.user?.username || 'Discord User';
       const userRec = db.findOrCreateDiscordUser({ discordId, username: discordUsername });
 
-      // Bind key to this user
+      // Bind key to this user - permanent lifetime
       keyRec.userId = userRec.id;
       keyRec.status = 'active';
+      keyRec.type = 'lifetime';
+      keyRec.expiresAt = null; // Lives forever until user removes it
 
       // Automatically whitelist user on the panel
       const targetPanelId = keyRec.panelId || (state.panels[0] ? state.panels[0].id : 'pnl_main');
@@ -587,7 +589,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
           panelId: targetPanelId,
           platform: 'discord',
           identifier: discordId,
-          note: `Auto-whitelisted via key redemption (${keyRec.key})`,
+          note: `Auto-whitelisted via key redemption (${keyRec.key}) - Lifetime`,
           status: 'active',
           addedAt: new Date().toISOString(),
           lastSeenAt: null,
@@ -595,7 +597,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
         });
       }
 
-      db.logAudit('key_redeem', `Key ${keyRec.key} redeemed by @${discordUsername} (${discordId})`, 'DiscordBot', discordId, 'info');
+      db.logAudit('key_redeem', `Key ${keyRec.key} redeemed by @${discordUsername} (${discordId}) - Lifetime`, 'DiscordBot', discordId, 'info');
       db.save();
 
       const script = state.scripts.find((s) => s.id === keyRec.scriptId) || state.scripts[0];
@@ -603,7 +605,7 @@ export async function executeBotCommand(execution: BotCommandExecution): Promise
 
       return {
         success: true,
-        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
+        message: `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${discordId}>\n• **Whitelist**: Active (Lifetime)\n\n📜 **YOUR PERSONAL LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now also click **📜 Script** on the panel anytime!`,
         data: keyRec,
       };
     }

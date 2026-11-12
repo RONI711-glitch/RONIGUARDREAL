@@ -156,7 +156,7 @@ export function requireOwnerAuth(req: Request, res: Response, next: () => void) 
 
 // Helper to resolve application base URL from incoming request
 export function getBaseUrl(req: Request): string {
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'ronigurd.wasmer.app';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'roniguard-dfwh.onrender.com';
   const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
   return `${proto}://${host}`;
 }
@@ -738,7 +738,7 @@ router.get('/scripts/:id', requireAuth, (req, res) => {
   res.json({
     ...script,
     sourceCode,
-    loadstringUrl: `https://ronigurd.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
+    loadstringUrl: `https://roniguard-dfwh.onrender.com/loader.lua?script=${script.id}&key=${script.apiKey}`,
   });
 });
 
@@ -1055,7 +1055,7 @@ router.put('/scripts/:id', requireAuth, async (req, res) => {
   res.json({
     success: true,
     script,
-    loadstringUrl: `https://ronigurd.wasmer.app/loader.lua?script=${script.id}&key=${script.apiKey}`,
+    loadstringUrl: `https://roniguard-dfwh.onrender.com/loader.lua?script=${script.id}&key=${script.apiKey}`,
     message: 'Script updated in-place successfully. Existing loadstring URL remains unchanged!',
   });
 });
@@ -1094,7 +1094,7 @@ router.get('/licenses', requireAuth, (req, res) => {
   const state = db.get();
   const userKeys = state.keys.filter((k) => k.userId === user.id);
 
-  const baseUrl = 'https://ronigurd.wasmer.app';
+  const baseUrl = 'https://roniguard-dfwh.onrender.com';
   const licenses = userKeys.map((k) => {
     const script = state.scripts.find((s) => s.id === k.scriptId);
     return {
@@ -1173,7 +1173,7 @@ router.post('/licenses/:id/regenerate', requireAuth, (req, res) => {
   res.json({
     success: true,
     newKey: newKeyRec,
-    loadstringUrl: `https://ronigurd.wasmer.app/loader.lua?script=${oldKey.scriptId}&key=${newKeyStr}`,
+    loadstringUrl: `https://roniguard-dfwh.onrender.com/loader.lua?script=${oldKey.scriptId}&key=${newKeyStr}`,
     message: 'New API key successfully minted.',
   });
 });
@@ -2309,7 +2309,7 @@ end`);
   if (!isAuthorized) {
     // If the request had NO license key parameter or header, the user is running the clean loadstring format:
     // Script_key = "<key>"
-    // loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=<scriptId>"))()
+    // loadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=<scriptId>"))()
     // In this case, we deliver the Luau Client Loader Runtime Stub for this script!
     // The stub runs in Roblox, reads Script_key (or _G.Script_Key / getgenv().Script_key),
     // and fetches the authorized payload using /loader.lua?script=<scriptId>&key=<userKey>.
@@ -2321,7 +2321,7 @@ end`);
           ? `${reqProto}://${reqHost}`
           : reqHost && reqHost.toString().includes('localhost')
           ? `${reqProto}://${reqHost}`
-          : 'https://ronigurd.wasmer.app';
+          : 'https://roniguard-dfwh.onrender.com';
 
       const clientStubLua = `-- [RONIGUARD] Luau Client Loader Runtime Stub
 -- Target Script: ${scriptRecord?.filename || filename || scriptId}
@@ -2526,7 +2526,7 @@ export async function handleTwoPhaseLoader(req: Request, res: Response) {
       ? `${reqProto}://${reqHost}`
       : reqHost && reqHost.toString().includes('localhost')
       ? `${reqProto}://${reqHost}`
-      : 'https://ronigurd.wasmer.app';
+      : 'https://roniguard-dfwh.onrender.com';
 
   const loaderScript = `-- [RONIGUARD] V4 Edge-Secured Two-Phase Loader
 -- Script Target: ${scriptId}
@@ -2862,7 +2862,7 @@ export function handleHealthz(_req: Request, res: Response) {
     hostingNotice: {
       alwaysOnActive: true,
       providerNote: 'Process-level watchdog and auto-reconnect are active. If host container sleeps on free tier when idle, ping /healthz every 3 minutes via UptimeRobot or Cron-job.org to prevent container sleep.',
-      pingUrl: 'https://ronigurd.wasmer.app/healthz',
+      pingUrl: 'https://roniguard-dfwh.onrender.com/healthz',
     },
   });
 }
@@ -2907,7 +2907,7 @@ router.get('/loader/details/:id', requireOwnerAuth, (req, res) => {
   const scriptId = script?.id || build?.id || id;
   const filename = script?.filename || build?.filename || 'script.lua';
 
-  const baseUrl = 'https://ronigurd.wasmer.app';
+  const baseUrl = 'https://roniguard-dfwh.onrender.com';
 
   const publicRawUrl = `${baseUrl}/loader.lua?script=${scriptId}`;
   const loadstringSnippet = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${baseUrl}/loader.lua?script=${scriptId}"))()`;

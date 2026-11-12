@@ -1216,7 +1216,7 @@ var DiscordBotService = class {
           const port = process.env.PORT || 3e3;
           fetch(`http://127.0.0.1:${port}/api/health`).catch(() => {
           });
-          fetch("https://ronigurd.wasmer.app/api/health").catch(() => {
+          fetch("https://roniguard-dfwh.onrender.com/api/health").catch(() => {
           });
         } catch {
         }
@@ -1228,7 +1228,7 @@ var DiscordBotService = class {
       const userRes = await fetch("https://discord.com/api/v10/users/@me", {
         headers: {
           Authorization: `Bot ${this.token}`,
-          "User-Agent": "DiscordBot (https://ronigurd.wasmer.app, 3.2.0)"
+          "User-Agent": "DiscordBot (https://roniguard-dfwh.onrender.com, 4.2.0)"
         },
         signal: AbortSignal.timeout(8e3)
       });
@@ -1242,7 +1242,7 @@ var DiscordBotService = class {
             const retryRes = await fetch("https://discord.com/api/v10/users/@me", {
               headers: {
                 Authorization: `Bot ${fallback}`,
-                "User-Agent": "DiscordBot (https://ronigurd.wasmer.app, 3.2.0)"
+                "User-Agent": "DiscordBot (https://roniguard-dfwh.onrender.com, 4.2.0)"
               },
               signal: AbortSignal.timeout(8e3)
             });
@@ -2042,7 +2042,7 @@ You are barred from viewing or executing this script.`,
 \u{1F4DC} **YOUR PERSONAL SCRIPT LOADER**
 \`\`\`lua
 Script_key = "${keyParam}"
-loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()
+loadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=${scriptId}"))()
 \`\`\`
 *Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
         } else if (targetScript && targetScript.trialEnabled === true) {
@@ -2051,7 +2051,7 @@ loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptI
 \u{1F4DC} **TRIAL SCRIPT LOADER**
 \`\`\`lua
 Script_key = "trial"
-loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()
+loadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=${scriptId}"))()
 \`\`\`
 *Trial mode is enabled by the owner. Everyone can test this script!*`;
         } else {
@@ -2089,7 +2089,7 @@ Click **\u{1F511} Redeem Key** to enter your license key, or contact a server ad
           buttonReply = `\u26A0\uFE0F **No Active License Key Found**
 There is no registered license key bound to <@${callerId}>.
 \u2022 Click **\u{1F511} Redeem Key** to activate a key
-\u2022 Visit https://ronigurd.wasmer.app to generate licenses.`;
+\u2022 Visit https://roniguard-dfwh.onrender.com to generate licenses.`;
         }
         try {
           await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -2224,6 +2224,8 @@ Access Tier: **Active Script Executor**`;
         const userRec = db.findOrCreateDiscordUser({ discordId: callerId, username: callerUsername });
         keyRec.userId = userRec.id;
         keyRec.status = "active";
+        keyRec.type = "lifetime";
+        keyRec.expiresAt = null;
         const effectivePanelId = targetPanelId || keyRec.panelId || (state.panels[0] ? state.panels[0].id : "pnl_main");
         const alreadyWhitelisted = state.whitelist.find(
           (w) => (w.identifier === callerId || w.identifier === callerUsername) && w.panelId === effectivePanelId
@@ -2234,27 +2236,27 @@ Access Tier: **Active Script Executor**`;
             panelId: effectivePanelId,
             platform: "discord",
             identifier: callerId,
-            note: `Auto-whitelisted via Modal redemption (${keyRec.key})`,
+            note: `Auto-whitelisted via Modal redemption (${keyRec.key}) - Lifetime`,
             status: "active",
             addedAt: (/* @__PURE__ */ new Date()).toISOString(),
             lastSeenAt: null,
             boundHwid: null
           });
         }
-        db.logAudit("key_redeem", `Key ${keyRec.key} redeemed by @${callerUsername} (${callerId})`, "DiscordModal", callerId, "info");
+        db.logAudit("key_redeem", `Key ${keyRec.key} redeemed by @${callerUsername} (${callerId}) - Lifetime`, "DiscordModal", callerId, "info");
         db.save();
         const script = state.scripts.find((s) => s.id === keyRec.scriptId) || state.scripts[0];
         const scriptId = script ? script.id : "scr_main";
         const successMessage = `\u{1F389} **Key Redeemed Successfully!**
 \u2022 **Key**: \`${keyRec.key}\`
 \u2022 **Owner**: <@${callerId}>
-\u2022 **Whitelist**: Active
+\u2022 **Whitelist**: Active (Lifetime)
 \u2022 **Script ID**: \`${scriptId}\`
 
 \u{1F4DC} **YOUR PERSONAL SCRIPT LOADER:**
 \`\`\`lua
 Script_key = "${keyRec.key}"
-loadstring(game:HttpGet("https://ronigurd.wasmer.app/loader.lua?script=${scriptId}"))()
+loadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=${scriptId}"))()
 \`\`\`
 You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!`;
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -2442,34 +2444,24 @@ This server has not linked an active RONIGUARD script license yet.
         });
         return;
       }
-      let targetPanel = state.panels.find(
-        (p) => p.id === panelId || p.id.toLowerCase() === panelId.toLowerCase() || p.id.includes(panelId) || panelId.includes(p.id)
+      const targetPanel = state.panels.find(
+        (p) => p.id === panelId || p.id.toLowerCase() === panelId.toLowerCase()
       );
       if (!targetPanel) {
-        const defaultUid = state.users[0]?.id || "usr_owner";
-        targetPanel = {
-          id: panelId,
-          userId: defaultUid,
-          name: title,
-          description,
-          status: "active",
-          protectionProfile: "maximum",
-          whitelistEnabled: true,
-          keyAuthEnabled: true,
-          hwidLockEnabled: true,
-          maxHwidResets: 3,
-          scriptCount: 1,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        state.panels.push(targetPanel);
-        if (!state.scripts.some((s) => s.panelId === targetPanel.id)) {
-          const sampleScript = state.scripts[0];
-          if (sampleScript) {
-            sampleScript.panelId = targetPanel.id;
-          }
-        }
-        db.save();
+        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: 4,
+            data: {
+              content: `\u274C **Invalid Panel ID**: No panel exists with ID \`${panelId}\`.
+
+Without a valid Panel ID created on the website dashboard (https://roniguard-dfwh.onrender.com/panels), the panel cannot be deployed. Please create your panel first on the dashboard, copy its real Panel ID (e.g. \`pnl_...\`), and try again.`,
+              flags: 64
+            }
+          })
+        });
+        return;
       }
       targetPanel.name = title;
       targetPanel.description = description;

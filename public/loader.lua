@@ -1,5 +1,5 @@
 -- [RONIGUARD] Universal Luau Execution Loader
--- Platform Host: https://ronigurd.wasmer.app
+-- Platform Host: https://roniguard-dfwh.onrender.com
 
 local _k = Script_key or (getgenv and getgenv().Script_key) or _G.Script_Key or _G.Script_key or (getfenv and getfenv().Script_key)
 if not _k or tostring(_k):gsub("%s+", "") == "" then
@@ -12,7 +12,7 @@ if not _k or tostring(_k):gsub("%s+", "") == "" then
 end
 
 local _userKey = tostring(_k):gsub("^%s+", ""):gsub("%s+$", "")
-local _baseUrl = "https://ronigurd.wasmer.app"
+local _baseUrl = "https://roniguard-dfwh.onrender.com"
 local _scriptId = (getgenv and getgenv().Script_Id) or _G.Script_Id or "scr_main_default"
 local _req = (syn and syn.request) or (http and http.request) or http_request or request
 local _payload = nil
