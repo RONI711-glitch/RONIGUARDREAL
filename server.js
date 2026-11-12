@@ -4049,7 +4049,7 @@ router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/dis
   }
   try {
     const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
-    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET || "qsFyL7ATcLvCKqESUypjskBwa5NuKkWZ";
     const cookies = parseCookies(req);
     const storedRedirect = cookies["discord_oauth_redirect"] ? decodeURIComponent(cookies["discord_oauth_redirect"]) : null;
     const redirectUri = storedRedirect || resolveRedirectUri(req);
