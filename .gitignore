@@ -11,3 +11,4 @@ data/
 public/assets/
 *.bundle
 *.patch
+.anybuild/
