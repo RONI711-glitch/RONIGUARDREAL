@@ -1,7 +1,0 @@
-kind: wasmer.io/App.v0
-name: ronigurd
-package: .
-env:
-  NODE_ENV: production
-  PORT: 8080
-  HOST: 0.0.0.0

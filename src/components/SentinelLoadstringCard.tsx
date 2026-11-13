@@ -12,7 +12,7 @@ import {
   FileCode2,
   Cpu,
 } from 'lucide-react';
-import { api, WASMER_APP_URL } from '../api.ts';
+import { api, APP_BASE_URL } from '../api.ts';
 
 interface SentinelLoadstringCardProps {
   scriptId: string;
@@ -53,9 +53,9 @@ export const SentinelLoadstringCard: React.FC<SentinelLoadstringCardProps> = ({
   const effectiveKey = apiKey || 'YOUR_LICENSE_KEY';
 
   // Universal Roblox Execution Loadstrings with Script ID & Key Separation
-  const staticLoaderUrl = `${WASMER_APP_URL}/loader.lua?script=${scriptId}`;
-  const primaryLoadstring = `Script_key = "${effectiveKey}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
-  const executorCodeWithKey = `Script_key = "${effectiveKey}"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${scriptId}"))()`;
+  const staticLoaderUrl = `${APP_BASE_URL}/loader.lua?script=${scriptId}`;
+  const primaryLoadstring = `Script_key = "${effectiveKey}"\nloadstring(game:HttpGet("${APP_BASE_URL}/loader.lua?script=${scriptId}"))()`;
+  const executorCodeWithKey = `Script_key = "${effectiveKey}"\nloadstring(game:HttpGet("${APP_BASE_URL}/loader.lua?script=${scriptId}"))()`;
 
   const copyToClipboard = (text: string, type: 'loadstring' | 'raw' | 'key' | 'directCode') => {
     navigator.clipboard.writeText(text);

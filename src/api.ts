@@ -24,7 +24,12 @@ import {
 
 const TOKEN_KEY = 'roniguard_owner_token';
 const LOCAL_STORE_KEY = 'roniguard_local_db_v3';
-export const WASMER_APP_URL = 'https://roniguard-ucfw.onrender.com';
+export const APP_BASE_URL =
+  typeof window !== 'undefined' &&
+  !window.location.origin.includes('localhost') &&
+  !window.location.origin.includes('run.app')
+    ? window.location.origin
+    : 'https://roniguard-ucfw.onrender.com';
 export const generateLocalId = () => Math.random().toString(36).substring(2, 9);
 
 export function getStoredToken(): string | null {
@@ -108,7 +113,7 @@ export function clearStoredToken(): void {
 }
 
 // -------------------------------------------------------------
-// LOCAL FALLBACK STORE (Active when backend is offline or on Wasmer static edge)
+// LOCAL FALLBACK STORE (Active only if backend is unreachable)
 // -------------------------------------------------------------
 interface LocalStoreState {
   owner: {
@@ -202,9 +207,9 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
     headers.set('Content-Type', 'application/json');
   }
 
-  // If we already know the backend is 404/405 (static Wasmer host), skip network call to avoid 405 console errors
+  // Skip network call if backend previously responded with a static 404/405 HTML page
   if (backendOfflineMode) {
-    throw new Error('BACKEND_OFFLINE_WASMER_EDGE');
+    throw new Error('BACKEND_OFFLINE');
   }
 
   try {
@@ -214,14 +219,14 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
       credentials: 'include',
     });
 
-    // Detect Wasmer static server (Only when the host serves an HTML 404/405 page instead of an API server)
+    // Detect static server returning HTML 404/405 instead of JSON API
     const contentType = response.headers.get('content-type') || '';
     if (
       (response.status === 404 || response.status === 405) &&
       contentType.includes('text/html')
     ) {
       backendOfflineMode = true;
-      throw new Error('BACKEND_OFFLINE_WASMER_EDGE');
+      throw new Error('BACKEND_OFFLINE');
     }
 
     if (response.status === 401 || response.status === 403) {
@@ -246,16 +251,16 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
 
     return response;
   } catch (err: any) {
-    if (err.message === 'BACKEND_OFFLINE_WASMER_EDGE' || err.name === 'TypeError') {
+    if (err.message === 'BACKEND_OFFLINE' || err.name === 'TypeError') {
       backendOfflineMode = true;
-      throw new Error('BACKEND_OFFLINE_WASMER_EDGE');
+      throw new Error('BACKEND_OFFLINE');
     }
     throw err;
   }
 }
 
 // -------------------------------------------------------------
-// UNIVERSAL API IMPLEMENTATION (HYBRID LIVE SERVER + WASMER EDGE)
+// UNIVERSAL API IMPLEMENTATION
 // -------------------------------------------------------------
 export const api = {
   // Auth
@@ -298,7 +303,7 @@ export const api = {
       }
       return res;
     } catch (err: any) {
-      // Local fallback for Wasmer static edge
+      // Offline local fallback
       const store = loadLocalStore();
       const token = 'token_local_owner_' + Math.random().toString(36).slice(2);
       setStoredToken(token);
@@ -637,7 +642,7 @@ export const api = {
         variableRenaming: true,
         antiTamper: true,
         watermarkCheck: true,
-        customWatermark: `${cleanName} · RONIGUARD-WASMER`,
+        customWatermark: `${cleanName} · RONIGUARD`,
         vykusMode: 'vm',
         vykusLayers: 2,
         securityWalls: true,
@@ -1346,9 +1351,9 @@ loadstring(game:HttpGet(url))()
   },
 
   async getLoaderDetails(id: string) {
-    const publicRawUrl = `${WASMER_APP_URL}/loader.lua?script=${id}`;
-    const loadstringSnippet = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}"))()`;
-    const executorSnippetWithKey = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${id}"))()`;
+    const publicRawUrl = `${APP_BASE_URL}/loader.lua?script=${id}`;
+    const loadstringSnippet = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${APP_BASE_URL}/loader.lua?script=${id}"))()`;
+    const executorSnippetWithKey = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${APP_BASE_URL}/loader.lua?script=${id}"))()`;
 
     try {
       const data = await fetchWithAuth(`/api/loader/details/${id}`);

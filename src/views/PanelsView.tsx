@@ -16,7 +16,7 @@ import {
   Check,
   Code2,
 } from 'lucide-react';
-import { api, WASMER_APP_URL } from '../api.ts';
+import { api, APP_BASE_URL } from '../api.ts';
 import { Panel, ScriptItem } from '../types.ts';
 import { ConfirmModal } from '../components/ConfirmModal.tsx';
 
@@ -325,7 +325,7 @@ export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
                       type="button"
                       onClick={() => {
                         const targetId = associatedScripts[0]?.id || panel.id;
-                        const loadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${WASMER_APP_URL}/loader.lua?script=${targetId}"))()`;
+                        const loadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${APP_BASE_URL}/loader.lua?script=${targetId}"))()`;
                         navigator.clipboard.writeText(loadstring);
                         setCopiedPanelId(panel.id);
                         setTimeout(() => setCopiedPanelId(null), 2000);

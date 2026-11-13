@@ -40,7 +40,7 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Trust reverse proxies for IP detection (e.g. Cloud Run, Render, Wasmer Edge)
+// Trust reverse proxies for IP detection (Render, Railway, Cloudflare, etc.)
 app.set('trust proxy', 1);
 
 // Top-level loader & V4 handshake interception: catches any requests before static/Vite middlewares

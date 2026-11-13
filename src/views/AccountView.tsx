@@ -16,7 +16,7 @@ import {
   Code2,
   Sparkles,
 } from 'lucide-react';
-import { api, WASMER_APP_URL } from '../api.ts';
+import { api } from '../api.ts';
 import { UserProfile } from '../types.ts';
 
 interface AccountViewProps {
