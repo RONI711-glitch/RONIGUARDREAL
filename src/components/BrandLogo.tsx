@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 
-export const RONIGUARD_LOGO_SRC = '/assets/aistudio/1793350832988_c5eae9af.jpg';
+export const RONIGUARD_LOGO_SRC = '/roniguard-logo.jpg';
 
 interface BrandLogoProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'hero';

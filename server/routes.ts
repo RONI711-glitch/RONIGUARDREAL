@@ -1840,99 +1840,414 @@ router.delete('/credentials/:id', requireOwnerAuth, (req, res) => {
 // 11. VYKUS VM PROTECTED SCRIPT LOADER & EXECUTION PORTAL
 // -------------------------------------------------------------
 
+function escapeHtmlText(input: string): string {
+  return String(input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderUnauthorizedHtml(filename: string = 'Protected Script', resourceId: string = 'latest'): string {
+  const safeFile = escapeHtmlText(filename.slice(0, 64));
+  const safeId = escapeHtmlText(resourceId.slice(0, 48));
+  const loaderUrl = safeId && safeId !== 'latest'
+    ? `https://roniguard-dfwh.onrender.com/loader.lua?script=${encodeURIComponent(resourceId.slice(0, 48))}`
+    : `https://roniguard-dfwh.onrender.com/loader.lua`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ACCESS UNAUTHORIZED</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ACCESS UNAUTHORIZED — RONIGUARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/jpeg" href="/roniguard-logo.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      height: 100%;
+      min-height: 100%;
       width: 100%;
-      background-color: #0b0e17;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      overflow: hidden;
-      margin: 0;
+      background-color: #06030c;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: #f1f5f9;
-      user-select: none;
-      -webkit-user-select: none;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
-    .container {
+    .glow-1, .glow-2 {
+      position: fixed;
+      border-radius: 9999px;
+      pointer-events: none;
+      filter: blur(140px);
+      z-index: 0;
+    }
+    .glow-1 {
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 620px;
+      height: 440px;
+      background: rgba(126, 34, 206, 0.22);
+    }
+    .glow-2 {
+      bottom: -100px;
+      right: 12%;
+      width: 420px;
+      height: 360px;
+      background: rgba(159, 18, 57, 0.12);
+    }
+    #snow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .wrap {
+      position: relative;
+      z-index: 2;
       min-height: 100vh;
-      width: 100%;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      position: relative;
-      padding: 1.5rem;
+      padding: 1.25rem;
     }
-    .badge-card {
-      background: #0f1524;
-      border: 1px solid rgba(255, 255, 255, 0.09);
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .card {
+      width: 100%;
+      max-width: 580px;
+      background: linear-gradient(160deg, rgba(22, 13, 42, 0.78) 0%, rgba(10, 6, 20, 0.92) 100%);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      border: 1px solid rgba(226, 232, 240, 0.12);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+      animation: enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 12%;
+      right: 12%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(226, 232, 240, 0.4), transparent);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .logo-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(216, 180, 254, 0.25);
+      background: #05020a;
+      flex-shrink: 0;
+    }
+    .logo-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .brand-name {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+    }
+    .brand-name span { color: #c084fc; }
+    .brand-sub {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .status-chip {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #fda4af;
+      background: rgba(76, 5, 25, 0.55);
+      border: 1px solid rgba(244, 63, 94, 0.32);
+      border-radius: 10px;
+      padding: 6px 11px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hero {
+      margin-top: 22px;
+    }
+    .kicker {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fda4af;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      line-height: 1.15;
+    }
+    .desc {
+      margin-top: 10px;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+    .meta-row {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .meta-item {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .meta-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+    }
+    .meta-val {
+      margin-top: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: #e9d5ff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .code-box {
+      margin-top: 16px;
+      background: #05020a;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 14px;
-      padding: 18px 36px;
+      padding: 14px;
+    }
+    .code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: #94a3b8;
+    }
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.16s ease, border-color 0.16s ease;
+    }
+    .copy-btn:hover {
+      background: rgba(168, 85, 247, 0.2);
+      border-color: rgba(192, 132, 252, 0.4);
+    }
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.76rem;
+      line-height: 1.55;
+      color: #d8b4fe;
+      overflow-x: auto;
+    }
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .note {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .home-btn {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      gap: 14px;
-      color: #f1f5f9;
-      font-size: 1.15rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6);
-      text-transform: uppercase;
-      transition: transform 0.2s ease;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: #ffffff;
+      color: #090414;
+      text-decoration: none;
+      font-size: 0.78rem;
+      font-weight: 800;
+      transition: transform 0.16s ease, background 0.16s ease;
     }
-    .badge-card:hover {
-      transform: scale(1.01);
+    .home-btn:hover {
+      background: #e2e8f0;
+      transform: translateY(-1px);
     }
-    .siren {
-      font-size: 1.25rem;
-      line-height: 1;
+    @media (max-width: 540px) {
+      .card { padding: 20px; border-radius: 20px; }
+      h1 { font-size: 1.4rem; }
+      .meta-row { grid-template-columns: 1fr; }
     }
-    .footer-text {
-      position: absolute;
-      bottom: 28px;
-      left: 0;
-      right: 0;
-      text-align: center;
-      color: #55627f;
-      font-size: 0.82rem;
-      font-weight: 500;
-      letter-spacing: 0.01em;
-    }
-    @media (max-width: 640px) {
-      .badge-card {
-        padding: 14px 22px;
-        font-size: 0.95rem;
-        gap: 10px;
-        border-radius: 12px;
-      }
-      .siren {
-        font-size: 1.1rem;
-      }
-      .footer-text {
-        bottom: 20px;
-        font-size: 0.76rem;
-      }
+    @media (prefers-reduced-motion: reduce) {
+      .card { animation: none; }
+      #snow { display: none; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="badge-card">
-      <span class="siren">🚨🚨</span>
-      <span>ACCESS UNAUTHORIZED</span>
-      <span class="siren">🚨🚨</span>
-    </div>
-    <div class="footer-text">
-      Contents can not be displayed on browser
-    </div>
-  </div>
+  <div class="glow-1"></div>
+  <div class="glow-2"></div>
+  <canvas id="snow" aria-hidden="true"></canvas>
+  <main class="wrap">
+    <section class="card">
+      <div class="topbar">
+        <div class="brand">
+          <div class="logo-box">
+            <img src="/roniguard-logo.jpg" alt="RONIGUARD Crest" onerror="this.style.display='none'">
+          </div>
+          <div>
+            <div class="brand-name">RONI<span>GUARD</span></div>
+            <div class="brand-sub">Protected Loader Gateway</div>
+          </div>
+        </div>
+        <div class="status-chip">HTTP 403 · BLOCKED</div>
+      </div>
+
+      <div class="hero">
+        <div class="kicker">Browser Shield Active</div>
+        <h1>ACCESS UNAUTHORIZED</h1>
+        <p class="desc">
+          Direct browser access to protected Lua/Luau script payloads is blocked. Launch this loader inside an authorized Roblox executor with a valid key.
+        </p>
+      </div>
+
+      <div class="meta-row">
+        <div class="meta-item">
+          <div class="meta-label">Target Resource</div>
+          <div class="meta-val">${safeFile}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Script Identifier</div>
+          <div class="meta-val">${safeId}</div>
+        </div>
+      </div>
+
+      <div class="code-box">
+        <div class="code-head">
+          <span>executor_loader.lua</span>
+          <button type="button" class="copy-btn" id="copyBtn">Copy Example</button>
+        </div>
+        <pre><code id="snippet">Script_key = "YOUR_LICENSE_KEY"
+loadstring(game:HttpGet("${loaderUrl}"))()</code></pre>
+      </div>
+
+      <div class="actions">
+        <span class="note">Delivery: Roblox Executor Runtime Only</span>
+        <a href="/" class="home-btn">← Open RONIGUARD</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('copyBtn');
+      var code = document.getElementById('snippet');
+      if (btn && code && navigator.clipboard) {
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent || '').then(function () {
+            btn.textContent = 'Copied';
+            setTimeout(function () { btn.textContent = 'Copy Example'; }, 1800);
+          }).catch(function () {});
+        });
+      }
+
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var canvas = document.getElementById('snow');
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      var w = 0, h = 0;
+      function resize() {
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      resize();
+      window.addEventListener('resize', resize, { passive: true });
+
+      var count = w < 640 ? 24 : 42;
+      var flakes = [];
+      for (var i = 0; i < count; i++) {
+        flakes.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: Math.random() * 1.8 + 0.8,
+          vy: Math.random() * 0.5 + 0.25,
+          vx: (Math.random() - 0.5) * 0.22,
+          a: Math.random() * 0.35 + 0.12,
+          p: Math.random() * Math.PI * 2
+        });
+      }
+
+      var tick = 0;
+      function frame() {
+        tick += 0.012;
+        ctx.clearRect(0, 0, w, h);
+        for (var i = 0; i < flakes.length; i++) {
+          var f = flakes[i];
+          f.y += f.vy;
+          f.x += f.vx + Math.sin(tick + f.p) * 0.2;
+          if (f.y > h + 6) { f.y = -6; f.x = Math.random() * w; }
+          if (f.x > w + 6) f.x = -6;
+          if (f.x < -6) f.x = w + 6;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+          ctx.fillStyle = i % 5 === 0 ? 'rgba(216,180,254,' + f.a + ')' : 'rgba(241,245,249,' + f.a + ')';
+          ctx.fill();
+        }
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    })();
+  </script>
 </body>
 </html>`;
 }
