@@ -1,13 +1,14 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { api, getStoredToken, clearStoredToken } from './api.ts';
-import { SectionId, Sidebar } from './components/Sidebar.tsx';
-import { Header } from './components/Header.tsx';
+import { getStoredToken, clearStoredToken, fetchCurrentSessionUser } from './authStorage.ts';
+import type { SectionId } from './components/Sidebar.tsx';
 import { ToastContainer, ToastMessage } from './components/Toast.tsx';
 import { UserProfile } from './types.ts';
 import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
 import { PublicLandingView } from './views/PublicLandingView.tsx';
 import { SnowfallOverlay } from './components/SnowfallOverlay.tsx';
 
+const Sidebar = lazy(() => import('./components/Sidebar.tsx').then((m) => ({ default: m.Sidebar })));
+const Header = lazy(() => import('./components/Header.tsx').then((m) => ({ default: m.Header })));
 const LoginView = lazy(() => import('./views/LoginView.tsx').then((m) => ({ default: m.LoginView })));
 const OverviewView = lazy(() => import('./views/OverviewView.tsx').then((m) => ({ default: m.OverviewView })));
 const PanelsView = lazy(() => import('./views/PanelsView.tsx').then((m) => ({ default: m.PanelsView })));
@@ -99,6 +100,7 @@ export default function App() {
 
   const refreshTelemetry = async () => {
     try {
+      const { api } = await import('./api.ts');
       const overview = await api.getOverview();
       setBotConnected(overview.botConnected);
       setBotUsername(overview.botUsername);
@@ -123,7 +125,7 @@ export default function App() {
       }
 
       try {
-        const user = await api.getMe();
+        const user = await fetchCurrentSessionUser();
         if (user && user.id) {
           setCurrentUser(user);
           setIsAuthenticated(true);
@@ -152,6 +154,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      const { api } = await import('./api.ts');
       await api.logout();
     } catch (e) {
       console.warn('Logout request completed with local fallback', e);
@@ -244,38 +247,42 @@ export default function App() {
       <SnowfallOverlay enabled={snowEnabled} density={34} />
 
       {/* Top Header */}
-      <Header
-        currentSectionTitle={SECTION_TITLES[activeSection]}
-        botConnected={botConnected}
-        botUsername={botUsername}
-        userLabel={currentUser?.username || 'Developer'}
-        userRole={currentUser?.role || 'user'}
-        discordId={currentUser?.discordId || '1549804529778692237'}
-        avatarUrl={currentUser?.avatar}
-        snowEnabled={snowEnabled}
-        onToggleSnow={handleToggleSnow}
-        onToggleMobileNav={() => setIsMobileNavOpen(true)}
-        onLogout={handleLogout}
-        onNavigateToAntiTamper={() => {
-          setActiveSection('anti-tamper');
-          refreshTelemetry();
-        }}
-      />
+      <Suspense fallback={null}>
+        <Header
+          currentSectionTitle={SECTION_TITLES[activeSection]}
+          botConnected={botConnected}
+          botUsername={botUsername}
+          userLabel={currentUser?.username || 'Developer'}
+          userRole={currentUser?.role || 'user'}
+          discordId={currentUser?.discordId || '1549804529778692237'}
+          avatarUrl={currentUser?.avatar}
+          snowEnabled={snowEnabled}
+          onToggleSnow={handleToggleSnow}
+          onToggleMobileNav={() => setIsMobileNavOpen(true)}
+          onLogout={handleLogout}
+          onNavigateToAntiTamper={() => {
+            setActiveSection('anti-tamper');
+            refreshTelemetry();
+          }}
+        />
+      </Suspense>
 
       <div className="flex flex-1 min-h-0">
         {/* Sidebar with clean sections */}
-        <Sidebar
-          activeSection={activeSection}
-          onSelectSection={(sec) => {
-            setActiveSection(sec);
-            refreshTelemetry();
-          }}
-          isOpenMobile={isMobileNavOpen}
-          onCloseMobile={() => setIsMobileNavOpen(false)}
-          counts={sidebarCounts}
-          username={currentUser?.username || 'Developer'}
-          userRole={currentUser?.role || 'user'}
-        />
+        <Suspense fallback={null}>
+          <Sidebar
+            activeSection={activeSection}
+            onSelectSection={(sec) => {
+              setActiveSection(sec);
+              refreshTelemetry();
+            }}
+            isOpenMobile={isMobileNavOpen}
+            onCloseMobile={() => setIsMobileNavOpen(false)}
+            counts={sidebarCounts}
+            username={currentUser?.username || 'Developer'}
+            userRole={currentUser?.role || 'user'}
+          />
+        </Suspense>
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full relative z-10">

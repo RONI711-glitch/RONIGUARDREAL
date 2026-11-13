@@ -4,9 +4,7 @@ import {
   Lock,
   Cpu,
   Bot,
-  ExternalLink,
   ChevronRight,
-  ShieldAlert,
   Layers,
   ArrowRight,
   UserCheck,
@@ -26,7 +24,7 @@ interface PublicLandingViewProps {
   onToggleSnow?: () => void;
 }
 
-type WorkflowTab = 'loadstring' | 'discord' | 'shield';
+type WorkflowTab = 'vault' | 'discord' | 'shield';
 
 export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
   onSignInClick,
@@ -34,21 +32,25 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
   snowEnabled = true,
   onToggleSnow,
 }) => {
-  const [activeTab, setActiveTab] = useState<WorkflowTab>('loadstring');
+  const [activeTab, setActiveTab] = useState<WorkflowTab>('vault');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [discordActionPreview, setDiscordActionPreview] = useState<string>(
-    'Select a panel button below to preview the Discord response.'
+    'Select a command preview below to inspect the Discord workflow.'
   );
 
-  const botInviteUrl =
-    'https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands';
+  const activeHostLabel =
+    typeof window !== 'undefined' &&
+    window.location.hostname &&
+    !window.location.hostname.includes('localhost')
+      ? window.location.hostname
+      : 'RONIGUARD Cloud Vault';
 
-  const demoLoadstring = `-- Protected Lua Module Access Check\nlocal License = require("roniguard").verify({\n  project = "winter-hub",\n  mode = "hwid-bound"\n})`;
+  const demoLuaSnippet = `-- RONIGUARD Runtime License Check\nlocal License = require("roniguard").verify({\n  project = "winter-release",\n  mode = "hardware-bound"\n})`;
 
   const handleCopySnippet = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(demoLoadstring).catch(() => {});
+      navigator.clipboard.writeText(demoLuaSnippet).catch(() => {});
     }
     setCopiedSnippet(true);
     setTimeout(() => setCopiedSnippet(false), 2000);
@@ -96,7 +98,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
               onClick={onSignInClick}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 border border-white/15 smooth-transition cursor-pointer whitespace-nowrap shrink-0 hover:-translate-y-0.5 active:translate-y-0"
             >
-              <span>Sign In with Discord</span>
+              <span>Open Dashboard</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -114,15 +116,15 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-[3.35rem] font-extrabold text-white tracking-tight leading-[1.08] text-balance font-display">
-              Defend and License{' '}
+              Protect and License{' '}
               <span className="bg-gradient-to-r from-slate-100 via-purple-300 to-purple-400 bg-clip-text text-transparent">
-                Your Roblox Scripts
+                Your Lua &amp; Luau Code
               </span>
             </h1>
 
             <p className="text-sm sm:text-base text-slate-300/90 leading-relaxed max-w-xl">
-              Protect raw Lua and Luau code with multi-layer execution barriers, bind licenses to
-              hardware IDs, and automate key redemptions 24/7 through the RONIGUARD Discord bot.
+              Manage private Lua and Luau modules with multi-layer runtime protection, hardware-bound
+              licensing, and automated 24/7 Discord server panels.
             </p>
 
             {/* Primary & Secondary CTAs */}
@@ -136,22 +138,19 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
               </button>
 
               <a
-                href={botInviteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+                href="#workflow"
                 className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-slate-200/15 text-slate-200 text-sm font-semibold smooth-transition whitespace-nowrap"
               >
-                <Bot className="w-4 h-4 text-purple-300" />
-                <span>Invite Bot</span>
-                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                <Layers className="w-4 h-4 text-purple-300" />
+                <span>Explore Platform</span>
               </a>
             </div>
 
-            {/* Clean Inline Metadata Strip (zero pills, zero decorative dots) */}
+            {/* Clean Inline Metadata Strip */}
             <div className="pt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400">
               <span>{botConnected ? 'Bot 24/7 Online' : 'Bot Standby'}</span>
               <span aria-hidden="true" className="text-slate-600">·</span>
-              <span>HTTP 403 Browser Shield</span>
+              <span>HTTP 403 Endpoint Shield</span>
               <span aria-hidden="true" className="text-slate-600">·</span>
               <span>Lifetime Keys &amp; HWID Lock</span>
               {onToggleSnow && (
@@ -173,7 +172,6 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
           {/* Right Crest Showcase Frame */}
           <div className="lg:col-span-5 flex">
             <div className="frost-surface rounded-3xl p-5 sm:p-6 w-full flex flex-col justify-between relative overflow-hidden shadow-2xl shadow-purple-950/50 smooth-transition">
-              {/* Subtle frost rim highlight */}
               <div className="absolute top-0 inset-x-6 h-px bg-gradient-to-r from-transparent via-slate-200/40 to-transparent" />
 
               <div className="relative rounded-2xl overflow-hidden bg-[#05020a] border border-white/10 aspect-square flex items-center justify-center">
@@ -186,13 +184,13 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#06030c] via-transparent to-transparent opacity-70" />
               </div>
 
-              <div className="mt-4 pt-3.5 border-t border-white/10 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-slate-300 font-medium">
+              <div className="mt-4 pt-3.5 border-t border-white/10 flex items-center justify-between text-xs gap-3">
+                <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
                   <ShieldCheck className="w-4 h-4 text-purple-300 shrink-0" />
-                  <span className="truncate">roniguard-ucfw.onrender.com</span>
+                  <span className="truncate">{activeHostLabel}</span>
                 </div>
                 <span className="font-mono text-[11px] text-purple-300 tabular-nums shrink-0">
-                  403 Guard Active
+                  Vault Ready
                 </span>
               </div>
             </div>
@@ -204,10 +202,10 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-purple-300 tracking-wide">
-                Live Architecture Preview
+                Architecture Overview
               </p>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-display">
-                Built for Executors and Discord Servers
+                Built for Script Creators &amp; Communities
               </h2>
             </div>
 
@@ -215,14 +213,14 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
             <div className="inline-flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/10">
               <button
                 type="button"
-                onClick={() => setActiveTab('loadstring')}
+                onClick={() => setActiveTab('vault')}
                 className={`px-3.5 py-2 rounded-lg text-xs font-semibold smooth-transition cursor-pointer whitespace-nowrap ${
-                  activeTab === 'loadstring'
+                  activeTab === 'vault'
                     ? 'bg-purple-600 text-white shadow-sm'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                Executor Loadstring
+                Script Vault
               </button>
               <button
                 type="button"
@@ -244,26 +242,26 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                403 Browser Shield
+                Endpoint Guard
               </button>
             </div>
           </div>
 
           {/* Interactive Tab Viewport */}
           <div className="frost-surface rounded-3xl p-6 sm:p-8 shadow-xl shadow-purple-950/30">
-            {activeTab === 'loadstring' && (
+            {activeTab === 'vault' && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center animate-view-enter">
                 <div className="lg:col-span-5 space-y-3">
                   <div className="flex items-center gap-2 text-purple-300 text-xs font-semibold">
                     <Terminal className="w-4 h-4" />
-                    <span>Zero-Leak Script Vault</span>
+                    <span>Isolated Script Vault</span>
                   </div>
                   <h3 className="text-xl font-bold text-white font-display">
-                    Signed Access Per Script
+                    Signed Verification Per Project
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
-                    Authorized users run your protected module with their license key or your
-                    account Master Key while raw source stays locked inside your private vault.
+                    Authorized clients validate against their issued license or your account Master
+                    Key while raw source stays locked inside your private vault.
                   </p>
                 </div>
 
@@ -289,7 +287,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                     </button>
                   </div>
                   <pre className="text-xs sm:text-[13px] font-mono text-purple-200 overflow-x-auto leading-relaxed">
-                    <code>{demoLoadstring}</code>
+                    <code>{demoLuaSnippet}</code>
                   </pre>
                 </div>
               </div>
@@ -307,8 +305,8 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
                     Run <code className="text-purple-300">/panelsetup</code> with a real Panel ID
-                    from your dashboard. Once a member redeems a key, their license persists until
-                    you remove it.
+                    from your dashboard. Once activated, member licenses persist until removed by
+                    the owner.
                   </p>
                 </div>
 
@@ -330,29 +328,29 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                       type="button"
                       onClick={() =>
                         setDiscordActionPreview(
-                          'Redeem Key: License bound permanently to your Discord ID until revoked by the owner.'
+                          'License Activation: Bound permanently to the member Discord ID until revoked.'
                         )
                       }
                       className="px-3 py-1.5 rounded-lg bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold smooth-transition cursor-pointer"
                     >
-                      Redeem Key
+                      Activate License
                     </button>
                     <button
                       type="button"
                       onClick={() =>
                         setDiscordActionPreview(
-                          'Get Script: Personal executor loadstring delivered privately via ephemeral Discord reply.'
+                          'Script Access: Personal script entry delivered privately via ephemeral Discord reply.'
                         )
                       }
                       className="px-3 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-semibold smooth-transition cursor-pointer"
                     >
-                      Get Script
+                      Get Access
                     </button>
                     <button
                       type="button"
                       onClick={() =>
                         setDiscordActionPreview(
-                          'Reset HWID: Hardware lock cleared so you can launch on your new PC.'
+                          'Device Reset: Hardware fingerprint cleared so the user can authorize a new machine.'
                         )
                       }
                       className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold smooth-transition cursor-pointer"
@@ -368,31 +366,31 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center animate-view-enter">
                 <div className="lg:col-span-5 space-y-3">
                   <div className="flex items-center gap-2 text-purple-300 text-xs font-semibold">
-                    <ShieldAlert className="w-4 h-4" />
-                    <span>Direct Visit Interception</span>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Direct Visit Protection</span>
                   </div>
                   <h3 className="text-xl font-bold text-white font-display">
-                    Browsers Hit HTTP 403 Instantly
+                    Private Modules Stay Hidden from Browsers
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
-                    Anyone opening your loader URL in Chrome, Safari, or cURL gets stopped by the
-                    403 sentinel page—never your Luau source.
+                    Direct browser navigation to protected vault routes receives a clean HTTP 403
+                    gateway notice so your private Lua source stays protected.
                   </p>
                 </div>
 
-                <div className="lg:col-span-7 bg-[#05020a] border border-red-500/25 rounded-2xl p-5 flex items-center justify-between gap-4">
+                <div className="lg:col-span-7 bg-[#05020a] border border-purple-500/25 rounded-2xl p-5 flex items-center justify-between gap-4">
                   <div className="space-y-1">
-                    <span className="text-[11px] font-mono text-red-400 uppercase tracking-wider">
-                      HTTP 403 · Browser Request Blocked
+                    <span className="text-[11px] font-mono text-purple-300 uppercase tracking-wider">
+                      HTTP 403 · Protected Gateway
                     </span>
-                    <h4 className="text-base font-bold text-white">ACCESS UNAUTHORIZED</h4>
+                    <h4 className="text-base font-bold text-white">Direct Inspection Blocked</h4>
                     <p className="text-xs text-slate-400">
-                      Source payload stays locked inside your private tenant vault unless invoked by
-                      an authorized executor with a valid key.
+                      Protected scripts are only served to clients presenting a verified license
+                      token inside your isolated tenant vault.
                     </p>
                   </div>
-                  <div className="w-12 h-12 rounded-2xl bg-red-950/50 border border-red-500/30 flex items-center justify-center shrink-0">
-                    <ShieldAlert className="w-6 h-6 text-red-400" />
+                  <div className="w-12 h-12 rounded-2xl bg-purple-950/60 border border-purple-400/30 flex items-center justify-center shrink-0">
+                    <Lock className="w-6 h-6 text-purple-300" />
                   </div>
                 </div>
               </div>
@@ -410,7 +408,6 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Wide Card 1 */}
             <div className="lg:col-span-7 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition">
               <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-purple-300">
                 <Cpu className="w-5 h-5" />
@@ -420,13 +417,12 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                   Multi-Layer Lua &amp; Luau Protection
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
-                  Secures Roblox globals, services, and string literals without breaking runtime
+                  Secures modules, globals, and string literals without breaking runtime
                   behavior—keeping legitimate execution crisp while blocking reverse engineering.
                 </p>
               </div>
             </div>
 
-            {/* Narrow Card 2 */}
             <div className="lg:col-span-5 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition">
               <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-slate-200">
                 <UserCheck className="w-5 h-5" />
@@ -442,7 +438,6 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
               </div>
             </div>
 
-            {/* Narrow Card 3 */}
             <div
               id="security"
               className="lg:col-span-5 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition scroll-mt-24"
@@ -461,7 +456,6 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
               </div>
             </div>
 
-            {/* Wide Card 4 */}
             <div className="lg:col-span-7 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition">
               <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-indigo-300">
                 <Layers className="w-5 h-5" />
@@ -495,8 +489,8 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                 Ready to Protect Your Scripts?
               </h2>
               <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
-                Sign in with Discord to create your first panel, deploy obfuscated scripts, and
-                share instant loadstrings.
+                Open your developer dashboard to create panels, protect Lua modules, and manage
+                licenses.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -504,18 +498,9 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                 onClick={onSignInClick}
                 className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-white text-[#090414] hover:bg-slate-200 font-extrabold text-xs sm:text-sm shadow-xl smooth-transition cursor-pointer"
               >
-                <span>Sign In with Discord</span>
+                <span>Open Dashboard</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
-              <a
-                href={botInviteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs sm:text-sm font-semibold smooth-transition"
-              >
-                <Lock className="w-3.5 h-3.5 text-purple-300" />
-                <span>Add Bot to Server</span>
-              </a>
             </div>
           </div>
         </section>
@@ -559,21 +544,17 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
 
             <div className="space-y-3 text-xs text-slate-300 leading-relaxed max-h-[65vh] overflow-y-auto pr-1">
               <p>
-                <strong className="text-white">Official Discord OAuth2 Only:</strong> RONIGUARD
-                authenticates users exclusively through Discord&apos;s official OAuth2 flow
-                (<code className="text-purple-300">discord.com/oauth2</code>) using public identity
-                information only. We never ask for or store passwords, phone numbers, emails, or
-                payment card details.
+                <strong className="text-white">Identity &amp; Privacy:</strong> RONIGUARD uses
+                standard Discord OAuth2 identity scope (public account ID and username) solely to
+                isolate each creator&apos;s workspace.
               </p>
               <p>
-                <strong className="text-white">Developer Ownership:</strong> Creators retain 100%
-                ownership of scripts protected inside their private vault. Malicious software,
-                credential phishing, or abuse is strictly prohibited and subject to termination.
+                <strong className="text-white">Creator Ownership:</strong> Developers retain full
+                ownership of all Lua/Luau modules stored inside their private vault.
               </p>
               <p>
-                <strong className="text-white">Session Storage:</strong> Authentication tokens are
-                used strictly to maintain your dashboard session and can be revoked anytime by
-                clicking Sign Out.
+                <strong className="text-white">Session Tokens:</strong> Authentication cookies and
+                tokens remain strictly scoped to your dashboard session and clear upon Sign Out.
               </p>
             </div>
 

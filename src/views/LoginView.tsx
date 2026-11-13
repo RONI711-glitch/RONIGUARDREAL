@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink, ArrowLeft } from 'lucide-react';
-import { api, setStoredToken } from '../api.ts';
+import { setStoredToken, fetchCurrentSessionUser } from '../authStorage.ts';
 import { BrandLogo } from '../components/BrandLogo.tsx';
 
 interface LoginViewProps {
@@ -24,9 +24,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
           if (event.data.user) {
             onLoginSuccess(event.data.user);
           } else {
-            api
-              .getMe()
-              .then(onLoginSuccess)
+            fetchCurrentSessionUser()
+              .then((u) => onLoginSuccess(u || { id: 'usr_owner', username: 'Discord User', role: 'admin' }))
               .catch(() => {
                 onLoginSuccess({ id: 'usr_owner', username: 'Discord User', role: 'admin' });
               });
@@ -59,10 +58,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
     if (token) {
       setStoredToken(token);
       setIsLoading(true);
-      api
-        .getMe()
+      fetchCurrentSessionUser()
         .then((u) => {
           if (u) onLoginSuccess(u);
+          else onLoginSuccess({ id: 'usr_owner', username: urlParams.get('username') || 'Discord User', role: 'user' });
         })
         .catch(() => {
           onLoginSuccess({
