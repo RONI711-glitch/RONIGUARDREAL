@@ -39,7 +39,11 @@ export default function App() {
   }
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [showLoginView, setShowLoginView] = useState(false);
+  const [showLoginView, setShowLoginView] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const p = new URLSearchParams(window.location.search);
+    return Boolean(p.get('auth_error') || p.get('auth_token') || p.get('code'));
+  });
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);

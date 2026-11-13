@@ -46,7 +46,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
     const urlParams = new URLSearchParams(window.location.search);
     const authError = urlParams.get('auth_error');
     if (authError) {
-      setErrorMsg(decodeURIComponent(authError));
+      try {
+        setErrorMsg(decodeURIComponent(authError));
+      } catch {
+        setErrorMsg(authError);
+      }
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
 
     const token = urlParams.get('auth_token') || urlParams.get('token') || urlParams.get('user_token');
@@ -69,12 +74,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
           setIsLoading(false);
         });
     } else if (urlParams.get('code')) {
-      // If code was redirected directly to frontend root, forward to callback handler
       window.location.href = `/api/auth/discord/callback${window.location.search}`;
     }
   }, [onLoginSuccess]);
 
-  // 3. Initiate Discord OAuth via Direct Provider URL Popup
+  // 3. Initiate Discord OAuth (direct same-tab redirect in standalone browser; popup in iframe)
   const handleDiscordSignIn = async () => {
     setIsLoading(true);
     setErrorMsg(null);
@@ -82,9 +86,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
       localStorage.removeItem('roniguard_logged_out');
     }
 
+    const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+    const mode = isIframe ? 'popup' : 'redirect';
+
     try {
-      // Fetch the direct Discord provider authorization URL from server
-      const res = await fetch('/api/auth/url');
+      const res = await fetch(`/api/auth/url?mode=${mode}`);
       let authUrl = '';
       if (res.ok) {
         const data = await res.json();
@@ -92,12 +98,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
       }
 
       if (!authUrl) {
-        // Direct fallback to Discord authorize URL
         const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/discord/callback`);
-        authUrl = `https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=${redirectUri}&response_type=code&scope=identify%20email`;
+        const statePrefix = isIframe ? 'popup_' : 'redir_';
+        authUrl = `https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=${redirectUri}&response_type=code&scope=identify%20email&state=${statePrefix}${Date.now()}`;
       }
 
-      // Open OAuth provider URL directly in popup (never a container route)
+      if (!isIframe) {
+        window.location.href = authUrl;
+        return;
+      }
+
       const authPopup = window.open(
         authUrl,
         'discord_oauth_popup',
@@ -105,14 +115,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
       );
 
       if (!authPopup || authPopup.closed || typeof authPopup.closed === 'undefined') {
-        // If popup was blocked by mobile browser, navigate directly to Discord
         window.location.href = authUrl;
       }
     } catch (err: any) {
       console.warn('OAuth initialization notice:', err);
       setErrorMsg('Could not initialize Discord sign-in. Please try again.');
     } finally {
-      setIsLoading(false);
+      if (isIframe) {
+        setIsLoading(false);
+      }
     }
   };
 

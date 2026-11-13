@@ -1166,6 +1166,158 @@ var AVAILABLE_ENGINES = [
 function generateIdent(prefix = "_0x", len = 4) {
   return `${prefix}${crypto2.randomBytes(len).toString("hex")}`;
 }
+function matchLongBracket(code, pos) {
+  if (code[pos] !== "[") return null;
+  let eq = 0;
+  let p = pos + 1;
+  while (p < code.length && code[p] === "=") {
+    eq++;
+    p++;
+  }
+  if (code[p] !== "[") return null;
+  const closeSeq = "]" + "=".repeat(eq) + "]";
+  const closeIdx = code.indexOf(closeSeq, p + 1);
+  if (closeIdx === -1) return null;
+  return { end: closeIdx + closeSeq.length, eqCount: eq };
+}
+function tokenizeLua(code) {
+  const tokens = [];
+  let i = 0;
+  const len = code.length;
+  while (i < len) {
+    const ch = code[i];
+    if (/\s/.test(ch)) {
+      let start = i;
+      while (i < len && /\s/.test(code[i])) i++;
+      tokens.push({ type: "ws", value: code.slice(start, i) });
+      continue;
+    }
+    if (ch === "-" && code[i + 1] === "-") {
+      const longMatch = matchLongBracket(code, i + 2);
+      if (longMatch) {
+        tokens.push({ type: "comment", value: code.slice(i, longMatch.end) });
+        i = longMatch.end;
+      } else {
+        let nl = code.indexOf("\n", i + 2);
+        if (nl === -1) nl = len;
+        tokens.push({ type: "comment", value: code.slice(i, nl) });
+        i = nl;
+      }
+      continue;
+    }
+    if (ch === "[") {
+      const longMatch = matchLongBracket(code, i);
+      if (longMatch) {
+        tokens.push({ type: "longstring", value: code.slice(i, longMatch.end) });
+        i = longMatch.end;
+        continue;
+      }
+    }
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
+      let start = i;
+      i++;
+      while (i < len) {
+        const c = code[i];
+        if (c === "\\") {
+          i += 2;
+          continue;
+        }
+        if (c === quote) {
+          i++;
+          break;
+        }
+        if (c === "\n" || c === "\r") {
+          break;
+        }
+        i++;
+      }
+      const raw = code.slice(start, i);
+      const inner = raw.endsWith(quote) && raw.length >= 2 ? raw.slice(1, -1) : raw.slice(1);
+      tokens.push({ type: "string", value: raw, quote, inner });
+      continue;
+    }
+    if (ch === "`") {
+      let start = i;
+      i++;
+      while (i < len) {
+        if (code[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (code[i] === "`") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      tokens.push({ type: "backtick", value: code.slice(start, i) });
+      continue;
+    }
+    if (/[0-9]/.test(ch) || ch === "." && /[0-9]/.test(code[i + 1] || "")) {
+      let start = i;
+      if (ch === "0" && (code[i + 1] === "x" || code[i + 1] === "X")) {
+        i += 2;
+        while (i < len && /[0-9a-fA-F_]/.test(code[i])) i++;
+      } else if (ch === "0" && (code[i + 1] === "b" || code[i + 1] === "B")) {
+        i += 2;
+        while (i < len && /[01_]/.test(code[i])) i++;
+      } else {
+        while (i < len && /[0-9_]/.test(code[i])) i++;
+        if (code[i] === "." && code[i + 1] !== ".") {
+          i++;
+          while (i < len && /[0-9_]/.test(code[i])) i++;
+        }
+        if (code[i] === "e" || code[i] === "E") {
+          i++;
+          if (code[i] === "+" || code[i] === "-") i++;
+          while (i < len && /[0-9_]/.test(code[i])) i++;
+        }
+      }
+      tokens.push({ type: "number", value: code.slice(start, i) });
+      continue;
+    }
+    if (/[a-zA-Z_]/.test(ch)) {
+      let start = i;
+      while (i < len && /[a-zA-Z0-9_]/.test(code[i])) i++;
+      tokens.push({ type: "ident", value: code.slice(start, i) });
+      continue;
+    }
+    const three = code.slice(i, i + 3);
+    if (three === "..." || three === "..=") {
+      tokens.push({ type: "punct", value: three });
+      i += 3;
+      continue;
+    }
+    const two = code.slice(i, i + 2);
+    if (two === ".." || two === "==" || two === "~=" || two === "<=" || two === ">=" || two === "//" || two === "::" || two === "+=" || two === "-=" || two === "*=" || two === "/=" || two === "%=" || two === "^=" || two === "->") {
+      tokens.push({ type: "punct", value: two });
+      i += 2;
+      continue;
+    }
+    tokens.push({ type: "punct", value: ch });
+    i++;
+  }
+  return tokens;
+}
+function getPrevSigToken(tokens, idx) {
+  for (let j = idx - 1; j >= 0; j--) {
+    if (tokens[j].type !== "ws" && tokens[j].type !== "comment") return tokens[j];
+  }
+  return null;
+}
+function getNextSigToken(tokens, idx) {
+  for (let j = idx + 1; j < tokens.length; j++) {
+    if (tokens[j].type !== "ws" && tokens[j].type !== "comment") return tokens[j];
+  }
+  return null;
+}
+function nextSigIndex(tokens, idx) {
+  for (let j = idx + 1; j < tokens.length; j++) {
+    if (tokens[j].type !== "ws" && tokens[j].type !== "comment") return j;
+  }
+  return -1;
+}
 function validateLuaSyntax(code) {
   let parens = 0;
   let braces = 0;
@@ -1211,107 +1363,273 @@ function validateLuaSyntax(code) {
   if (brackets !== 0) return { valid: false, error: "Unbalanced brackets in Lua script" };
   return { valid: true };
 }
-function mangleIdentifiers(code) {
-  const luaKeywords = /* @__PURE__ */ new Set([
-    "and",
-    "break",
-    "do",
-    "else",
-    "elseif",
-    "end",
-    "false",
-    "for",
-    "function",
-    "if",
-    "in",
-    "local",
-    "nil",
-    "not",
-    "or",
-    "repeat",
-    "return",
-    "then",
-    "true",
-    "until",
-    "while",
-    "continue",
-    "export",
-    "type",
-    "print",
-    "warn",
-    "error",
-    "assert",
-    "pcall",
-    "xpcall",
-    "select",
-    "typeof",
-    "tostring",
-    "tonumber",
-    "pairs",
-    "ipairs",
-    "next",
-    "math",
-    "string",
-    "table",
-    "task",
-    "bit32",
-    "coroutine",
-    "os",
-    "debug",
-    "game",
-    "workspace",
-    "script",
-    "Instance",
-    "Vector3",
-    "CFrame",
-    "Color3",
-    "UDim2",
-    "Enum",
-    "wait",
-    "spawn",
-    "delay",
-    "tick",
-    "time",
-    "shared",
-    "_G"
-  ]);
+var LUA_RESERVED_AND_GLOBALS = /* @__PURE__ */ new Set([
+  "and",
+  "break",
+  "do",
+  "else",
+  "elseif",
+  "end",
+  "false",
+  "for",
+  "function",
+  "if",
+  "in",
+  "local",
+  "nil",
+  "not",
+  "or",
+  "repeat",
+  "return",
+  "then",
+  "true",
+  "until",
+  "while",
+  "continue",
+  "export",
+  "type",
+  "typeof",
+  "self",
+  "print",
+  "warn",
+  "error",
+  "assert",
+  "pcall",
+  "xpcall",
+  "select",
+  "tostring",
+  "tonumber",
+  "pairs",
+  "ipairs",
+  "next",
+  "unpack",
+  "math",
+  "string",
+  "table",
+  "task",
+  "bit32",
+  "utf8",
+  "buffer",
+  "coroutine",
+  "os",
+  "debug",
+  "game",
+  "workspace",
+  "script",
+  "Instance",
+  "Vector2",
+  "Vector3",
+  "CFrame",
+  "Color3",
+  "UDim",
+  "UDim2",
+  "Rect",
+  "BrickColor",
+  "NumberRange",
+  "NumberSequence",
+  "ColorSequence",
+  "TweenInfo",
+  "RaycastParams",
+  "OverlapParams",
+  "Enum",
+  "wait",
+  "spawn",
+  "delay",
+  "tick",
+  "time",
+  "elapsedTime",
+  "shared",
+  "_G",
+  "_VERSION",
+  "getmetatable",
+  "setmetatable",
+  "rawget",
+  "rawset",
+  "rawequal",
+  "rawlen",
+  "require",
+  "loadstring",
+  "load",
+  "getgenv",
+  "getrenv",
+  "getfenv",
+  "setfenv",
+  "identifyexecutor",
+  "Script_key",
+  "Script_Key",
+  "Script_Id"
+]);
+function mangleIdentifiersTokens(tokens) {
   const idMap = /* @__PURE__ */ new Map();
-  const localRegex = /\blocal\s+([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-  let match;
-  while ((match = localRegex.exec(code)) !== null) {
-    const ident = match[1];
-    if (!luaKeywords.has(ident) && !idMap.has(ident)) {
-      idMap.set(ident, generateIdent("_0x", 3));
+  const backtickUsedIdents = /* @__PURE__ */ new Set();
+  for (const tok of tokens) {
+    if (tok.type === "backtick") {
+      const exprMatches = tok.value.match(/\{([^}]+)\}/g) || [];
+      for (const expr of exprMatches) {
+        const ids = expr.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+        ids.forEach((id) => backtickUsedIdents.add(id));
+      }
     }
   }
-  let transformed = code;
-  idMap.forEach((mangled, original) => {
-    const wordBoundary = new RegExp(`\\b${original}\\b`, "g");
-    transformed = transformed.replace(wordBoundary, mangled);
-  });
-  return transformed;
-}
-function transformStringsWithXor(code, xorKey) {
-  const decoderName = generateIdent("_d_", 2);
-  let transformed = code;
-  transformed = transformed.replace(/"([^"\\\r\n]{1,160})"/g, (_match, strContent) => {
-    if (!strContent) return _match;
-    const bytes = [];
-    for (let i = 0; i < strContent.length; i++) {
-      bytes.push(strContent.charCodeAt(i) ^ xorKey);
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.type === "ident" && tok.value === "local") {
+      let cur = nextSigIndex(tokens, i);
+      if (cur === -1) continue;
+      if (tokens[cur].type === "ident" && tokens[cur].value === "function") {
+        const fnIdx = nextSigIndex(tokens, cur);
+        if (fnIdx !== -1 && tokens[fnIdx].type === "ident") {
+          const name = tokens[fnIdx].value;
+          const afterFn = getNextSigToken(tokens, fnIdx);
+          if (afterFn?.value === "(" && !LUA_RESERVED_AND_GLOBALS.has(name) && !backtickUsedIdents.has(name) && !idMap.has(name)) {
+            idMap.set(name, generateIdent("_0x", 3));
+          }
+        }
+        continue;
+      }
+      while (cur !== -1 && tokens[cur].type === "ident") {
+        const ident = tokens[cur].value;
+        if (!LUA_RESERVED_AND_GLOBALS.has(ident) && !backtickUsedIdents.has(ident) && !idMap.has(ident)) {
+          idMap.set(ident, generateIdent("_0x", 3));
+        }
+        let after = nextSigIndex(tokens, cur);
+        if (after !== -1 && tokens[after].value === ":") {
+          after = nextSigIndex(tokens, after);
+          if (after !== -1) after = nextSigIndex(tokens, after);
+        }
+        if (after !== -1 && tokens[after].value === ",") {
+          cur = nextSigIndex(tokens, after);
+        } else {
+          break;
+        }
+      }
     }
-    return `${decoderName}({${bytes.join(",")}})`;
-  });
-  const decoderFn = `local function ${decoderName}(t) local s="" for _,b in ipairs(t) do local byteVal = bit32 and bit32.bxor(b,${xorKey}) or b s = s .. string.char(byteVal) end return s end`;
-  return { code: transformed, decoderFn };
+  }
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.type !== "ident") continue;
+    const mangled = idMap.get(tok.value);
+    if (!mangled) continue;
+    const prev = getPrevSigToken(tokens, i);
+    const next = getNextSigToken(tokens, i);
+    if (prev && (prev.value === "." || prev.value === ":")) continue;
+    if (prev && (prev.value === "{" || prev.value === "," || prev.value === ";") && next && next.value === "=") {
+      continue;
+    }
+    tok.value = mangled;
+  }
 }
-function obfuscateNumbers(code) {
-  return code.replace(/(?<![\w.\$])(\b\d+\b)(?![\w.])/g, (_match, numStr) => {
-    const n = parseInt(numStr, 10);
-    if (isNaN(n) || n > 9999 || n < 3) return numStr;
+function unescapeLuaString(inner) {
+  const bytes = [];
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch !== "\\") {
+      const charBytes = Buffer.from(ch, "utf8");
+      for (const b of charBytes) bytes.push(b);
+      continue;
+    }
+    i++;
+    if (i >= inner.length) return null;
+    const esc = inner[i];
+    switch (esc) {
+      case "a":
+        bytes.push(7);
+        break;
+      case "b":
+        bytes.push(8);
+        break;
+      case "f":
+        bytes.push(12);
+        break;
+      case "n":
+        bytes.push(10);
+        break;
+      case "r":
+        bytes.push(13);
+        break;
+      case "t":
+        bytes.push(9);
+        break;
+      case "v":
+        bytes.push(11);
+        break;
+      case "\\":
+        bytes.push(92);
+        break;
+      case '"':
+        bytes.push(34);
+        break;
+      case "'":
+        bytes.push(39);
+        break;
+      case "\n":
+        bytes.push(10);
+        break;
+      case "x": {
+        const hex = inner.slice(i + 1, i + 3);
+        if (!/^[0-9a-fA-F]{2}$/.test(hex)) return null;
+        bytes.push(parseInt(hex, 16));
+        i += 2;
+        break;
+      }
+      case "z": {
+        while (i + 1 < inner.length && /\s/.test(inner[i + 1])) i++;
+        break;
+      }
+      default: {
+        if (/[0-9]/.test(esc)) {
+          let dec = esc;
+          if (i + 1 < inner.length && /[0-9]/.test(inner[i + 1])) {
+            dec += inner[++i];
+            if (i + 1 < inner.length && /[0-9]/.test(inner[i + 1])) {
+              dec += inner[++i];
+            }
+          }
+          const val = parseInt(dec, 10);
+          if (val > 255) return null;
+          bytes.push(val);
+        } else {
+          return null;
+        }
+      }
+    }
+  }
+  return Uint8Array.from(bytes);
+}
+function transformStringsTokens(tokens, xorKey) {
+  const decoderName = generateIdent("_d_", 2);
+  let used = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.type !== "string" || !tok.inner || tok.inner.length === 0 || tok.inner.length > 180) {
+      continue;
+    }
+    const rawBytes = unescapeLuaString(tok.inner);
+    if (!rawBytes || rawBytes.length === 0) continue;
+    const encoded = [];
+    for (let b = 0; b < rawBytes.length; b++) {
+      encoded.push(rawBytes[b] ^ xorKey);
+    }
+    const prev = getPrevSigToken(tokens, i);
+    const needsSpace = prev && (prev.type === "ident" || prev.value === ")" || prev.value === "]");
+    tok.value = `${needsSpace ? " " : ""}${decoderName}({${encoded.join(",")}})`;
+    used = true;
+  }
+  if (!used) return "";
+  return `local function ${decoderName}(t) local s={} local bx=bit32 and bit32.bxor for i=1,#t do local a=t[i] local v if bx then v=bx(a,${xorKey}) else local r,p,x,y=0,1,a,${xorKey} for _=1,8 do local xb,yb=x%2,y%2 if xb~=yb then r=r+p end x,y,p=(x-xb)/2,(y-yb)/2,p*2 end v=r end s[i]=string.char(v) end return table.concat(s) end`;
+}
+function obfuscateNumbersTokens(tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.type !== "number") continue;
+    if (!/^\d+$/.test(tok.value)) continue;
+    const n = parseInt(tok.value, 10);
+    if (isNaN(n) || n > 9999 || n < 3) continue;
+    const prev = getPrevSigToken(tokens, i);
+    if (prev && (prev.value === "." || prev.value === ":")) continue;
     const r = Math.floor(Math.random() * 12) + 1;
-    return `(${n + r}-${r})`;
-  });
+    tok.value = `(${n + r}-${r})`;
+  }
 }
 function encodeBase85(text) {
   const bytes = Buffer.from(text, "utf-8");
@@ -1334,20 +1652,19 @@ function encodeBase85(text) {
   return out;
 }
 function runRoniguardMax(sourceCode, options = {}) {
-  let current = sourceCode.replace(/^[ \t]*--(?![\[]).*$/gm, "");
+  const tokens = tokenizeLua(sourceCode).filter((t) => t.type !== "comment");
   if (options.variableRenaming !== false) {
-    current = mangleIdentifiers(current);
+    mangleIdentifiersTokens(tokens);
   }
   if (options.constantVirtualization !== false) {
-    current = obfuscateNumbers(current);
+    obfuscateNumbersTokens(tokens);
   }
   let decoderPreamble = "";
   if (options.stringEncryption !== false) {
     const xorKey = Math.floor(Math.random() * 180) + 20;
-    const res = transformStringsWithXor(current, xorKey);
-    current = res.code;
-    decoderPreamble = res.decoderFn;
+    decoderPreamble = transformStringsTokens(tokens, xorKey);
   }
+  const current = tokens.map((t) => t.value).join("");
   const salt = crypto2.randomBytes(8).toString("hex");
   const b85Payload = encodeBase85(salt);
   const vmRegisters = generateIdent("_R_");
@@ -1392,7 +1709,8 @@ async function getVykusSession() {
     const res = await fetch(`${VYKUS_API_URL}/api/auth/key`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: VYKUS_API_KEY })
+      body: JSON.stringify({ apiKey: VYKUS_API_KEY }),
+      signal: AbortSignal.timeout(8e3)
     });
     if (!res.ok) {
       console.warn("[VYKUS] Auth key check response:", res.status);
@@ -1434,13 +1752,14 @@ async function runVykusObfuscator(sourceCode, options = {}) {
         rename: options.variableRenaming !== false,
         junk: true
       }
-    })
+    }),
+    signal: AbortSignal.timeout(12e3)
   });
   if (!res.ok) {
     throw new Error(`Vykus Obfuscator API returned HTTP ${res.status}`);
   }
   const data = await res.json();
-  if (!data || typeof data.output !== "string") {
+  if (!data || typeof data.output !== "string" || !data.output.trim()) {
     throw new Error(data?.error || "Vykus API did not return protected output");
   }
   return data.output;
@@ -1482,7 +1801,12 @@ async function runObfuscationPipeline(sourceCode, options = {}) {
     if (isObfuscationEnabled) {
       try {
         console.log("[OBFUSCATOR] Calling Vykus Cloud Obfuscator API...");
-        finalCode = await runVykusObfuscator(sourceCode, options);
+        const vykusOutput = await runVykusObfuscator(sourceCode, options);
+        const vykusValid = validateLuaSyntax(vykusOutput);
+        if (!vykusValid.valid) {
+          throw new Error(`Vykus output failed syntax validation: ${vykusValid.error}`);
+        }
+        finalCode = vykusOutput;
         engineUsed = "Vykus Cloud Polymorphic VM (v2.9.0)";
         console.log("[OBFUSCATOR] Vykus Cloud Obfuscation succeeded!");
       } catch (vykusErr) {
@@ -3979,20 +4303,30 @@ function requireOwnerAuth(req, res, next) {
   next();
 }
 function getBaseUrl(req) {
-  const host = req.headers["x-forwarded-host"] || req.headers.host || "roniguard-dfwh.onrender.com";
-  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+  const rawHost = req.headers["x-forwarded-host"] || req.headers.host || "roniguard-dfwh.onrender.com";
+  const host = rawHost.split(",")[0].trim();
+  const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
+  const rawProto = (req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http")).split(",")[0].trim();
+  const proto = isLocal ? rawProto : "https";
   return `${proto}://${host}`;
 }
 function resolveRedirectUri(req) {
-  if (process.env.DISCORD_REDIRECT_URI) {
-    return process.env.DISCORD_REDIRECT_URI.trim();
+  const baseUrl = getBaseUrl(req);
+  if (process.env.DISCORD_REDIRECT_URI && !baseUrl.includes("localhost")) {
+    const envUri = process.env.DISCORD_REDIRECT_URI.trim();
+    if (envUri.startsWith(baseUrl)) {
+      return envUri;
+    }
   }
-  return `${getBaseUrl(req)}/api/auth/discord/callback`;
+  return `${baseUrl}/api/auth/discord/callback`;
 }
 router.get(["/auth/url", "/auth/discord/url", "/oauth/url"], (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
   const redirectUri = resolveRedirectUri(req);
-  const state = generateRandomHex(16);
+  const mode = req.query.mode === "redirect" ? "redir" : "popup";
+  const state = `${mode}_${generateRandomHex(14)}`;
+  const isHttps = redirectUri.startsWith("https://");
+  const cookieFlags = isHttps ? "Path=/; HttpOnly; Max-Age=1800; SameSite=Lax; Secure" : "Path=/; HttpOnly; Max-Age=1800; SameSite=Lax";
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -4002,86 +4336,98 @@ router.get(["/auth/url", "/auth/discord/url", "/oauth/url"], (req, res) => {
   });
   const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
   res.setHeader("Set-Cookie", [
-    `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
-    `discord_oauth_redirect=${encodeURIComponent(redirectUri)}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`
+    `discord_oauth_state=${state}; ${cookieFlags}`
   ]);
   res.json({ url, redirectUri, clientId });
 });
 router.get(["/auth/discord/login", "/auth/login", "/oauth/login", "/login/discord"], (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
   const redirectUri = resolveRedirectUri(req);
-  const state = generateRandomHex(16);
+  const state = `redir_${generateRandomHex(14)}`;
+  const isHttps = redirectUri.startsWith("https://");
+  const cookieFlags = isHttps ? "Path=/; HttpOnly; Max-Age=1800; SameSite=Lax; Secure" : "Path=/; HttpOnly; Max-Age=1800; SameSite=Lax";
   const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(
     clientId
   )}&redirect_uri=${encodeURIComponent(
     redirectUri
   )}&response_type=code&scope=identify%20email&state=${state}`;
   res.setHeader("Set-Cookie", [
-    `discord_oauth_state=${state}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`,
-    `discord_oauth_redirect=${encodeURIComponent(redirectUri)}; Path=/; HttpOnly; Max-Age=1800; SameSite=None; Secure`
+    `discord_oauth_state=${state}; ${cookieFlags}`
   ]);
   res.redirect(discordAuthUrl);
 });
 router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/discord/callback", "/callback"], async (req, res) => {
-  const { code, error, error_description } = req.query;
+  const { code, error, error_description, state } = req.query;
+  const isRedirectMode = typeof state === "string" && state.startsWith("redir_");
   if (error || !code) {
     const errorMsg = error_description || error || "Discord authorization was cancelled";
-    return res.send(`
-      <!doctype html>
-      <html>
-        <head><title>Authorization Cancelled</title></head>
-        <body style="background:#07040d;color:#ffffff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-          <div style="background:#13082a;border:1px solid #ef4444;border-radius:16px;padding:24px;text-align:center;max-width:360px;">
-            <h3 style="color:#ef4444;margin:0 0 8px;">Authentication Notice</h3>
-            <p style="color:#d1d5db;font-size:13px;margin:0 0 16px;">${errorMsg}</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: "${encodeURIComponent(errorMsg)}" }, '*');
-                setTimeout(function() { window.close(); }, 1200);
-              } else {
-                window.location.href = '/?auth_error=' + encodeURIComponent("${encodeURIComponent(errorMsg)}");
-              }
-            </script>
-          </div>
-        </body>
-      </html>
-    `);
+    if (isRedirectMode) {
+      return res.redirect("/?auth_error=" + encodeURIComponent(errorMsg));
+    }
+    return res.send(`<!doctype html>
+<html>
+  <head><title>RONIGUARD</title></head>
+  <body style="background:#07040d;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(encodeURIComponent(errorMsg))} }, '*');
+        window.close();
+      } else {
+        window.location.replace('/?auth_error=' + encodeURIComponent(${JSON.stringify(errorMsg)}));
+      }
+    </script>
+  </body>
+</html>`);
   }
   try {
     const clientId = process.env.DISCORD_CLIENT_ID || db.get().botConfig.clientId || "1549804529778692237";
-    const clientSecret = process.env.DISCORD_CLIENT_SECRET || "qsFyL7ATcLvCKqESUypjskBwa5NuKkWZ";
-    const cookies = parseCookies(req);
-    const storedRedirect = cookies["discord_oauth_redirect"] ? decodeURIComponent(cookies["discord_oauth_redirect"]) : null;
-    const redirectUri = storedRedirect || resolveRedirectUri(req);
-    let discordUser = null;
-    if (clientSecret) {
-      const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
+    const fallbackSecret = "qsFyL7ATcLvCKqESUypjskBwa5NuKkWZ";
+    const primarySecret = (process.env.DISCORD_CLIENT_SECRET || "").trim() || fallbackSecret;
+    const redirectUri = resolveRedirectUri(req);
+    const exchangeToken = async (secretToUse) => {
+      return fetch("https://discord.com/api/oauth2/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_id: clientId,
-          client_secret: clientSecret,
+          client_secret: secretToUse,
           grant_type: "authorization_code",
           code: String(code),
           redirect_uri: redirectUri
         })
       });
-      if (!tokenRes.ok) {
-        throw new Error(`Discord token exchange failed: ${tokenRes.status}`);
+    };
+    let tokenRes = await exchangeToken(primarySecret);
+    let tokenBodyText = "";
+    if (!tokenRes.ok) {
+      tokenBodyText = await tokenRes.text();
+      let errJson = {};
+      try {
+        errJson = JSON.parse(tokenBodyText);
+      } catch {
       }
-      const tokenData = await tokenRes.json();
-      const userRes = await fetch("https://discord.com/api/users/@me", {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` }
-      });
-      if (!userRes.ok) throw new Error("Failed to fetch Discord user profile");
-      discordUser = await userRes.json();
-    } else {
-      discordUser = {
-        id: "usr_" + Math.random().toString(36).substring(2, 10),
-        username: "DiscordUser",
-        discriminator: "0"
-      };
+      console.warn("[RONIGUARD] Discord token exchange failed:", tokenRes.status, errJson, "redirectUri:", redirectUri);
+      if (errJson?.error === "invalid_client" && primarySecret !== fallbackSecret) {
+        tokenRes = await exchangeToken(fallbackSecret);
+        if (!tokenRes.ok) {
+          tokenBodyText = await tokenRes.text();
+          try {
+            errJson = JSON.parse(tokenBodyText);
+          } catch {
+          }
+        }
+      }
+      if (!tokenRes.ok) {
+        const detail = errJson?.error_description || errJson?.error || `HTTP ${tokenRes.status}`;
+        throw new Error(`Discord OAuth error (${tokenRes.status}): ${detail}`);
+      }
     }
+    const tokenData = await tokenRes.json();
+    const userRes = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    if (!userRes.ok) throw new Error("Failed to fetch Discord user profile");
+    const discordUser = await userRes.json();
     const user = db.findOrCreateDiscordUser({
       discordId: discordUser.id,
       username: discordUser.username,
@@ -4093,64 +4439,58 @@ router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/dis
     if (user.sessionTokens.length > 5) user.sessionTokens.shift();
     user.lastLoginAt = (/* @__PURE__ */ new Date()).toISOString();
     db.save();
+    const isHttps = redirectUri.startsWith("https://");
+    const tokenCookieFlags = isRedirectMode ? isHttps ? "Path=/; Max-Age=2592000; SameSite=Lax; Secure" : "Path=/; Max-Age=2592000; SameSite=Lax" : isHttps ? "Path=/; Max-Age=2592000; SameSite=None; Secure" : "Path=/; Max-Age=2592000; SameSite=Lax";
     res.setHeader("Set-Cookie", [
-      `roni_user_token=${sessionToken}; Path=/; Max-Age=2592000; SameSite=None; Secure`,
-      `roni_discord_user=${encodeURIComponent(user.username)}; Path=/; Max-Age=2592000; SameSite=None; Secure`
+      `roni_user_token=${encodeURIComponent(sessionToken)}; ${tokenCookieFlags}`,
+      `roni_owner_token=${encodeURIComponent(sessionToken)}; ${tokenCookieFlags}`,
+      `roni_discord_user=${encodeURIComponent(user.username)}; ${tokenCookieFlags}`
     ]);
-    return res.send(`
-      <!doctype html>
-      <html>
-        <head>
-          <title>Authentication Successful</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        </head>
-        <body style="background:#07040d;color:#ffffff;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:16px;box-sizing:border-box;">
-          <div style="background:#110724;border:1px solid #8b5cf6;border-radius:20px;padding:32px 24px;text-align:center;max-width:380px;box-shadow:0 12px 40px rgba(139,92,246,0.35);">
-            <div style="width:50px;height:50px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:24px;">\u2713</div>
-            <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;letter-spacing:-0.02em;">Welcome, ${user.username}!</h2>
-            <p style="color:#c4b5fd;font-size:13px;margin:0 0 16px;">Authentication verified. Connecting you to RONIGUARD...</p>
-            <p style="color:#6b7280;font-size:11px;margin:0;">This window should close automatically.</p>
-          </div>
-          <script>
-            (function() {
-              var payload = {
-                type: 'OAUTH_AUTH_SUCCESS',
-                token: "${sessionToken}",
-                user: ${JSON.stringify({ id: user.id, username: user.username, role: user.role, avatar: user.avatar })}
-              };
-              if (window.opener) {
-                window.opener.postMessage(payload, '*');
-                setTimeout(function() { window.close(); }, 400);
-              } else {
-                window.location.href = '/?auth_token=' + encodeURIComponent("${sessionToken}") + '&username=' + encodeURIComponent("${user.username}");
-              }
-            })();
-          </script>
-        </body>
-      </html>
-    `);
+    if (isRedirectMode) {
+      return res.redirect("/");
+    }
+    return res.send(`<!doctype html>
+<html>
+  <head><title>RONIGUARD</title></head>
+  <body style="background:#07040d;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <p style="font-size:13px;color:#c4b5fd;">Returning to dashboard...</p>
+    <script>
+      (function() {
+        var payload = {
+          type: 'OAUTH_AUTH_SUCCESS',
+          token: ${JSON.stringify(sessionToken)},
+          user: ${JSON.stringify({ id: user.id, username: user.username, role: user.role, avatar: user.avatar })}
+        };
+        if (window.opener) {
+          window.opener.postMessage(payload, '*');
+          setTimeout(function() { window.close(); }, 200);
+        } else {
+          window.location.replace('/');
+        }
+      })();
+    </script>
+  </body>
+</html>`);
   } catch (err) {
     console.error("[RONIGUARD] Discord OAuth callback error:", err);
-    return res.send(`
-      <!doctype html>
-      <html>
-        <head><title>Authentication Failed</title></head>
-        <body style="background:#07040d;color:#ffffff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-          <div style="background:#13082a;border:1px solid #ef4444;border-radius:16px;padding:24px;text-align:center;max-width:360px;">
-            <h3 style="color:#ef4444;margin:0 0 8px;">Authentication Error</h3>
-            <p style="color:#d1d5db;font-size:13px;margin:0 0 16px;">${err.message || "Authentication failed"}</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: "${encodeURIComponent(err.message || "Authentication failed")}" }, '*');
-                setTimeout(function() { window.close(); }, 1500);
-              } else {
-                window.location.href = '/?auth_error=' + encodeURIComponent("${encodeURIComponent(err.message || "Authentication failed")}");
-              }
-            </script>
-          </div>
-        </body>
-      </html>
-    `);
+    const msg = err?.message || "Discord login failed. Please try again.";
+    if (isRedirectMode) {
+      return res.redirect("/?auth_error=" + encodeURIComponent(msg));
+    }
+    return res.send(`<!doctype html>
+<html>
+  <head><title>RONIGUARD</title></head>
+  <body style="background:#07040d;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(encodeURIComponent(msg))} }, '*');
+        setTimeout(function() { window.close(); }, 400);
+      } else {
+        window.location.replace('/?auth_error=' + encodeURIComponent(${JSON.stringify(msg)}));
+      }
+    </script>
+  </body>
+</html>`);
   }
 });
 router.post("/auth/discord/demo-login", (req, res) => {
@@ -4464,7 +4804,7 @@ router.get("/scripts/:id", requireAuth, (req, res) => {
   res.json({
     ...script,
     sourceCode,
-    loadstringUrl: `https://roniguard-dfwh.onrender.com/loader.lua?script=${script.id}&key=${script.apiKey}`
+    loadstringUrl: `https://roniguard-dfwh.onrender.com/loader.lua?script=${script.id}`
   });
 });
 router.get("/scripts/:id/source", requireAuth, (req, res) => {
@@ -4669,7 +5009,7 @@ router.get("/jobs/:id", requireAuth, (req, res) => {
   }
   res.json({
     job,
-    loadstringUrl: job.status === "completed" ? `${getBaseUrl(req)}/loader.lua?script=${job.scriptId}&key=${job.apiKey}` : void 0
+    loadstringUrl: job.status === "completed" ? `${getBaseUrl(req)}/loader.lua?script=${job.scriptId}` : void 0
   });
 });
 router.put("/scripts/:id", requireAuth, async (req, res) => {

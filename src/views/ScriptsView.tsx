@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Lock,
   Unlock,
-  KeyRound,
   ExternalLink,
   ShieldAlert,
 } from 'lucide-react';
@@ -39,7 +38,7 @@ const STAGES = [
   'String Encryption & XOR Dynamic Table Virtualization',
   'Environment & Metatable Integrity Wall Injection',
   'Output Bytecode Verification & Checksum',
-  'Script-Specific API Key Minting & Loadstring Finalization',
+  'Loadstring & Runtime Finalization',
 ];
 
 const getAppHost = () => {
@@ -88,7 +87,6 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
   // Delete modal
   const [scriptToDelete, setScriptToDelete] = useState<ScriptItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [masterApiKey, setMasterApiKey] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
@@ -97,16 +95,12 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [scriptsData, panelsData, keyData] = await Promise.all([
+      const [scriptsData, panelsData] = await Promise.all([
         api.getScripts(),
         api.getPanels(),
-        api.getMasterApiKey().catch(() => ({ masterApiKey: '' })),
       ]);
       setScripts(scriptsData);
       setPanels(panelsData);
-      if (keyData?.masterApiKey) {
-        setMasterApiKey(keyData.masterApiKey);
-      }
       if (panelsData.length > 0 && !selectedPanelId) {
         setSelectedPanelId(panelsData[0].id);
       }
@@ -135,14 +129,14 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
           setActiveJob(res.job);
           if (res.job.status === 'completed') {
             if (pollingRef.current) clearInterval(pollingRef.current);
-            const loadUrl = res.loadstringUrl || `${getAppHost()}/loader.lua?script=${res.job.scriptId}&key=${res.job.apiKey}`;
+            const loadUrl = `${getAppHost()}/loader.lua?script=${res.job.scriptId}`;
             setCompletedJobResult({
               scriptId: res.job.scriptId,
               scriptName: res.job.scriptName,
-              apiKey: res.job.apiKey || '',
+              apiKey: '',
               loadstringUrl: loadUrl,
             });
-            onShowToast('success', 'Script Processed & Secured', `API Key generated: ${res.job.apiKey}`);
+            onShowToast('success', 'Script Processed & Secured', `"${res.job.scriptName}" is protected and ready for execution.`);
             loadData();
           } else if (res.job.status === 'failed') {
             if (pollingRef.current) clearInterval(pollingRef.current);
@@ -256,7 +250,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         sourceCode: editSourceCode,
         obfuscationEnabled: editObfuscation,
       });
-      onShowToast('success', 'Script Updated In-Place', 'Loadstring URL and API key remain unchanged!');
+      onShowToast('success', 'Script Updated In-Place', 'Loadstring URL remains unchanged for all users!');
       setScriptToEdit(null);
       loadData();
     } catch (err: any) {
@@ -322,7 +316,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
             Scripts & Deployments
           </h2>
           <p className="text-xs text-neutral-400 mt-1">
-            Build, protect with RONIGUARD MAX, and issue script-specific loadstring API keys.
+            Build, protect with RONIGUARD MAX, and manage Roblox executor loadstrings.
           </p>
         </div>
 
@@ -780,7 +774,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
         </div>
       )}
 
-      {/* COMPLETED RESULT MODAL WITH GENERATED API KEY & LOADSTRING */}
+      {/* COMPLETED RESULT MODAL WITH LOADSTRING */}
       {completedJobResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#0f0920] border border-emerald-500/50 rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-5">
@@ -794,37 +788,15 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
               </div>
             </div>
 
-            {/* Generated API Key Card */}
-            <div className="p-4 rounded-xl bg-[#090412] border border-purple-900/40 space-y-2">
-              <div className="flex items-center justify-between text-xs text-neutral-400">
-                <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-purple-400" />
-                  Script-Specific API Key:
-                </span>
-                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
-                  ACTIVE
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-black/60 font-mono text-xs text-white border border-neutral-800">
-                <span className="truncate select-all">{completedJobResult.apiKey}</span>
-                <button
-                  onClick={() => copyToClipboard(completedJobResult.apiKey, 'modal_api_key')}
-                  className="p-1 hover:text-purple-300"
-                >
-                  {copiedId === 'modal_api_key' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
             {/* Loadstring Snippet Card */}
             <div className="p-4 rounded-xl bg-[#090412] border border-purple-900/40 space-y-2">
               <span className="text-xs font-semibold text-neutral-300">Roblox Executor Loadstring:</span>
               <div className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-black/60 font-mono text-[11px] text-purple-200 border border-neutral-800 overflow-x-auto">
-                <code className="break-all">{buildLoadstring(completedJobResult.scriptId, completedJobResult.apiKey)}</code>
+                <code className="break-all">{buildLoadstring(completedJobResult.scriptId, 'YOUR_LICENSE_KEY')}</code>
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      buildLoadstring(completedJobResult.scriptId, completedJobResult.apiKey),
+                      buildLoadstring(completedJobResult.scriptId, 'YOUR_LICENSE_KEY'),
                       'modal_loadstring'
                     )
                   }
@@ -837,6 +809,9 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                   )}
                 </button>
               </div>
+              <p className="text-[11px] text-neutral-400">
+                Customers replace <code className="text-purple-300">YOUR_LICENSE_KEY</code> with their redeemed key from Discord. Manage your Master API Key in Account Settings.
+              </p>
             </div>
 
             <div className="flex justify-end pt-2">
@@ -867,7 +842,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
                   </span>
                 </div>
                 <p className="text-xs text-neutral-400">
-                  Loadstring URL and API key will stay the same for existing users.
+                  Loadstring URL will stay the same for existing users.
                 </p>
               </div>
               <button
@@ -954,7 +929,7 @@ export const ScriptsView: React.FC<ScriptsViewProps> = ({ onShowToast }) => {
       <ConfirmModal
         isOpen={!!scriptToDelete}
         title="Delete Script"
-        message={`Are you sure you want to delete "${scriptToDelete?.filename}"? This will permanently revoke its API key and disable its loadstring URL.`}
+        message={`Are you sure you want to delete "${scriptToDelete?.filename}"? This will permanently disable its loadstring URL.`}
         confirmText="Delete Script"
         confirmVariant="danger"
         onConfirm={handleDeleteScript}
