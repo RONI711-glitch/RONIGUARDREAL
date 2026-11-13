@@ -7,7 +7,7 @@
   "packageManager": "npm@10.8.2",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node server.js",
+    "start": "NODE_ENV=production node server.js",
     "bot": "tsx server/botRunner.ts",
     "bot:vps": "node bot-vps.js",
     "build": "vite build && esbuild server.ts --platform=node --format=esm --bundle --packages=external --outfile=server.js && esbuild server/botRunner.ts --platform=node --format=esm --bundle --packages=external --outfile=bot-vps.js",
