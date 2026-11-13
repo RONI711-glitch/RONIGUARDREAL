@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink, ArrowLeft } from 'lucide-react';
+import { AlertCircle, FileText, X, CheckCircle2, ShieldCheck, Lock, Bot, ExternalLink, ArrowLeft } from 'lucide-react';
 import { api, setStoredToken } from '../api.ts';
+import { BrandLogo } from '../components/BrandLogo.tsx';
 
 interface LoginViewProps {
   onLoginSuccess: (user: any) => void;
@@ -128,20 +129,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
   };
 
   return (
-    <div className="min-h-screen bg-[#07040d] flex items-center justify-center p-4 selection:bg-purple-600 selection:text-white relative overflow-hidden font-sans">
-      {/* Cosmic background nebulae */}
+    <div className="min-h-screen bg-[#06030c] flex items-center justify-center p-4 selection:bg-purple-600 selection:text-white relative overflow-hidden font-sans">
+      {/* Winter midnight ambient glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] bg-purple-900/15 rounded-full blur-[160px]" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] bg-purple-900/18 rounded-full blur-[160px]" />
         <div className="absolute bottom-1/4 right-1/4 w-[450px] h-[450px] bg-indigo-900/15 rounded-full blur-[140px]" />
       </div>
 
-      <div className="relative w-full max-w-md">
+      <div className="relative z-10 w-full max-w-md animate-fade-slide-up">
         {/* Main Card */}
-        <div className="bg-[#0e071e]/95 border border-purple-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-purple-950/70 relative backdrop-blur-xl">
+        <div className="frost-surface rounded-3xl p-6 sm:p-8 shadow-2xl shadow-purple-950/70 relative">
           {onBackToHome && (
             <button
               onClick={onBackToHome}
-              className="mb-4 inline-flex items-center gap-1.5 text-xs text-purple-300 hover:text-white transition-colors cursor-pointer"
+              className="mb-4 inline-flex items-center gap-1.5 text-xs text-purple-300 hover:text-white smooth-transition cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Home</span>
@@ -150,14 +151,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
 
           {/* Brand Header */}
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-purple-950 flex items-center justify-center text-white shadow-xl shadow-purple-600/40 mb-3.5 border border-purple-400/30">
-              <ShieldAlert className="w-8 h-8 text-purple-200" />
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <BrandLogo size="lg" className="mb-3.5 border-purple-300/25 shadow-xl shadow-purple-950/60" />
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight font-display">
               RONI<span className="text-purple-400">GUARD</span>
             </h1>
-            <p className="text-xs text-neutral-400 mt-1 max-w-xs leading-relaxed">
-              Public Lua Script Protection, VM Obfuscation & API Licensing Platform
+            <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
+              Lua &amp; Luau Script Protection, HWID Licensing &amp; Discord Bot Control
             </p>
           </div>
 
@@ -173,7 +172,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
             <button
               onClick={handleDiscordSignIn}
               disabled={isLoading}
-              className="w-full py-4 px-5 rounded-2xl bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-sm sm:text-base shadow-xl shadow-[#5865F2]/25 hover:shadow-[#5865F2]/40 flex items-center justify-center gap-3 transition-all cursor-pointer active:scale-[0.99]"
+              className="w-full py-4 px-5 rounded-2xl bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-sm sm:text-base shadow-xl shadow-[#5865F2]/25 hover:shadow-[#5865F2]/40 flex items-center justify-center gap-3 smooth-transition cursor-pointer active:scale-[0.99]"
             >
               <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24">
                 <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.893.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
@@ -185,38 +184,38 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
               href="https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-3.5 px-5 rounded-2xl bg-[#140b28] hover:bg-[#1f103d] border border-purple-500/40 hover:border-purple-400 text-purple-200 font-bold text-xs sm:text-sm shadow-lg shadow-purple-950/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer group"
+              className="w-full py-3.5 px-5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-purple-400/25 hover:border-purple-300/50 text-purple-100 font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 smooth-transition cursor-pointer group"
             >
-              <Bot className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+              <Bot className="w-4 h-4 text-purple-300 group-hover:scale-110 smooth-transition" />
               <span>Add RONIGUARD Bot to Server</span>
-              <ExternalLink className="w-3.5 h-3.5 text-purple-400 opacity-60" />
+              <ExternalLink className="w-3.5 h-3.5 text-purple-300 opacity-60" />
             </a>
           </div>
 
-          {/* User Limits Info Badge */}
-          <div className="p-3 rounded-xl bg-black/40 border border-purple-900/30 text-[11px] text-neutral-400 space-y-1 mb-4">
-            <div className="font-semibold text-purple-300 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-purple-400" />
+          {/* User Limits Info */}
+          <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-slate-400 space-y-1.5 mb-4">
+            <div className="font-semibold text-purple-200 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-purple-300" />
               <span>Free Public Account Quotas</span>
             </div>
-            <div className="grid grid-cols-2 gap-1 text-[10px] text-neutral-400 font-mono">
+            <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-400 font-mono tabular-nums">
               <span>• 15 Obfuscations / mo</span>
               <span>• 5 Protection Panels</span>
               <span>• 10 Scripts Created</span>
               <span>• 10 Updates / Project</span>
-              <span className="col-span-2">• 1,000 Keys & Whitelists</span>
+              <span className="col-span-2">• 1,000 Keys &amp; Whitelists</span>
             </div>
           </div>
 
           {/* Footer Terms & Rules Trigger */}
-          <div className="text-center pt-2 border-t border-purple-950/60">
+          <div className="text-center pt-2 border-t border-white/10">
             <button
               type="button"
               onClick={() => setShowPolicyModal(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 underline font-medium cursor-pointer transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-purple-300 hover:text-white underline font-medium cursor-pointer smooth-transition"
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Terms of Service, Policy & Platform Rules</span>
+              <span>Terms of Service, Policy &amp; Platform Rules</span>
             </button>
           </div>
         </div>

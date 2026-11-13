@@ -16,6 +16,7 @@ import { AntiTamperView } from './views/AntiTamperView.tsx';
 import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
 import { PublicLandingView } from './views/PublicLandingView.tsx';
 import { CosmicAudioPlayer } from './components/CosmicAudioPlayer.tsx';
+import { SnowfallOverlay } from './components/SnowfallOverlay.tsx';
 
 export default function App() {
   const isLoadstringRoute =
@@ -48,6 +49,20 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [snowEnabled, setSnowEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('roniguard_snow') !== 'false';
+  });
+
+  const handleToggleSnow = () => {
+    setSnowEnabled((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('roniguard_snow', String(next));
+      }
+      return next;
+    });
+  };
 
   // Telemetry counts
   const [botConnected, setBotConnected] = useState(true);
@@ -167,9 +182,12 @@ export default function App() {
     if (!showLoginView) {
       return (
         <>
+          <SnowfallOverlay enabled={snowEnabled} density={46} />
           <PublicLandingView
             onSignInClick={() => setShowLoginView(true)}
             botConnected={botConnected}
+            snowEnabled={snowEnabled}
+            onToggleSnow={handleToggleSnow}
           />
           <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
         </>
@@ -178,6 +196,7 @@ export default function App() {
 
     return (
       <>
+        <SnowfallOverlay enabled={snowEnabled} density={40} />
         <LoginView
           onBackToHome={() => setShowLoginView(false)}
           onLoginSuccess={(user) => {
@@ -215,6 +234,8 @@ export default function App() {
         <div className="absolute top-[70%] right-[15%] w-1 h-1 bg-white/50 rounded-full shadow-[0_0_6px_white]" style={{ animation: 'star-twinkle 7s ease-in-out infinite 3.5s' }} />
       </div>
 
+      <SnowfallOverlay enabled={snowEnabled} density={34} />
+
       {/* Top Header */}
       <Header
         currentSectionTitle={SECTION_TITLES[activeSection]}
@@ -224,6 +245,8 @@ export default function App() {
         userRole={currentUser?.role || 'user'}
         discordId={currentUser?.discordId || '1549804529778692237'}
         avatarUrl={currentUser?.avatar}
+        snowEnabled={snowEnabled}
+        onToggleSnow={handleToggleSnow}
         onToggleMobileNav={() => setIsMobileNavOpen(true)}
         onLogout={handleLogout}
         onNavigateToAntiTamper={() => {
@@ -248,27 +271,29 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-          {activeSection === 'overview' && (
-            <OverviewView
-              onNavigate={(sec) => {
-                setActiveSection(sec);
-                refreshTelemetry();
-              }}
-            />
-          )}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full relative z-10">
+          <div key={activeSection} className="animate-view-enter">
+            {activeSection === 'overview' && (
+              <OverviewView
+                onNavigate={(sec) => {
+                  setActiveSection(sec);
+                  refreshTelemetry();
+                }}
+              />
+            )}
 
-          {activeSection === 'panels' && <PanelsView onShowToast={showToast} />}
+            {activeSection === 'panels' && <PanelsView onShowToast={showToast} />}
 
-          {activeSection === 'scripts' && <ScriptsView onShowToast={showToast} />}
+            {activeSection === 'scripts' && <ScriptsView onShowToast={showToast} />}
 
-          {activeSection === 'licenses' && <LicensesView onShowToast={showToast} />}
+            {activeSection === 'licenses' && <LicensesView onShowToast={showToast} />}
 
-          {activeSection === 'anti-tamper' && <AntiTamperView onShowToast={showToast} />}
+            {activeSection === 'anti-tamper' && <AntiTamperView onShowToast={showToast} />}
 
-          {activeSection === 'account' && (
-            <AccountView onLogout={handleLogout} onShowToast={showToast} />
-          )}
+            {activeSection === 'account' && (
+              <AccountView onLogout={handleLogout} onShowToast={showToast} />
+            )}
+          </div>
         </main>
       </div>
 

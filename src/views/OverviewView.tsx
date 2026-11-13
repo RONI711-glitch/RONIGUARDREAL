@@ -8,17 +8,15 @@ import {
   Plus,
   ArrowRight,
   Bot,
-  Sparkles,
   BookOpen,
-  CheckCircle2,
   Lock,
-  Zap,
-  Terminal,
   ShieldCheck,
+  Snowflake,
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { OverviewMetrics, UserQuotas } from '../types.ts';
 import { SectionId } from '../components/Sidebar.tsx';
+import { BrandLogo } from '../components/BrandLogo.tsx';
 
 interface OverviewViewProps {
   onNavigate: (section: SectionId) => void;
@@ -107,38 +105,38 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 sm:p-7 rounded-3xl bg-gradient-to-r from-purple-950/80 via-[#130b28]/90 to-indigo-950/80 border border-white/20 backdrop-blur-2xl shadow-2xl shadow-purple-950/50 relative overflow-hidden">
-        {/* Soft white celestial light reflection */}
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-        <div className="absolute -top-24 -left-24 w-60 h-60 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-1/2 right-10 w-72 h-72 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="frost-surface flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 sm:p-7 rounded-3xl shadow-2xl shadow-purple-950/40 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/35 to-transparent" />
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-100 to-purple-200 tracking-tight drop-shadow-[0_2px_10px_rgba(255,255,255,0.35)]">
+        <div className="relative z-10 flex items-center gap-4">
+          <BrandLogo size="lg" className="hidden sm:block border-purple-300/20" />
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-purple-300 mb-1">
+              <Snowflake className="w-3.5 h-3.5 text-slate-200" />
+              <span>Winter Control Center</span>
+            </div>
+            <h2 className="text-2xl font-black text-white tracking-tight font-display">
               RONIGUARD Dashboard
             </h2>
-            <span className="text-[11px] font-bold text-white px-3 py-1 rounded-full bg-white/10 border border-white/25 shadow-sm shadow-purple-500/20 backdrop-blur-md">
-              Cosmic v3.2
-            </span>
+            <p className="text-xs text-slate-300/85 mt-1 leading-relaxed max-w-xl">
+              Manage your Lua &amp; Luau scripts, hardware-locked licenses, and 24/7 Discord bot
+              panels from one isolated developer vault.
+            </p>
           </div>
-          <p className="text-xs text-purple-200/90 mt-1.5 leading-relaxed max-w-xl font-medium">
-            Next-generation proprietary code protection, script-specific licensing, and 24/7 Discord Bot execution in an isolated workspace.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2.5 relative z-10">
+        <div className="flex items-center gap-2.5 relative z-10 shrink-0">
           <button
             onClick={() => fetchMetrics(true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-semibold transition-all cursor-pointer shadow-sm backdrop-blur-md"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-white text-xs font-semibold smooth-transition cursor-pointer whitespace-nowrap"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Sync</span>
           </button>
           <button
             onClick={() => onNavigate('scripts')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 hover:from-purple-400 hover:to-indigo-400 text-white text-xs font-bold shadow-lg shadow-purple-500/40 border border-white/30 transition-all cursor-pointer active:scale-95"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/50 border border-white/20 smooth-transition cursor-pointer active:scale-95 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span>Deploy Script</span>
@@ -227,10 +225,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 15 Monthly Obfuscations */}
-          <div className="p-4 rounded-2xl bg-black/40 border border-purple-900/20 space-y-2">
+          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-neutral-400 font-medium">Monthly Obfuscations</span>
-              <span className="text-purple-300 font-bold font-mono">
+              <span className="text-slate-400 font-medium">Monthly Obfuscations</span>
+              <span className="text-purple-200 font-bold font-mono tabular-nums">
                 {quotas?.monthlyObfuscations.current || 0} / {quotas?.monthlyObfuscations.max || 15}
               </span>
             </div>
@@ -246,10 +244,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
           </div>
 
           {/* 5 Panels Maximum */}
-          <div className="p-4 rounded-2xl bg-black/40 border border-purple-900/20 space-y-2">
+          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-neutral-400 font-medium">Panels Created</span>
-              <span className="text-purple-300 font-bold font-mono">
+              <span className="text-slate-400 font-medium">Panels Created</span>
+              <span className="text-purple-200 font-bold font-mono tabular-nums">
                 {quotas?.panels.current || 0} / {quotas?.panels.max || 5}
               </span>
             </div>
@@ -265,10 +263,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
           </div>
 
           {/* 10 Scripts Maximum */}
-          <div className="p-4 rounded-2xl bg-black/40 border border-purple-900/20 space-y-2">
+          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-neutral-400 font-medium">Scripts Created</span>
-              <span className="text-purple-300 font-bold font-mono">
+              <span className="text-slate-400 font-medium">Scripts Created</span>
+              <span className="text-purple-200 font-bold font-mono tabular-nums">
                 {quotas?.scripts.current || 0} / {quotas?.scripts.max || 10}
               </span>
             </div>
@@ -284,10 +282,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
           </div>
 
           {/* 1000 Keys & Whitelists */}
-          <div className="p-4 rounded-2xl bg-black/40 border border-purple-900/20 space-y-2">
+          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-neutral-400 font-medium">Keys & Whitelists</span>
-              <span className="text-purple-300 font-bold font-mono">
+              <span className="text-slate-400 font-medium">Keys &amp; Whitelists</span>
+              <span className="text-purple-200 font-bold font-mono tabular-nums">
                 {quotas?.keysAndWhitelist.current || 0} / {quotas?.keysAndWhitelist.max || 1000}
               </span>
             </div>
@@ -312,20 +310,19 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
             <button
               key={idx}
               onClick={() => onNavigate(card.section)}
-              className="p-6 rounded-3xl bg-gradient-to-b from-white/[0.08] via-purple-950/40 to-[#0c051a]/95 border border-white/15 hover:border-white/35 text-left transition-all group flex flex-col justify-between hover:scale-[1.02] cursor-pointer shadow-xl shadow-purple-950/30 backdrop-blur-xl relative overflow-hidden"
+              className="frost-surface p-6 rounded-3xl text-left smooth-transition group flex flex-col justify-between hover:-translate-y-0.5 cursor-pointer shadow-xl shadow-purple-950/30 relative overflow-hidden"
             >
-              <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
               <div className="flex items-center justify-between w-full mb-3.5 relative z-10">
-                <span className="text-xs font-bold text-purple-200 tracking-wide">{card.label}</span>
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-white/20 to-purple-800/60 border border-white/30 flex items-center justify-center text-white shadow-md shadow-purple-600/30 group-hover:scale-110 transition-transform">
-                  <Icon className="w-5 h-5 text-white" />
+                <span className="text-xs font-bold text-slate-300 tracking-wide">{card.label}</span>
+                <div className="w-10 h-10 rounded-2xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-purple-200 group-hover:scale-105 smooth-transition">
+                  <Icon className="w-5 h-5" />
                 </div>
               </div>
               <div className="relative z-10">
-                <span className="text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_8px_rgba(255,255,255,0.4)]">
+                <span className="text-3xl font-black text-white tracking-tight tabular-nums font-display">
                   {card.value}
                 </span>
-                <p className="text-[11px] text-purple-300/80 mt-1.5 font-medium">{card.subtext}</p>
+                <p className="text-[11px] text-slate-400 mt-1.5 font-medium tabular-nums">{card.subtext}</p>
               </div>
             </button>
           );
@@ -377,8 +374,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ onNavigate }) => {
             </span>
             <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:translate-x-1 text-purple-400 transition-all" />
           </div>
-          <p className="text-xs text-neutral-400 leading-relaxed">
-            Inspect script-specific API keys, copy ready-to-run loadstrings for Roblox executors, revoke, or regenerate.
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Manage customer keys, Discord whitelists, HWID bindings, and unified Master Key access across your scripts.
           </p>
         </div>
 

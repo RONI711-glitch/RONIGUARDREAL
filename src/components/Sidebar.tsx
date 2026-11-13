@@ -5,10 +5,10 @@ import {
   FileCode2,
   KeyRound,
   User,
-  ShieldAlert,
   ShieldCheck,
   X,
 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo.tsx';
 
 export type SectionId =
   | 'overview'
@@ -58,25 +58,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRole = 'user',
 }) => {
   const content = (
-    <div className="flex flex-col h-full bg-[#080314]/95 border-r border-white/10 backdrop-blur-2xl">
+    <div className="flex flex-col h-full bg-[#07030f]/95 border-r border-white/10 backdrop-blur-2xl">
       {/* Brand Header */}
-      <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-white/20 via-purple-600 to-indigo-900 border border-white/30 flex items-center justify-center text-white shadow-lg shadow-purple-600/40">
-            <ShieldAlert className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <h1 className="text-base font-black text-white tracking-tight leading-none drop-shadow-[0_1px_4px_rgba(255,255,255,0.3)]">
-              RONI<span className="text-purple-300">GUARD</span>
-            </h1>
-            <p className="text-[10px] text-purple-200/80 font-semibold tracking-wide uppercase mt-0.5">
-              Cosmic Security Hub
-            </p>
-          </div>
+          <BrandLogo size="sm" />
+          <h1 className="text-base font-black text-white tracking-tight leading-none whitespace-nowrap font-display">
+            RONI<span className="text-purple-400">GUARD</span>
+          </h1>
         </div>
         <button
           onClick={onCloseMobile}
-          className="lg:hidden p-1.5 text-neutral-400 hover:text-white rounded-md"
+          className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-md cursor-pointer"
           aria-label="Close navigation"
         >
           <X className="w-5 h-5" />
@@ -84,9 +77,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation list */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
-        <div className="px-3 pb-2 text-[11px] font-bold tracking-wider text-purple-300/70 uppercase">
-          Navigation
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <div className="px-3 pb-2 text-[11px] font-bold tracking-wider text-slate-500 uppercase">
+          Workspace
         </div>
 
         {PRIMARY_NAV_ITEMS.map((item) => {
@@ -101,16 +94,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectSection(item.id);
                 onCloseMobile();
               }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold smooth-transition group cursor-pointer ${
                 isActive
-                  ? 'bg-gradient-to-r from-white/15 via-purple-900/50 to-indigo-950/60 text-white border border-white/30 shadow-lg shadow-purple-600/20'
-                  : 'text-neutral-300 hover:text-white hover:bg-white/[0.06]'
+                  ? 'bg-gradient-to-r from-purple-600/25 to-indigo-900/30 text-white border border-purple-400/30 shadow-md shadow-purple-950/30'
+                  : 'text-slate-300 hover:text-white hover:bg-white/[0.05] border border-transparent'
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Icon
-                  className={`w-4 h-4 shrink-0 transition-colors ${
-                    isActive ? 'text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.6)]' : 'text-neutral-400 group-hover:text-purple-200'
+                  className={`w-4 h-4 shrink-0 smooth-transition ${
+                    isActive ? 'text-purple-300' : 'text-slate-400 group-hover:text-slate-200'
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
@@ -118,8 +111,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {count !== null && count !== undefined ? (
                 <span
-                  className={`text-[11px] font-mono px-1.5 py-0.5 rounded-md ml-2 shrink-0 ${
-                    isActive ? 'bg-purple-800/40 text-purple-200' : 'bg-neutral-900 text-neutral-400'
+                  className={`text-[11px] font-mono tabular-nums ml-2 shrink-0 ${
+                    isActive ? 'text-purple-200 font-bold' : 'text-slate-500'
                   }`}
                 >
                   {count}
@@ -128,19 +121,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
-
       </nav>
 
-      {/* User Footer Profile */}
-      <div className="p-4 border-t border-purple-900/20 bg-[#07030e]/60">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0 pr-2">
-            <p className="text-xs font-bold text-white truncate">@{username}</p>
-            <p className="text-[10px] text-neutral-400 capitalize mt-0.5">
-              {userRole === 'admin' ? 'Platform Administrator' : 'Verified Developer'}
-            </p>
-          </div>
-          <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 shrink-0" />
+      {/* User Footer */}
+      <div className="p-4 border-t border-white/10 bg-black/25">
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-white truncate">@{username}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {userRole === 'admin' ? 'Platform Administrator' : 'Developer Vault'}
+          </p>
         </div>
       </div>
     </div>
@@ -148,19 +137,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Desktop Persistent Sidebar */}
       <aside className="hidden lg:block w-64 h-screen sticky top-0 shrink-0">
         {content}
       </aside>
 
-      {/* Mobile Drawer */}
       {isOpenMobile && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div
             className="fixed inset-0 bg-black/80 backdrop-blur-sm"
             onClick={onCloseMobile}
           />
-          <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10 animate-slide-right">
+          <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10 animate-view-enter">
             {content}
           </div>
         </div>

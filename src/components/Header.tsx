@@ -3,15 +3,14 @@ import {
   ShieldCheck,
   Menu,
   LogOut,
-  Radio,
   PlusCircle,
   ExternalLink,
   ChevronDown,
-  User,
   Server,
   ShieldAlert,
-  Sparkles
+  Snowflake,
 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo.tsx';
 
 interface HeaderProps {
   currentSectionTitle: string;
@@ -21,6 +20,8 @@ interface HeaderProps {
   userRole?: 'user' | 'admin';
   discordId?: string;
   avatarUrl?: string | null;
+  snowEnabled?: boolean;
+  onToggleSnow?: () => void;
   onToggleMobileNav: () => void;
   onLogout: () => void;
   onNavigateToAntiTamper?: () => void;
@@ -34,6 +35,8 @@ export const Header: React.FC<HeaderProps> = ({
   userRole = 'user',
   discordId = '1549804529778692237',
   avatarUrl,
+  snowEnabled = true,
+  onToggleSnow,
   onToggleMobileNav,
   onLogout,
   onNavigateToAntiTamper,
@@ -41,7 +44,6 @@ export const Header: React.FC<HeaderProps> = ({
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -55,190 +57,178 @@ export const Header: React.FC<HeaderProps> = ({
   const botInviteUrl =
     'https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands';
 
+  const getAvatarSrc = (size: number) => {
+    let src = avatarUrl;
+    if (src && !src.startsWith('http')) {
+      src = `https://cdn.discordapp.com/avatars/${discordId}/${src}.png?size=${size}`;
+    }
+    if (!src) {
+      const idx = /^\d+$/.test(discordId) ? Number((BigInt(discordId) >> 22n) % 6n) : 0;
+      src = `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
+    }
+    return src;
+  };
+
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 md:gap-6 px-4 md:px-7 py-3 bg-[#080412]/95 backdrop-blur-xl border-b border-purple-900/30 shadow-lg shadow-purple-950/20">
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 md:gap-6 px-4 md:px-7 py-3 bg-[#06030c]/90 backdrop-blur-xl border-b border-white/10">
       {/* Zone 1: Brand wordmark & Mobile trigger */}
       <div className="flex items-center gap-3 shrink-0">
         <button
           onClick={onToggleMobileNav}
-          className="lg:hidden p-2 -ml-1 text-neutral-300 hover:text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
+          className="lg:hidden p-2 -ml-1 text-slate-300 hover:text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 smooth-transition cursor-pointer"
           aria-label="Toggle navigation menu"
         >
-          <Menu className="w-5 h-5 text-purple-400" />
+          <Menu className="w-5 h-5 text-purple-300" />
         </button>
 
         <div className="flex items-center gap-2.5">
-          <div className="relative w-8 h-8 rounded-xl bg-gradient-to-br from-purple-700 to-indigo-900 border border-purple-400/30 flex items-center justify-center text-white shadow-md shadow-purple-600/30">
-            <ShieldCheck className="w-4 h-4 text-purple-200" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-base font-extrabold tracking-tight text-white leading-none">
-              RONI<span className="text-purple-400">GUARD</span>
-            </span>
-            <span className="text-[9px] text-purple-400/80 font-mono tracking-wider font-semibold">ANTI-TAMPER v3.2</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Zone 2: Navigation crumb & 24/7 Bot Live Status */}
-      <div className="hidden lg:flex items-center gap-3 text-xs text-neutral-400 min-w-0">
-        <span className="text-neutral-500 font-medium">Dashboard</span>
-        <span aria-hidden="true" className="text-neutral-700">/</span>
-        <span className="font-semibold text-purple-200 truncate">{currentSectionTitle}</span>
-        <span aria-hidden="true" className="text-neutral-700">·</span>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-950/40 border border-purple-500/20 text-neutral-300">
-          <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-          <span className="text-[11px] font-medium text-emerald-300">
-            {botConnected ? (botUsername ? `@${botUsername}` : '@RONIGUARD#9989') : '@RONIGUARD#9989 24/7'}
+          <BrandLogo size="xs" />
+          <span className="text-base font-extrabold tracking-tight text-white leading-none whitespace-nowrap font-display">
+            RONI<span className="text-purple-400">GUARD</span>
           </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
         </div>
       </div>
 
-      {/* Zone 3: Actions + Top Account & Server Profile Widget */}
-      <div className="flex items-center gap-2.5 md:gap-3.5 shrink-0">
-        {/* ADD BOT TO SERVER BUTTON (Direct 1-Click Discord OAuth2) */}
+      {/* Zone 2: Navigation crumb & unboxed Bot Status */}
+      <div className="hidden lg:flex items-center gap-2.5 text-xs text-slate-400 min-w-0">
+        <span className="text-slate-500 font-medium whitespace-nowrap">Dashboard</span>
+        <span aria-hidden="true" className="text-slate-700">/</span>
+        <span className="font-semibold text-white truncate">{currentSectionTitle}</span>
+        <span aria-hidden="true" className="text-slate-700">·</span>
+        <span className="text-slate-300 font-medium whitespace-nowrap truncate">
+          {botConnected
+            ? botUsername
+              ? `@${botUsername} · 24/7`
+              : '@RONIGUARD · 24/7'
+            : 'Bot Standby'}
+        </span>
+      </div>
+
+      {/* Zone 3: Actions & Profile Widget */}
+      <div className="flex items-center gap-2 md:gap-3 shrink-0">
+        {onToggleSnow && (
+          <button
+            type="button"
+            onClick={onToggleSnow}
+            title={snowEnabled ? 'Disable snowfall effect' : 'Enable snowfall effect'}
+            aria-label="Toggle snowfall"
+            className={`p-2 rounded-lg border smooth-transition cursor-pointer ${
+              snowEnabled
+                ? 'bg-purple-950/50 border-purple-400/30 text-slate-100 hover:bg-purple-900/50'
+                : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+            }`}
+          >
+            <Snowflake className="w-4 h-4" />
+          </button>
+        )}
+
         <a
           href={botInviteUrl}
           target="_blank"
           rel="noopener noreferrer"
           title="Add @RONIGUARD bot to your Discord server"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-purple-600/30 border border-purple-400/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-purple-950/50 border border-white/15 smooth-transition whitespace-nowrap shrink-0"
         >
-          <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
-          <span className="font-bold">Add Bot to Server</span>
-          <ExternalLink className="w-3 h-3 text-purple-300 opacity-80" />
+          <PlusCircle className="w-3.5 h-3.5 text-purple-100" />
+          <span>Add Bot</span>
+          <ExternalLink className="w-3 h-3 opacity-75 hidden sm:inline" />
         </a>
 
-        {/* Quick Anti-Tamper Shield Shortcut Button */}
         {onNavigateToAntiTamper && (
           <button
             onClick={onNavigateToAntiTamper}
             title="Inspect Anti-Tamper Security & Integrity Status"
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-950/40 hover:bg-purple-900/40 border border-purple-500/30 text-purple-200 text-xs font-medium transition-all"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-200 text-xs font-medium smooth-transition whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
-            <span className="hidden md:inline">Anti-Tamper</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">ACTIVE</span>
+            <ShieldAlert className="w-3.5 h-3.5 text-purple-300" />
+            <span>Anti-Tamper</span>
           </button>
         )}
 
-        {/* TOP PROFILE & SERVER WIDGET (No email displayed, quick access without switching views) */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/50 border border-purple-500/25 transition-all text-left focus:outline-none focus:ring-1 focus:ring-purple-400"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 smooth-transition text-left focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer whitespace-nowrap shrink-0"
             aria-expanded={profileDropdownOpen}
           >
-            {/* Avatar Circle */}
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-700 flex items-center justify-center text-white font-bold text-xs shadow-inner overflow-hidden border border-purple-400/40">
-              {(() => {
-                let src = avatarUrl;
-                if (src && !src.startsWith('http')) {
-                  src = `https://cdn.discordapp.com/avatars/${discordId}/${src}.png?size=128`;
-                }
-                if (!src) {
-                  const idx = /^\d+$/.test(discordId) ? Number((BigInt(discordId) >> 22n) % 6n) : 0;
-                  src = `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
-                }
-                return <img src={src} alt={userLabel} className="w-full h-full object-cover" onError={(e) => {
-                  (e.target as HTMLImageElement).src = `https://cdn.discordapp.com/embed/avatars/0.png`;
-                }} />;
-              })()}
+            <div className="w-7 h-7 rounded-lg bg-[#0d0818] flex items-center justify-center overflow-hidden border border-white/15 shrink-0">
+              <img
+                src={getAvatarSrc(128)}
+                alt={userLabel}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://cdn.discordapp.com/embed/avatars/0.png';
+                }}
+              />
             </div>
 
-            {/* Profile Info & Server */}
             <div className="hidden sm:flex flex-col text-left leading-tight">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white tracking-tight truncate max-w-[110px]">
-                  @{userLabel}
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-purple-600/30 text-purple-300 border border-purple-500/30 uppercase tracking-wider">
-                  {userRole === 'admin' ? 'Admin' : 'Dev'}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-[10px] text-purple-300/80">
-                <Server className="w-2.5 h-2.5 text-purple-400" />
-                <span className="truncate max-w-[100px]">Active Server</span>
-              </div>
+              <span className="text-xs font-bold text-white tracking-tight truncate max-w-[110px]">
+                @{userLabel}
+              </span>
+              <span className="text-[10px] text-slate-400 capitalize">
+                {userRole === 'admin' ? 'Administrator' : 'Developer'}
+              </span>
             </div>
 
             <ChevronDown
-              className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${profileDropdownOpen ? 'rotate-180 text-purple-300' : ''}`}
+              className={`w-3.5 h-3.5 text-slate-400 smooth-transition ${
+                profileDropdownOpen ? 'rotate-180 text-white' : ''
+              }`}
             />
           </button>
 
-          {/* Quick Dropdown Card */}
           {profileDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-[#0c081e] border border-purple-800/40 shadow-2xl shadow-purple-950/70 p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
-              {/* Profile Card Header */}
-              <div className="flex items-center gap-3 p-2.5 rounded-xl bg-purple-950/40 border border-purple-800/20 mb-2.5">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-800 flex items-center justify-center text-white font-black text-sm shadow-md overflow-hidden">
-                  {(() => {
-                    let src = avatarUrl;
-                    if (src && !src.startsWith('http')) {
-                      src = `https://cdn.discordapp.com/avatars/${discordId}/${src}.png?size=256`;
-                    }
-                    if (!src) {
-                      const idx = /^\d+$/.test(discordId) ? Number((BigInt(discordId) >> 22n) % 6n) : 0;
-                      src = `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
-                    }
-                    return <img src={src} alt={userLabel} className="w-full h-full object-cover rounded-xl" onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://cdn.discordapp.com/embed/avatars/0.png`;
-                    }} />;
-                  })()}
+            <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-[#0c0818] border border-white/15 shadow-2xl shadow-black/70 p-3 z-50 animate-view-enter">
+              <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.04] border border-white/10 mb-2.5">
+                <div className="w-10 h-10 rounded-xl bg-[#0d0818] overflow-hidden shrink-0 border border-white/15">
+                  <img
+                    src={getAvatarSrc(256)}
+                    alt={userLabel}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://cdn.discordapp.com/embed/avatars/0.png';
+                    }}
+                  />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-white truncate">@{userLabel}</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-purple-300 truncate">
+                  <span className="text-sm font-bold text-white truncate">@{userLabel}</span>
+                  <span className="text-[10px] font-mono text-purple-300 truncate tabular-nums">
                     ID: {discordId}
                   </span>
-                  <div className="inline-block mt-0.5">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase">
-                      {userRole === 'admin' ? 'Administrator' : 'Developer'}
-                    </span>
-                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5">
+                    {userRole === 'admin' ? 'Administrator' : 'Developer Vault'}
+                  </span>
                 </div>
               </div>
 
-              {/* Server Clearance Status */}
-              <div className="p-2.5 rounded-xl bg-black/40 border border-purple-950/60 mb-2.5 space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-neutral-400 flex items-center gap-1">
-                    <Server className="w-3 h-3 text-purple-400" /> Server Clearance
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 mb-2.5 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Server className="w-3 h-3 text-purple-300" /> Access
                   </span>
                   <span className="text-emerald-400 font-semibold text-[11px]">Authorized</span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-neutral-400 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-purple-400" /> Bot Status
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3 h-3 text-purple-300" /> Integrity
                   </span>
-                  <span className="text-emerald-300 font-mono text-[11px]">24/7 ONLINE</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-neutral-400 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-purple-400" /> Anti-Tamper
-                  </span>
-                  <span className="text-purple-300 font-mono text-[11px]">Automatic (HMAC)</span>
+                  <span className="text-slate-200 font-mono text-[11px]">HMAC Protected</span>
                 </div>
               </div>
 
-              {/* Actions in Dropdown */}
-              <div className="space-y-1 pt-1 border-t border-purple-950/80">
+              <div className="space-y-1 pt-1 border-t border-white/10">
                 <a
                   href={botInviteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-purple-200 hover:text-white hover:bg-purple-900/30 transition-all"
+                  className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-slate-200 hover:text-white hover:bg-white/[0.06] smooth-transition"
                 >
                   <span className="flex items-center gap-2">
-                    <PlusCircle className="w-3.5 h-3.5 text-purple-400" /> Add to another server
+                    <PlusCircle className="w-3.5 h-3.5 text-purple-300" /> Add to Discord Server
                   </span>
-                  <ExternalLink className="w-3 h-3 text-neutral-500" />
+                  <ExternalLink className="w-3 h-3 text-slate-500" />
                 </a>
 
                 <button
@@ -246,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({
                     setProfileDropdownOpen(false);
                     onLogout();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-950/40 border border-rose-900/20 transition-all text-left"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-950/40 border border-rose-900/20 smooth-transition text-left cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5 text-rose-400" />
                   <span>Sign Out</span>

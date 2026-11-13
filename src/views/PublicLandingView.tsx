@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -6,233 +6,522 @@ import {
   Bot,
   ExternalLink,
   ChevronRight,
-  Radio,
   ShieldAlert,
   Layers,
-  Sparkles,
   ArrowRight,
   UserCheck,
+  Snowflake,
+  Copy,
+  Check,
+  Terminal,
+  KeyRound,
 } from 'lucide-react';
+import { BrandLogo, RONIGUARD_LOGO_SRC } from '../components/BrandLogo.tsx';
 
 interface PublicLandingViewProps {
   onSignInClick: () => void;
   botConnected?: boolean;
+  snowEnabled?: boolean;
+  onToggleSnow?: () => void;
 }
+
+type WorkflowTab = 'loadstring' | 'discord' | 'shield';
 
 export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
   onSignInClick,
   botConnected = true,
+  snowEnabled = true,
+  onToggleSnow,
 }) => {
+  const [activeTab, setActiveTab] = useState<WorkflowTab>('loadstring');
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [discordActionPreview, setDiscordActionPreview] = useState<string>(
+    'Select a panel button below to preview the Discord response.'
+  );
+
   const botInviteUrl =
     'https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands';
 
-  return (
-    <div className="min-h-screen bg-[#07040d] text-white flex flex-col selection:bg-purple-600 selection:text-white">
-      {/* Top Ambient Glow Effect */}
-      <div className="fixed top-0 inset-x-0 h-96 bg-gradient-to-b from-purple-900/25 via-indigo-950/15 to-transparent pointer-events-none blur-3xl z-0" />
+  const demoLoadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=demo"))()`;
 
-      {/* Navigation Header */}
-      <header className="sticky top-0 z-40 bg-[#07040d]/90 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 via-indigo-700 to-purple-900 p-[1px] shadow-lg shadow-purple-950/50 flex items-center justify-center">
-            <div className="w-full h-full bg-[#0a0518] rounded-[11px] flex items-center justify-center">
-              <ShieldCheck className="w-5 h-5 text-purple-400" />
-            </div>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-black tracking-wider text-white">
+  const handleCopySnippet = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(demoLoadstring).catch(() => {});
+    }
+    setCopiedSnippet(true);
+    setTimeout(() => setCopiedSnippet(false), 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#06030c] text-slate-100 flex flex-col selection:bg-purple-600 selection:text-white relative overflow-x-hidden">
+      {/* Midnight Winter Ambient Glow */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute -top-32 left-1/4 w-[680px] h-[520px] bg-purple-800/20 rounded-full blur-[150px] animate-celestial-1" />
+        <div className="absolute top-1/3 -right-28 w-[520px] h-[520px] bg-indigo-900/15 rounded-full blur-[160px] animate-celestial-2" />
+        <div className="absolute -bottom-36 left-10 w-[560px] h-[440px] bg-slate-200/[0.04] rounded-full blur-[140px]" />
+      </div>
+
+      {/* Strict 3-Zone Top Bar */}
+      <header className="sticky top-0 z-40 bg-[#06030c]/85 backdrop-blur-xl border-b border-slate-200/10">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 h-16 flex items-center justify-between gap-4">
+          {/* Zone 1: Brand */}
+          <a href="#" className="flex items-center gap-2.5 shrink-0">
+            <BrandLogo size="sm" />
+            <span className="text-base sm:text-lg font-extrabold tracking-tight text-white whitespace-nowrap font-display">
               RONI<span className="text-purple-400">GUARD</span>
             </span>
-            <span className="text-[9px] font-mono text-purple-300/80 tracking-widest font-semibold uppercase">
-              ANTI-TAMPER & LICENSING
-            </span>
-          </div>
-        </div>
+          </a>
 
-        {/* Status pill & Sign In Button */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/50 border border-emerald-500/30 text-[11px] text-emerald-300 font-medium shadow-sm">
-            <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-            <span>Bot 24/7 Online</span>
-          </div>
+          {/* Zone 2: Navigation Links */}
+          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold text-slate-300">
+            <a href="#workflow" className="hover:text-white smooth-transition whitespace-nowrap">
+              Workflow
+            </a>
+            <a href="#features" className="hover:text-white smooth-transition whitespace-nowrap">
+              Protection
+            </a>
+            <a href="#security" className="hover:text-white smooth-transition whitespace-nowrap">
+              Bot &amp; Keys
+            </a>
+            <a href="#access" className="hover:text-white smooth-transition whitespace-nowrap">
+              Get Started
+            </a>
+          </nav>
 
-          <button
-            onClick={onSignInClick}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-purple-500 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <span>Sign In with Discord</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          {/* Zone 3: Primary CTA */}
+          <div className="flex items-center shrink-0">
+            <button
+              onClick={onSignInClick}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 border border-white/15 smooth-transition cursor-pointer whitespace-nowrap shrink-0 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <span>Sign In with Discord</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <main className="flex-1 relative z-10 max-w-6xl mx-auto px-5 py-12 sm:py-20 w-full space-y-16">
-        <div className="text-center space-y-6 max-w-3xl mx-auto">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-950/60 border border-purple-500/40 text-xs text-purple-200 font-semibold shadow-md shadow-purple-950">
-            <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-            <span>Next-Gen Script Security & Access Licensing</span>
+      <main className="flex-1 relative z-10 max-w-6xl mx-auto px-5 sm:px-6 pt-10 pb-20 sm:pt-14 sm:pb-24 w-full space-y-20">
+        {/* 2-Column Hero */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch animate-fade-slide-up">
+          {/* Left Copy Column */}
+          <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-purple-300 tracking-wide">
+              <Snowflake className="w-4 h-4 text-slate-200 shrink-0" />
+              <span>Winter Season · Lua &amp; Luau Script Security</span>
+            </div>
+
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.35rem] font-extrabold text-white tracking-tight leading-[1.08] text-balance font-display">
+              Defend and License{' '}
+              <span className="bg-gradient-to-r from-slate-100 via-purple-300 to-purple-400 bg-clip-text text-transparent">
+                Your Roblox Scripts
+              </span>
+            </h1>
+
+            <p className="text-sm sm:text-base text-slate-300/90 leading-relaxed max-w-xl">
+              Protect raw Lua and Luau code with multi-layer execution barriers, bind licenses to
+              hardware IDs, and automate key redemptions 24/7 through the RONIGUARD Discord bot.
+            </p>
+
+            {/* Primary & Secondary CTAs */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                onClick={onSignInClick}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-white text-[#090414] hover:bg-slate-200 font-extrabold text-sm shadow-xl shadow-purple-950/40 smooth-transition cursor-pointer whitespace-nowrap hover:-translate-y-0.5 active:translate-y-0"
+              >
+                <span>Open Dashboard</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <a
+                href={botInviteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-slate-200/15 text-slate-200 text-sm font-semibold smooth-transition whitespace-nowrap"
+              >
+                <Bot className="w-4 h-4 text-purple-300" />
+                <span>Invite Bot</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+              </a>
+            </div>
+
+            {/* Clean Inline Metadata Strip (zero pills, zero decorative dots) */}
+            <div className="pt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400">
+              <span>{botConnected ? 'Bot 24/7 Online' : 'Bot Standby'}</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span>HTTP 403 Browser Shield</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span>Lifetime Keys &amp; HWID Lock</span>
+              {onToggleSnow && (
+                <>
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  <button
+                    type="button"
+                    onClick={onToggleSnow}
+                    className="inline-flex items-center gap-1.5 text-slate-300 hover:text-white smooth-transition cursor-pointer"
+                  >
+                    <Snowflake className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Snow: {snowEnabled ? 'On' : 'Off'}</span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Main Title */}
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight leading-[1.1] drop-shadow-sm">
-            Monetize & Defend Your <br />
-            <span className="bg-gradient-to-r from-purple-300 via-purple-400 to-indigo-300 bg-clip-text text-transparent">
-              Lua & Roblox Scripts
-            </span>
-          </h1>
+          {/* Right Crest Showcase Frame */}
+          <div className="lg:col-span-5 flex">
+            <div className="frost-surface rounded-3xl p-5 sm:p-6 w-full flex flex-col justify-between relative overflow-hidden shadow-2xl shadow-purple-950/50 smooth-transition">
+              {/* Subtle frost rim highlight */}
+              <div className="absolute top-0 inset-x-6 h-px bg-gradient-to-r from-transparent via-slate-200/40 to-transparent" />
 
-          {/* Subtitle */}
-          <p className="text-sm sm:text-base text-neutral-300 leading-relaxed max-w-2xl mx-auto">
-            RoniGuard delivers enterprise-grade script protection, hardware-locked (HWID) licensing, automated 24/7 Discord bot integration, and an anti-leak browser shield for Roblox developers.
-          </p>
+              <div className="relative rounded-2xl overflow-hidden bg-[#05020a] border border-white/10 aspect-square flex items-center justify-center">
+                <img
+                  src={RONIGUARD_LOGO_SRC}
+                  alt="RONIGUARD Crest"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover object-center select-none"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#06030c] via-transparent to-transparent opacity-70" />
+              </div>
 
-          {/* Action CTAs */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={onSignInClick}
-              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm shadow-xl shadow-purple-950 flex items-center justify-center gap-2 transition-all cursor-pointer hover:scale-[1.02]"
+              <div className="mt-4 pt-3.5 border-t border-white/10 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-slate-300 font-medium">
+                  <ShieldCheck className="w-4 h-4 text-purple-300 shrink-0" />
+                  <span className="truncate">roniguard-dfwh.onrender.com</span>
+                </div>
+                <span className="font-mono text-[11px] text-purple-300 tabular-nums shrink-0">
+                  403 Guard Active
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Interactive Live Workflow Section */}
+        <section id="workflow" className="space-y-6 scroll-mt-24">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-purple-300 tracking-wide">
+                Live Architecture Preview
+              </p>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-display">
+                Built for Executors and Discord Servers
+              </h2>
+            </div>
+
+            {/* Interactive Tab Switcher */}
+            <div className="inline-flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/10">
+              <button
+                type="button"
+                onClick={() => setActiveTab('loadstring')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold smooth-transition cursor-pointer whitespace-nowrap ${
+                  activeTab === 'loadstring'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                Executor Loadstring
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('discord')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold smooth-transition cursor-pointer whitespace-nowrap ${
+                  activeTab === 'discord'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                Discord /panelsetup
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('shield')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold smooth-transition cursor-pointer whitespace-nowrap ${
+                  activeTab === 'shield'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                403 Browser Shield
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Tab Viewport */}
+          <div className="frost-surface rounded-3xl p-6 sm:p-8 shadow-xl shadow-purple-950/30">
+            {activeTab === 'loadstring' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center animate-view-enter">
+                <div className="lg:col-span-5 space-y-3">
+                  <div className="flex items-center gap-2 text-purple-300 text-xs font-semibold">
+                    <Terminal className="w-4 h-4" />
+                    <span>Zero-Leak Remote Loader</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-white font-display">
+                    One Clean Loadstring per Script
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                    Your users paste one lightweight loadstring with their license key or your
+                    account Master Key. Raw script source never touches public URLs.
+                  </p>
+                </div>
+
+                <div className="lg:col-span-7 bg-[#05020a] border border-white/10 rounded-2xl p-4 sm:p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span className="font-mono">executor_loader.lua</span>
+                    <button
+                      type="button"
+                      onClick={handleCopySnippet}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 font-medium smooth-transition cursor-pointer"
+                    >
+                      {copiedSnippet ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-purple-300" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <pre className="text-xs sm:text-[13px] font-mono text-purple-200 overflow-x-auto leading-relaxed">
+                    <code>{demoLoadstring}</code>
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'discord' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center animate-view-enter">
+                <div className="lg:col-span-5 space-y-3">
+                  <div className="flex items-center gap-2 text-purple-300 text-xs font-semibold">
+                    <Bot className="w-4 h-4" />
+                    <span>Validated Panel Automation</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-white font-display">
+                    Permanent User Licensing in Discord
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                    Run <code className="text-purple-300">/panelsetup</code> with a real Panel ID
+                    from your dashboard. Once a member redeems a key, their license persists until
+                    you remove it.
+                  </p>
+                </div>
+
+                <div className="lg:col-span-7 bg-[#0b0714] border border-purple-500/25 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <BrandLogo size="xs" />
+                      <span className="text-sm font-bold text-white">RONIGUARD Control Panel</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400">/panelsetup</span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed min-h-[2.25rem]">
+                    {discordActionPreview}
+                  </p>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDiscordActionPreview(
+                          'Redeem Key: License bound permanently to your Discord ID until revoked by the owner.'
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold smooth-transition cursor-pointer"
+                    >
+                      Redeem Key
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDiscordActionPreview(
+                          'Get Script: Personal executor loadstring delivered privately via ephemeral Discord reply.'
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-semibold smooth-transition cursor-pointer"
+                    >
+                      Get Script
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDiscordActionPreview(
+                          'Reset HWID: Hardware lock cleared so you can launch on your new PC.'
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold smooth-transition cursor-pointer"
+                    >
+                      Reset HWID
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'shield' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center animate-view-enter">
+                <div className="lg:col-span-5 space-y-3">
+                  <div className="flex items-center gap-2 text-purple-300 text-xs font-semibold">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>Direct Visit Interception</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-white font-display">
+                    Browsers Hit HTTP 403 Instantly
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                    Anyone opening your loader URL in Chrome, Safari, or cURL gets stopped by the
+                    403 sentinel page—never your Luau source.
+                  </p>
+                </div>
+
+                <div className="lg:col-span-7 bg-[#05020a] border border-red-500/25 rounded-2xl p-5 flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-mono text-red-400 uppercase tracking-wider">
+                      HTTP 403 · Browser Request Blocked
+                    </span>
+                    <h4 className="text-base font-bold text-white">ACCESS UNAUTHORIZED</h4>
+                    <p className="text-xs text-slate-400">
+                      Source payload stays locked inside your private tenant vault unless invoked by
+                      an authorized executor with a valid key.
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-red-950/50 border border-red-500/30 flex items-center justify-center shrink-0">
+                    <ShieldAlert className="w-6 h-6 text-red-400" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Asymmetric 12-Column Bento Capabilities */}
+        <section id="features" className="space-y-6 scroll-mt-24">
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-purple-300 tracking-wide">Core Defense</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-display">
+              Everything Required to Protect &amp; Distribute
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Wide Card 1 */}
+            <div className="lg:col-span-7 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition">
+              <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-purple-300">
+                <Cpu className="w-5 h-5" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-white font-display">
+                  Multi-Layer Lua &amp; Luau Protection
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                  Secures Roblox globals, services, and string literals without breaking runtime
+                  behavior—keeping legitimate execution crisp while blocking reverse engineering.
+                </p>
+              </div>
+            </div>
+
+            {/* Narrow Card 2 */}
+            <div className="lg:col-span-5 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition">
+              <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-slate-200">
+                <UserCheck className="w-5 h-5" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-white font-display">
+                  HWID Locking &amp; Lifetime Access
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                  Bind keys to a single hardware signature and keep redeemed Discord licenses valid
+                  until you revoke or blacklist them.
+                </p>
+              </div>
+            </div>
+
+            {/* Narrow Card 3 */}
+            <div
+              id="security"
+              className="lg:col-span-5 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition scroll-mt-24"
             >
-              <span>Get Started with Dashboard</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-purple-300">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-white font-display">
+                  Unified Account Master Key
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                  One master key authorizes your entire developer vault—no juggling separate script
+                  tokens. Rotate it anytime from Account Settings.
+                </p>
+              </div>
+            </div>
 
-            <a
-              href={botInviteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-200 text-sm font-semibold flex items-center justify-center gap-2 transition-all"
-            >
-              <Bot className="w-4 h-4 text-purple-400" />
-              <span>Invite Discord Bot (@RONIGUARD)</span>
-              <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-            </a>
+            {/* Wide Card 4 */}
+            <div className="lg:col-span-7 frost-surface rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5 smooth-transition">
+              <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-400/25 flex items-center justify-center text-indigo-300">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-white font-display">
+                  Isolated Vaults &amp; 24/7 Discord Commands
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                  Every account gets private panels, scripts, and audit logs. Manage access from the
+                  web or directly in Discord with{' '}
+                  <code className="text-purple-300">/panelsetup</code>,{' '}
+                  <code className="text-purple-300">/whitelist</code>,{' '}
+                  <code className="text-purple-300">/redeem</code>, and{' '}
+                  <code className="text-purple-300">/reset</code>.
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        {/* Live Status Overview Banner */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 rounded-2xl bg-gradient-to-r from-[#140b29]/80 via-[#0e071e]/90 to-[#120926]/80 border border-white/10 backdrop-blur-xl shadow-xl">
-          <div className="p-3 text-center sm:text-left">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Discord Gateway</span>
-            <div className="text-sm font-extrabold text-emerald-400 flex items-center justify-center sm:justify-start gap-1.5 mt-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>24/7 Connected</span>
+        {/* Final Conversion CTA */}
+        <section id="access" className="scroll-mt-24">
+          <div className="frost-surface rounded-3xl p-8 sm:p-10 text-center space-y-5 relative overflow-hidden">
+            <div className="absolute top-0 inset-x-10 h-px bg-gradient-to-r from-transparent via-slate-200/40 to-transparent" />
+            <div className="flex justify-center">
+              <BrandLogo size="md" />
+            </div>
+            <div className="space-y-2 max-w-lg mx-auto">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-display">
+                Ready to Protect Your Scripts?
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
+                Sign in with Discord to create your first panel, deploy obfuscated scripts, and
+                share instant loadstrings.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+              <button
+                onClick={onSignInClick}
+                className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-white text-[#090414] hover:bg-slate-200 font-extrabold text-xs sm:text-sm shadow-xl smooth-transition cursor-pointer"
+              >
+                <span>Sign In with Discord</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <a
+                href={botInviteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs sm:text-sm font-semibold smooth-transition"
+              >
+                <Lock className="w-3.5 h-3.5 text-purple-300" />
+                <span>Add Bot to Server</span>
+              </a>
             </div>
           </div>
-          <div className="p-3 text-center sm:text-left">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Anti-Leak Shield</span>
-            <div className="text-sm font-extrabold text-purple-300 flex items-center justify-center sm:justify-start gap-1.5 mt-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
-              <span>Active (403 Block)</span>
-            </div>
-          </div>
-          <div className="p-3 text-center sm:text-left">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Script Security</span>
-            <div className="text-sm font-extrabold text-white flex items-center justify-center sm:justify-start gap-1.5 mt-1">
-              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Proprietary Shield</span>
-            </div>
-          </div>
-          <div className="p-3 text-center sm:text-left">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Master Licensing</span>
-            <div className="text-sm font-extrabold text-emerald-300 flex items-center justify-center sm:justify-start gap-1.5 mt-1">
-              <Lock className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Account-Level Unified</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Feature Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Card 1 */}
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-[#140b28]/70 to-[#0a0417]/80 border border-white/10 hover:border-purple-500/40 transition-all shadow-lg space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-purple-400">
-              <Cpu className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white">Proprietary Code Security</h3>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              Shields your intellectual property with multi-layered execution barriers and runtime integrity protection to prevent decompilation and unauthorized modifications.
-            </p>
-          </div>
-
-          {/* Card 2 */}
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-[#140b28]/70 to-[#0a0417]/80 border border-white/10 hover:border-purple-500/40 transition-all shadow-lg space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-emerald-400">
-              <UserCheck className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white">Hardware-Locked HWID Security</h3>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              Enforce cryptographic device fingerprinting to prevent script leaking and unauthorized sharing across unauthorized players.
-            </p>
-          </div>
-
-          {/* Card 3 */}
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-[#140b28]/70 to-[#0a0417]/80 border border-white/10 hover:border-purple-500/40 transition-all shadow-lg space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-indigo-400">
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white">Anti-Leak Browser Shield</h3>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              Direct web browser visits to script loaders are automatically intercepted with HTTP 403 "ACCESS UNAUTHORIZED", protecting your intellectual property.
-            </p>
-          </div>
-
-          {/* Card 4 */}
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-[#140b28]/70 to-[#0a0417]/80 border border-white/10 hover:border-purple-500/40 transition-all shadow-lg space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-purple-400">
-              <Bot className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white">24/7 Discord Bot Integration</h3>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              Built-in Discord bot (@RONIGUARD#9989) with real-time slash commands (`/getkey`, `/whitelist`, `/redeem`, `/reset`, `/status`) for seamless server management.
-            </p>
-          </div>
-
-          {/* Card 5 */}
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-[#140b28]/70 to-[#0a0417]/80 border border-white/10 hover:border-purple-500/40 transition-all shadow-lg space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-amber-400">
-              <Lock className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white">Centralized Account Master Keys</h3>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              One master API key for your entire account authorizes all your scripts without messy per-script key clutter, resettable directly from your profile.
-            </p>
-          </div>
-
-          {/* Card 6 */}
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-[#140b28]/70 to-[#0a0417]/80 border border-white/10 hover:border-purple-500/40 transition-all shadow-lg space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center text-rose-400">
-              <Layers className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-white">Multi-Tenant Vault Isolation</h3>
-            <p className="text-xs text-neutral-400 leading-relaxed">
-              Every developer account has its own isolated tenant vault. Your panels, scripts, and logs are completely private and never accessible to others.
-            </p>
-          </div>
-        </div>
-
-        {/* Ready to start CTA Banner */}
-        <div className="relative overflow-hidden rounded-2xl p-8 bg-gradient-to-r from-purple-950/90 via-indigo-950 to-purple-950/90 border border-purple-500/40 text-center space-y-4">
-          <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-purple-300 to-transparent" />
-          <h2 className="text-2xl font-black text-white">Ready to Protect Your Scripts?</h2>
-          <p className="text-xs text-purple-200/80 max-w-lg mx-auto">
-            Log in instantly with your Discord account to create panels, obfuscate code, and generate Roblox loaders.
-          </p>
-          <div className="pt-2">
-            <button
-              onClick={onSignInClick}
-              className="px-8 py-3 rounded-xl bg-white text-purple-950 hover:bg-neutral-100 font-extrabold text-xs shadow-xl transition-all cursor-pointer"
-            >
-              Sign In with Discord
-            </button>
-          </div>
-        </div>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 py-6 px-6 text-center text-xs text-neutral-500">
-        <p>© 2026 RONIGUARD Platform. All rights reserved. Built for Lua & Luau developers.</p>
+      {/* Quiet Footer */}
+      <footer className="relative z-10 border-t border-white/10 py-6 px-6 text-center text-xs text-slate-500">
+        <p>© 2026 RONIGUARD · Lua &amp; Luau Script Protection Platform</p>
       </footer>
     </div>
   );
