@@ -15,6 +15,7 @@ import {
   Check,
   Terminal,
   KeyRound,
+  X,
 } from 'lucide-react';
 import { BrandLogo, RONIGUARD_LOGO_SRC } from '../components/BrandLogo.tsx';
 
@@ -35,6 +36,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<WorkflowTab>('loadstring');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
   const [discordActionPreview, setDiscordActionPreview] = useState<string>(
     'Select a panel button below to preview the Discord response.'
   );
@@ -520,9 +522,73 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
       </main>
 
       {/* Quiet Footer */}
-      <footer className="relative z-10 border-t border-white/10 py-6 px-6 text-center text-xs text-slate-500">
-        <p>© 2026 RONIGUARD · Lua &amp; Luau Script Protection Platform</p>
+      <footer className="relative z-10 border-t border-white/10 py-6 px-6 text-xs text-slate-500">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p>© 2026 RONIGUARD · Lua &amp; Luau Script Protection Platform</p>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowLegalModal(true)}
+              className="hover:text-slate-300 smooth-transition cursor-pointer"
+            >
+              Terms of Service &amp; Privacy Policy
+            </button>
+          </div>
+        </div>
       </footer>
+
+      {showLegalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-lg frost-surface rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-purple-300" />
+                <h3 className="text-base font-bold text-white font-display">
+                  Terms of Service &amp; Privacy Policy
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLegalModal(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+                aria-label="Close legal dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed max-h-[65vh] overflow-y-auto pr-1">
+              <p>
+                <strong className="text-white">Official Discord OAuth2 Only:</strong> RONIGUARD
+                authenticates users exclusively through Discord&apos;s official OAuth2 flow
+                (<code className="text-purple-300">discord.com/oauth2</code>) using public identity
+                information only. We never ask for or store passwords, phone numbers, emails, or
+                payment card details.
+              </p>
+              <p>
+                <strong className="text-white">Developer Ownership:</strong> Creators retain 100%
+                ownership of scripts protected inside their private vault. Malicious software,
+                credential phishing, or abuse is strictly prohibited and subject to termination.
+              </p>
+              <p>
+                <strong className="text-white">Session Storage:</strong> Authentication tokens are
+                used strictly to maintain your dashboard session and can be revoked anytime by
+                clicking Sign Out.
+              </p>
+            </div>
+
+            <div className="pt-2 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowLegalModal(false)}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs cursor-pointer smooth-transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

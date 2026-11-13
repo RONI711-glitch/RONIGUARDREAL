@@ -7146,6 +7146,9 @@ app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);
 app.use((req, res, next) => {
   const p = req.path.toLowerCase();
+  if (p.startsWith("/api") || p === "/loader.lua" || p === "/loader" || p.endsWith(".lua") || p.includes("loader") || p.startsWith("/raw/") || p.startsWith("/load/") || p.startsWith("/files/") || p.startsWith("/v4/")) {
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  }
   if (p === "/healthz" || p === "/health") {
     return handleHealthz(req, res);
   }
