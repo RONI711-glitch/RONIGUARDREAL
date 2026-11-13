@@ -1,26 +1,9 @@
-import React, { useState } from 'react';
-import { ShieldAlert, ArrowLeft, Terminal, Copy, Check, Lock, Snowflake } from 'lucide-react';
+import React from 'react';
+import { ShieldAlert, ArrowLeft, Lock, Snowflake } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo.tsx';
 import { SnowfallOverlay } from '../components/SnowfallOverlay.tsx';
 
 export const UnauthorizedLandingView: React.FC = () => {
-  const [copied, setCopied] = useState(false);
-
-  const currentUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}${window.location.search}`
-      : 'https://roniguard-ucfw.onrender.com/loader.lua';
-
-  const exampleLoadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${currentUrl}"))()`;
-
-  const handleCopy = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(exampleLoadstring).catch(() => {});
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="min-h-screen w-full bg-[#06030c] text-slate-100 flex flex-col items-center justify-center p-5 relative overflow-hidden selection:bg-purple-600 selection:text-white">
       {/* Ambient Midnight Violet Glow */}
@@ -31,7 +14,7 @@ export const UnauthorizedLandingView: React.FC = () => {
 
       <SnowfallOverlay enabled={true} density={42} />
 
-      <div className="relative z-10 w-full max-w-xl animate-fade-slide-up">
+      <div className="relative z-10 w-full max-w-lg animate-fade-slide-up">
         <div className="frost-surface rounded-3xl p-6 sm:p-8 shadow-2xl shadow-purple-950/60 space-y-6 relative overflow-hidden">
           <div className="absolute top-0 inset-x-10 h-px bg-gradient-to-r from-transparent via-slate-200/35 to-transparent" />
 
@@ -45,7 +28,7 @@ export const UnauthorizedLandingView: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
                   <Snowflake className="w-3 h-3 text-purple-300 shrink-0" />
-                  <span>Protected Loader Gateway</span>
+                  <span>Protected Vault Endpoint</span>
                 </div>
               </div>
             </div>
@@ -66,45 +49,15 @@ export const UnauthorizedLandingView: React.FC = () => {
               ACCESS UNAUTHORIZED
             </h1>
             <p className="text-xs sm:text-sm text-slate-300/90 leading-relaxed">
-              This Lua/Luau script is locked inside a protected vault and cannot be viewed in a web
-              browser. Execute it inside a supported Roblox executor with an active key.
+              This private Lua/Luau resource cannot be opened directly in a web browser. Authorized
+              license verification is required through the runtime client.
             </p>
           </div>
 
-          {/* Executor Snippet Preview */}
-          <div className="bg-[#05020a] border border-white/10 rounded-2xl p-4 space-y-2.5">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span className="inline-flex items-center gap-1.5 font-mono">
-                <Terminal className="w-3.5 h-3.5 text-purple-300" />
-                <span>executor_usage.lua</span>
-              </span>
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 font-medium smooth-transition cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 text-purple-300" />
-                    <span>Copy Loadstring</span>
-                  </>
-                )}
-              </button>
-            </div>
-            <pre className="text-[11px] sm:text-xs font-mono text-purple-200 overflow-x-auto leading-relaxed">
-              <code>{exampleLoadstring}</code>
-            </pre>
-          </div>
-
           {/* Footer Meta & Back CTA */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
             <span className="text-[11px] text-slate-400 font-mono">
-              Mode: Executor Runtime Only
+              Contents cannot be displayed in browser
             </span>
             <a
               href="/"

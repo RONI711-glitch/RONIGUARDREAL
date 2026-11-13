@@ -44,7 +44,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
   const botInviteUrl =
     'https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands';
 
-  const demoLoadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("https://roniguard-ucfw.onrender.com/loader.lua?script=demo"))()`;
+  const demoLoadstring = `-- Protected Lua Module Access Check\nlocal License = require("roniguard").verify({\n  project = "winter-hub",\n  mode = "hwid-bound"\n})`;
 
   const handleCopySnippet = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -256,20 +256,20 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                 <div className="lg:col-span-5 space-y-3">
                   <div className="flex items-center gap-2 text-purple-300 text-xs font-semibold">
                     <Terminal className="w-4 h-4" />
-                    <span>Zero-Leak Remote Loader</span>
+                    <span>Zero-Leak Script Vault</span>
                   </div>
                   <h3 className="text-xl font-bold text-white font-display">
-                    One Clean Loadstring per Script
+                    Signed Access Per Script
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
-                    Your users paste one lightweight loadstring with their license key or your
-                    account Master Key. Raw script source never touches public URLs.
+                    Authorized users run your protected module with their license key or your
+                    account Master Key while raw source stays locked inside your private vault.
                   </p>
                 </div>
 
                 <div className="lg:col-span-7 bg-[#05020a] border border-white/10 rounded-2xl p-4 sm:p-5 space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span className="font-mono">executor_loader.lua</span>
+                    <span className="font-mono">verify_access.lua</span>
                     <button
                       type="button"
                       onClick={handleCopySnippet}

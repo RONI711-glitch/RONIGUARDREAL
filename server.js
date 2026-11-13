@@ -5673,7 +5673,6 @@ function escapeHtmlText(input) {
 function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "latest") {
   const safeFile = escapeHtmlText(filename.slice(0, 64));
   const safeId = escapeHtmlText(resourceId.slice(0, 48));
-  const loaderUrl = safeId && safeId !== "latest" ? `https://roniguard-ucfw.onrender.com/loader.lua?script=${encodeURIComponent(resourceId.slice(0, 48))}` : `https://roniguard-ucfw.onrender.com/loader.lua`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5738,7 +5737,7 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
     }
     .card {
       width: 100%;
-      max-width: 580px;
+      max-width: 540px;
       background: linear-gradient(160deg, rgba(22, 13, 42, 0.78) 0%, rgba(10, 6, 20, 0.92) 100%);
       backdrop-filter: blur(22px);
       -webkit-backdrop-filter: blur(22px);
@@ -5865,46 +5864,10 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .code-box {
-      margin-top: 16px;
-      background: #05020a;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 14px;
-      padding: 14px;
-    }
-    .code-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.72rem;
-      color: #94a3b8;
-    }
-    .copy-btn {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #e2e8f0;
-      border-radius: 8px;
-      padding: 4px 10px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.16s ease, border-color 0.16s ease;
-    }
-    .copy-btn:hover {
-      background: rgba(168, 85, 247, 0.2);
-      border-color: rgba(192, 132, 252, 0.4);
-    }
-    pre {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.76rem;
-      line-height: 1.55;
-      color: #d8b4fe;
-      overflow-x: auto;
-    }
     .actions {
-      margin-top: 20px;
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -5957,7 +5920,7 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
           </div>
           <div>
             <div class="brand-name">RONI<span>GUARD</span></div>
-            <div class="brand-sub">Protected Loader Gateway</div>
+            <div class="brand-sub">Protected Vault Gateway</div>
           </div>
         </div>
         <div class="status-chip">HTTP 403 \xB7 BLOCKED</div>
@@ -5967,7 +5930,7 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
         <div class="kicker">Browser Shield Active</div>
         <h1>ACCESS UNAUTHORIZED</h1>
         <p class="desc">
-          Direct browser access to protected Lua/Luau script payloads is blocked. Launch this loader inside an authorized Roblox executor with a valid key.
+          Direct browser access to protected Lua/Luau vault contents is blocked. Valid runtime license authorization is required.
         </p>
       </div>
 
@@ -5977,22 +5940,13 @@ function renderUnauthorizedHtml(filename = "Protected Script", resourceId = "lat
           <div class="meta-val">${safeFile}</div>
         </div>
         <div class="meta-item">
-          <div class="meta-label">Script Identifier</div>
+          <div class="meta-label">Resource ID</div>
           <div class="meta-val">${safeId}</div>
         </div>
       </div>
 
-      <div class="code-box">
-        <div class="code-head">
-          <span>executor_loader.lua</span>
-          <button type="button" class="copy-btn" id="copyBtn">Copy Example</button>
-        </div>
-        <pre><code id="snippet">Script_key = "YOUR_LICENSE_KEY"
-loadstring(game:HttpGet("${loaderUrl}"))()</code></pre>
-      </div>
-
       <div class="actions">
-        <span class="note">Delivery: Roblox Executor Runtime Only</span>
+        <span class="note">Contents cannot be displayed in browser</span>
         <a href="/" class="home-btn">\u2190 Open RONIGUARD</a>
       </div>
     </section>
@@ -6000,17 +5954,6 @@ loadstring(game:HttpGet("${loaderUrl}"))()</code></pre>
 
   <script>
     (function () {
-      var btn = document.getElementById('copyBtn');
-      var code = document.getElementById('snippet');
-      if (btn && code && navigator.clipboard) {
-        btn.addEventListener('click', function () {
-          navigator.clipboard.writeText(code.textContent || '').then(function () {
-            btn.textContent = 'Copied';
-            setTimeout(function () { btn.textContent = 'Copy Example'; }, 1800);
-          }).catch(function () {});
-        });
-      }
-
       if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       var canvas = document.getElementById('snow');
       if (!canvas) return;
