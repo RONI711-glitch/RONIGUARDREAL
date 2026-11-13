@@ -1,22 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { api, getStoredToken, clearStoredToken } from './api.ts';
 import { SectionId, Sidebar } from './components/Sidebar.tsx';
 import { Header } from './components/Header.tsx';
 import { ToastContainer, ToastMessage } from './components/Toast.tsx';
-import { LoginView } from './views/LoginView.tsx';
 import { UserProfile } from './types.ts';
-
-// 5 Core Views
-import { OverviewView } from './views/OverviewView.tsx';
-import { PanelsView } from './views/PanelsView.tsx';
-import { ScriptsView } from './views/ScriptsView.tsx';
-import { LicensesView } from './views/LicensesView.tsx';
-import { AccountView } from './views/AccountView.tsx';
-import { AntiTamperView } from './views/AntiTamperView.tsx';
 import { UnauthorizedLandingView } from './views/UnauthorizedLandingView.tsx';
 import { PublicLandingView } from './views/PublicLandingView.tsx';
-import { CosmicAudioPlayer } from './components/CosmicAudioPlayer.tsx';
 import { SnowfallOverlay } from './components/SnowfallOverlay.tsx';
+
+const LoginView = lazy(() => import('./views/LoginView.tsx').then((m) => ({ default: m.LoginView })));
+const OverviewView = lazy(() => import('./views/OverviewView.tsx').then((m) => ({ default: m.OverviewView })));
+const PanelsView = lazy(() => import('./views/PanelsView.tsx').then((m) => ({ default: m.PanelsView })));
+const ScriptsView = lazy(() => import('./views/ScriptsView.tsx').then((m) => ({ default: m.ScriptsView })));
+const LicensesView = lazy(() => import('./views/LicensesView.tsx').then((m) => ({ default: m.LicensesView })));
+const AccountView = lazy(() => import('./views/AccountView.tsx').then((m) => ({ default: m.AccountView })));
+const AntiTamperView = lazy(() => import('./views/AntiTamperView.tsx').then((m) => ({ default: m.AntiTamperView })));
+const CosmicAudioPlayer = lazy(() => import('./components/CosmicAudioPlayer.tsx').then((m) => ({ default: m.CosmicAudioPlayer })));
 
 export default function App() {
   const isLoadstringRoute =
@@ -197,15 +196,23 @@ export default function App() {
     return (
       <>
         <SnowfallOverlay enabled={snowEnabled} density={40} />
-        <LoginView
-          onBackToHome={() => setShowLoginView(false)}
-          onLoginSuccess={(user) => {
-            setCurrentUser(user);
-            setIsAuthenticated(true);
-            showToast('success', 'Authenticated', `Welcome back, @${user.username || 'Developer'}`);
-            refreshTelemetry();
-          }}
-        />
+        <Suspense
+          fallback={
+            <div className="min-h-screen bg-[#06030c] flex items-center justify-center">
+              <div className="w-8 h-8 border-2 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+            </div>
+          }
+        >
+          <LoginView
+            onBackToHome={() => setShowLoginView(false)}
+            onLoginSuccess={(user) => {
+              setCurrentUser(user);
+              setIsAuthenticated(true);
+              showToast('success', 'Authenticated', `Welcome back, @${user.username || 'Developer'}`);
+              refreshTelemetry();
+            }}
+          />
+        </Suspense>
         <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
       </>
     );
@@ -272,33 +279,43 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full relative z-10">
-          <div key={activeSection} className="animate-view-enter">
-            {activeSection === 'overview' && (
-              <OverviewView
-                onNavigate={(sec) => {
-                  setActiveSection(sec);
-                  refreshTelemetry();
-                }}
-              />
-            )}
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center min-h-[320px]">
+                <div className="w-8 h-8 border-2 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+              </div>
+            }
+          >
+            <div key={activeSection} className="animate-view-enter">
+              {activeSection === 'overview' && (
+                <OverviewView
+                  onNavigate={(sec) => {
+                    setActiveSection(sec);
+                    refreshTelemetry();
+                  }}
+                />
+              )}
 
-            {activeSection === 'panels' && <PanelsView onShowToast={showToast} />}
+              {activeSection === 'panels' && <PanelsView onShowToast={showToast} />}
 
-            {activeSection === 'scripts' && <ScriptsView onShowToast={showToast} />}
+              {activeSection === 'scripts' && <ScriptsView onShowToast={showToast} />}
 
-            {activeSection === 'licenses' && <LicensesView onShowToast={showToast} />}
+              {activeSection === 'licenses' && <LicensesView onShowToast={showToast} />}
 
-            {activeSection === 'anti-tamper' && <AntiTamperView onShowToast={showToast} />}
+              {activeSection === 'anti-tamper' && <AntiTamperView onShowToast={showToast} />}
 
-            {activeSection === 'account' && (
-              <AccountView onLogout={handleLogout} onShowToast={showToast} />
-            )}
-          </div>
+              {activeSection === 'account' && (
+                <AccountView onLogout={handleLogout} onShowToast={showToast} />
+              )}
+            </div>
+          </Suspense>
         </main>
       </div>
 
       {/* Floating Cosmic Audio Synthesizer */}
-      <CosmicAudioPlayer />
+      <Suspense fallback={null}>
+        <CosmicAudioPlayer />
+      </Suspense>
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
