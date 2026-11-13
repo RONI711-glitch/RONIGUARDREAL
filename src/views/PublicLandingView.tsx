@@ -44,7 +44,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
   const botInviteUrl =
     'https://discord.com/oauth2/authorize?client_id=1549804529778692237&permissions=8&scope=bot%20applications.commands';
 
-  const demoLoadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("https://roniguard-dfwh.onrender.com/loader.lua?script=demo"))()`;
+  const demoLoadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("https://roniguard-ucfw.onrender.com/loader.lua?script=demo"))()`;
 
   const handleCopySnippet = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -189,7 +189,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
               <div className="mt-4 pt-3.5 border-t border-white/10 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 text-slate-300 font-medium">
                   <ShieldCheck className="w-4 h-4 text-purple-300 shrink-0" />
-                  <span className="truncate">roniguard-dfwh.onrender.com</span>
+                  <span className="truncate">roniguard-ucfw.onrender.com</span>
                 </div>
                 <span className="font-mono text-[11px] text-purple-300 tabular-nums shrink-0">
                   403 Guard Active

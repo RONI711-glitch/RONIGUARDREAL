@@ -45,7 +45,7 @@ const getAppHost = () => {
   if (typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1')) {
     return window.location.origin;
   }
-  return 'https://roniguard-dfwh.onrender.com';
+  return 'https://roniguard-ucfw.onrender.com';
 };
 
 const buildLoadstring = (scriptId: string, key: string = 'YOUR_LICENSE_KEY') => {

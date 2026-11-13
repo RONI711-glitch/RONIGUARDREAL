@@ -9,7 +9,7 @@ export const UnauthorizedLandingView: React.FC = () => {
   const currentUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}${window.location.pathname}${window.location.search}`
-      : 'https://roniguard-dfwh.onrender.com/loader.lua';
+      : 'https://roniguard-ucfw.onrender.com/loader.lua';
 
   const exampleLoadstring = `Script_key = "YOUR_LICENSE_KEY"\nloadstring(game:HttpGet("${currentUrl}"))()`;
 

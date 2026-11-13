@@ -489,7 +489,7 @@ export function runRoniguardMaxClient(sourceCode: string, options: ClientObfusca
   RONIGUARD MAX — ULTRA-HIGH INTEGRITY LUAU PROTECTOR
   Target Identity: ${watermark}
   Engine: 54-Opcode Register Virtual Machine (Base-85 Bytecode)
-  Protected Host: https://roniguard-dfwh.onrender.com
+  Protected Host: https://roniguard-ucfw.onrender.com
   =============================================================
 --]]
 do
@@ -518,7 +518,7 @@ export function formatNonObfuscatedClient(sourceCode: string): string {
 --[[
   =============================================================
   RONIGUARD SCRIPT RUNTIME (Standard Non-Obfuscated Mode)
-  Host: https://roniguard-dfwh.onrender.com
+  Host: https://roniguard-ucfw.onrender.com
   =============================================================
 --]]
 `.trim();
