@@ -21,13 +21,26 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (process.env.NODE_ENV === 'production' ? 8080 : 3000);
+
+// Standard HTTP security headers (Safe Browsing & transport hygiene)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
+  next();
+});
 
 // Body parsing with large limit for script uploads
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// Trust reverse proxies for IP detection (e.g. Cloud Run, Wasmer Edge)
+// Trust reverse proxies for IP detection (e.g. Cloud Run, Render, Wasmer Edge)
 app.set('trust proxy', 1);
 
 // Top-level loader & V4 handshake interception: catches any requests before static/Vite middlewares

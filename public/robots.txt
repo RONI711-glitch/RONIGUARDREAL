@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /loader
+Disallow: /loader.lua
+Disallow: /raw/
+Disallow: /load/
+Disallow: /files/
+Disallow: /v4/

@@ -4331,10 +4331,11 @@ router.get(["/auth/url", "/auth/discord/url", "/oauth/url"], (req, res) => {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: "identify email",
+    scope: "identify",
     state
   });
   const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+  res.setHeader("Cache-Control", "no-store");
   res.setHeader("Set-Cookie", [
     `discord_oauth_state=${state}; ${cookieFlags}`
   ]);
@@ -4350,7 +4351,8 @@ router.get(["/auth/discord/login", "/auth/login", "/oauth/login", "/login/discor
     clientId
   )}&redirect_uri=${encodeURIComponent(
     redirectUri
-  )}&response_type=code&scope=identify%20email&state=${state}`;
+  )}&response_type=code&scope=identify&state=${state}`;
+  res.setHeader("Cache-Control", "no-store");
   res.setHeader("Set-Cookie", [
     `discord_oauth_state=${state}; ${cookieFlags}`
   ]);
@@ -4359,6 +4361,7 @@ router.get(["/auth/discord/login", "/auth/login", "/oauth/login", "/login/discor
 router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/discord/callback", "/callback"], async (req, res) => {
   const { code, error, error_description, state } = req.query;
   const isRedirectMode = typeof state === "string" && state.startsWith("redir_");
+  res.setHeader("Cache-Control", "no-store");
   if (error || !code) {
     const errorMsg = error_description || error || "Discord authorization was cancelled";
     if (isRedirectMode) {
@@ -4370,7 +4373,7 @@ router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/dis
   <body style="background:#07040d;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
     <script>
       if (window.opener) {
-        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(encodeURIComponent(errorMsg))} }, '*');
+        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(encodeURIComponent(errorMsg))} }, window.location.origin);
         window.close();
       } else {
         window.location.replace('/?auth_error=' + encodeURIComponent(${JSON.stringify(errorMsg)}));
@@ -4462,7 +4465,7 @@ router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/dis
           user: ${JSON.stringify({ id: user.id, username: user.username, role: user.role, avatar: user.avatar })}
         };
         if (window.opener) {
-          window.opener.postMessage(payload, '*');
+          window.opener.postMessage(payload, window.location.origin);
           setTimeout(function() { window.close(); }, 200);
         } else {
           window.location.replace('/');
@@ -4483,7 +4486,7 @@ router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/dis
   <body style="background:#07040d;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
     <script>
       if (window.opener) {
-        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(encodeURIComponent(msg))} }, '*');
+        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: ${JSON.stringify(encodeURIComponent(msg))} }, window.location.origin);
         setTimeout(function() { window.close(); }, 400);
       } else {
         window.location.replace('/?auth_error=' + encodeURIComponent(${JSON.stringify(msg)}));
@@ -7126,7 +7129,18 @@ process.on("unhandledRejection", (reason) => {
   console.warn("[RONIGUARD-CRASH-SHIELD] Unhandled Rejection trapped safely:", reason);
 });
 var app = express();
+app.disable("x-powered-by");
 var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : process.env.NODE_ENV === "production" ? 8080 : 3e3;
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  }
+  next();
+});
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 app.set("trust proxy", 1);

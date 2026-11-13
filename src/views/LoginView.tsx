@@ -101,7 +101,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToHo
       if (!authUrl) {
         const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/discord/callback`);
         const statePrefix = isIframe ? 'popup_' : 'redir_';
-        authUrl = `https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=${redirectUri}&response_type=code&scope=identify%20email&state=${statePrefix}${Date.now()}`;
+        authUrl = `https://discord.com/api/oauth2/authorize?client_id=1549804529778692237&redirect_uri=${redirectUri}&response_type=code&scope=identify&state=${statePrefix}${Date.now()}`;
       }
 
       if (!isIframe) {
