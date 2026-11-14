@@ -1252,14 +1252,14 @@ var DiscordBotService = class {
     if (!this.keepAliveInterval) {
       this.keepAliveInterval = setInterval(() => {
         try {
-          const port = process.env.PORT || 3e3;
+          const port = process.env.PORT || 8080;
           fetch(`http://127.0.0.1:${port}/api/health`).catch(() => {
           });
           fetch("https://roniguard.wasmer.app/api/health").catch(() => {
           });
         } catch {
         }
-      }, 12e4);
+      }, 45e3);
     }
     try {
       this.lastStep = "auth_fetching";

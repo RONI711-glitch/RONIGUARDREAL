@@ -120,15 +120,15 @@ class DiscordBotService {
       }, 15000);
     }
 
-    // Start self-ping keep-alive (every 2 minutes) to prevent container throttle/sleep
+    // Start self-ping keep-alive (every 45 seconds) to reduce idle container suspension
     if (!this.keepAliveInterval) {
       this.keepAliveInterval = setInterval(() => {
         try {
-          const port = process.env.PORT || 3000;
+          const port = process.env.PORT || 8080;
           fetch(`http://127.0.0.1:${port}/api/health`).catch(() => {});
           fetch('https://roniguard.wasmer.app/api/health').catch(() => {});
         } catch {}
-      }, 120000);
+      }, 45000);
     }
 
     try {
