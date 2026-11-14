@@ -22,7 +22,10 @@ process.on('unhandledRejection', (reason) => {
 
 const app = express();
 app.disable('x-powered-by');
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (process.env.NODE_ENV === 'production' ? 8080 : 3000);
+const isBundledProd =
+  process.env.NODE_ENV === 'production' ||
+  path.basename(process.argv[1] || '') === 'server.js';
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (isBundledProd ? 8080 : 3000);
 
 // Standard HTTP security headers (Safe Browsing & transport hygiene)
 app.use((_req, res, next) => {
@@ -156,7 +159,9 @@ oauthLoginPaths.forEach((p) => {
 
 // Development vs Production serving
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    path.basename(process.argv[1] || '') === 'server.js';
 
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');

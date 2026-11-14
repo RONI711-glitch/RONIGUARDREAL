@@ -7073,7 +7073,8 @@ process.on("unhandledRejection", (reason) => {
 });
 var app = express();
 app.disable("x-powered-by");
-var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : process.env.NODE_ENV === "production" ? 8080 : 3e3;
+var isBundledProd = process.env.NODE_ENV === "production" || path3.basename(process.argv[1] || "") === "server.js";
+var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : isBundledProd ? 8080 : 3e3;
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -7161,7 +7162,7 @@ oauthLoginPaths.forEach((p) => {
   });
 });
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction = process.env.NODE_ENV === "production" || path3.basename(process.argv[1] || "") === "server.js";
   if (!isProduction) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
