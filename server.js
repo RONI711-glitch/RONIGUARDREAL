@@ -3214,6 +3214,14 @@ var DiscordBotService = class {
     }
     return false;
   }
+  extractPanelId(raw) {
+    const cleaned = (raw || "").trim().replace(/^`+|`+$/g, "");
+    const paramMatch = cleaned.match(/panel_id\s*:\s*([a-zA-Z0-9_-]+)/i);
+    if (paramMatch) return paramMatch[1].trim();
+    const pnlMatch = cleaned.match(/\b(pnl_[a-zA-Z0-9_-]+)\b/i);
+    if (pnlMatch) return pnlMatch[1].trim();
+    return cleaned;
+  }
   async handleInteraction(interaction) {
     if (!this.token) return;
     const { id, token, data, type, guild_id } = interaction;
@@ -3711,7 +3719,7 @@ This server has not linked an active RONIGUARD script license yet.
       }
       const title = (args.name || "").trim();
       const description = (args.description || "").trim();
-      const panelId = (args.panel_id || "").trim();
+      const panelId = this.extractPanelId(args.panel_id || "");
       if (!title || !description || !panelId) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: "POST",
@@ -3835,7 +3843,7 @@ Without a valid Panel ID created on the website dashboard (https://roniguard.was
       return;
     }
     if (commandName === "generatekey") {
-      const panelId = (args.panel_id || "").trim();
+      const panelId = this.extractPanelId(args.panel_id || "");
       const type2 = args.type || "lifetime";
       const count = Math.min(Math.max(parseInt(args.count || "1", 10) || 1, 1), 10);
       const hwidLocked = args.hwid_locked !== "false";
@@ -3850,7 +3858,8 @@ Without a valid Panel ID created on the website dashboard (https://roniguard.was
         });
         return;
       }
-      const targetPanel = state.panels.find((p) => p.id === panelId);
+      const targetPanel = state.panels.find((p) => p.id.toLowerCase() === panelId.toLowerCase());
+      const resolvedPanelId = targetPanel ? targetPanel.id : panelId;
       const targetScript = targetPanel ? state.scripts.find((s) => s.panelId === targetPanel.id) : null;
       if (!targetPanel || !targetScript) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -3880,7 +3889,7 @@ Without a valid Panel ID created on the website dashboard (https://roniguard.was
           id: "key_" + Math.random().toString(36).substring(2, 9),
           userId: userRec.id,
           scriptId,
-          panelId,
+          panelId: resolvedPanelId,
           key: newKeyStr,
           type: type2,
           maxUses: 1,
@@ -3895,12 +3904,12 @@ Without a valid Panel ID created on the website dashboard (https://roniguard.was
         state.keys.push(keyRecord);
         generatedKeys.push(newKeyStr);
       }
-      db.logAudit("key_gen", `Generated ${count} keys (${type2}) for panel ${panelId} by @${callerUsername}`, "DiscordBot", callerId, "info");
+      db.logAudit("key_gen", `Generated ${count} keys (${type2}) for panel ${resolvedPanelId} by @${callerUsername}`, "DiscordBot", callerId, "info");
       db.save();
       const responseText = `\u{1F511} **Generated ${count} License Key(s):**
 ${generatedKeys.map((k) => `\u2022 \`${k}\``).join("\n")}
 
-\u2022 **Panel**: \`${targetPanel.name}\` (\`${panelId}\`)
+\u2022 **Panel**: \`${targetPanel.name}\` (\`${resolvedPanelId}\`)
 \u2022 **Type**: \`${type2}\`
 \u2022 **HWID Lock**: \`${hwidLocked ? "Enabled" : "Disabled"}\`
 \u2022 **Script**: \`${targetScript?.filename || "Main Script"}\`
@@ -3918,7 +3927,7 @@ Users can redeem using **\u{1F511} Redeem Key** on the panel!`;
     if (commandName === "whitelist") {
       const action = (args.action || "check").toLowerCase();
       const rawUser = (args.discord_user || "").replace(/[<@!>]/g, "").trim();
-      const targetPanelId = (args.panel_id || "").trim();
+      const rawPanelInput = this.extractPanelId(args.panel_id || "");
       if (!rawUser) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: "POST",
@@ -3930,7 +3939,7 @@ Users can redeem using **\u{1F511} Redeem Key** on the panel!`;
         });
         return;
       }
-      if (!targetPanelId) {
+      if (!rawPanelInput) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3941,7 +3950,8 @@ Users can redeem using **\u{1F511} Redeem Key** on the panel!`;
         });
         return;
       }
-      const targetPanel = state.panels.find((p) => p.id === targetPanelId);
+      const targetPanel = state.panels.find((p) => p.id.toLowerCase() === rawPanelInput.toLowerCase());
+      const targetPanelId = targetPanel ? targetPanel.id : rawPanelInput;
       const targetScript = targetPanel ? state.scripts.find((s) => s.panelId === targetPanel.id) : null;
       if (!targetPanel || !targetScript) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -4070,7 +4080,7 @@ You can access the script via this message
     if (commandName === "whitelistrole") {
       const roleId = (args.role || "").replace(/[<@&>]/g, "").trim();
       const time = (args.time || "lifetime").trim().toLowerCase();
-      const panelId = (args.panel_id || "").trim();
+      const panelId = this.extractPanelId(args.panel_id || "");
       if (!roleId || !panelId) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: "POST",
@@ -4082,7 +4092,8 @@ You can access the script via this message
         });
         return;
       }
-      const targetPanel = state.panels.find((p) => p.id === panelId);
+      const targetPanel = state.panels.find((p) => p.id.toLowerCase() === panelId.toLowerCase());
+      const resolvedPanelId = targetPanel ? targetPanel.id : panelId;
       const targetScript = targetPanel ? state.scripts.find((s) => s.panelId === targetPanel.id) : null;
       if (!targetPanel || !targetScript) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
@@ -4101,12 +4112,12 @@ You can access the script via this message
         roleId,
         roleName: `<@&${roleId}>`,
         duration: time,
-        panelId,
+        panelId: resolvedPanelId,
         addedBy: `@${callerUsername} (${callerId})`
       });
       db.logAudit(
         "whitelist_change",
-        `Role @${roleId} whitelisted for panel ${panelId} (${time}) by @${callerUsername}`,
+        `Role @${roleId} whitelisted for panel ${resolvedPanelId} (${time}) by @${callerUsername}`,
         "DiscordBot",
         callerId,
         "info"

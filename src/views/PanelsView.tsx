@@ -289,10 +289,10 @@ export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
                     </div>
                   </div>
 
-                  {/* Discord Command Helper */}
+                  {/* Discord Panel ID Copy Helper */}
                   <div className="mt-3.5 p-2.5 rounded-xl bg-purple-950/40 border border-purple-800/40 flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">Discord Setup</div>
+                      <div className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">Discord Panel ID</div>
                       <div className="text-[11px] font-mono text-neutral-300 truncate">
                         ID: <span className="text-white font-bold">{panel.id}</span>
                       </div>
@@ -300,13 +300,12 @@ export const PanelsView: React.FC<PanelsViewProps> = ({ onShowToast }) => {
                     <button
                       type="button"
                       onClick={() => {
-                        const cmd = `/panelsetup name:${panel.name} description:${panel.description || 'Verified Script Panel'} panel_id:${panel.id}`;
-                        navigator.clipboard.writeText(cmd);
-                        onShowToast('success', 'Copied Discord Command', cmd);
+                        navigator.clipboard.writeText(panel.id);
+                        onShowToast('success', 'Copied Panel ID', `Paste "${panel.id}" into /panelsetup panel_id`);
                       }}
                       className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-[10px] font-bold text-white shadow transition-all shrink-0 cursor-pointer"
                     >
-                      Copy /panelsetup
+                      Copy Panel ID
                     </button>
                   </div>
 
