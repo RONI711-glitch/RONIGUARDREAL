@@ -129,6 +129,11 @@ export default function App() {
         if (user && user.id) {
           setCurrentUser(user);
           setIsAuthenticated(true);
+          try {
+            const { api, setActiveSyncDiscordId } = await import('./api.ts');
+            setActiveSyncDiscordId(user.discordId || user.id);
+            await api.syncRestoreIfNeeded();
+          } catch {}
           refreshTelemetry();
           return;
         }
@@ -208,10 +213,15 @@ export default function App() {
         >
           <LoginView
             onBackToHome={() => setShowLoginView(false)}
-            onLoginSuccess={(user) => {
+            onLoginSuccess={async (user) => {
               setCurrentUser(user);
               setIsAuthenticated(true);
               showToast('success', 'Authenticated', `Welcome back, @${user.username || 'Developer'}`);
+              try {
+                const { api, setActiveSyncDiscordId } = await import('./api.ts');
+                setActiveSyncDiscordId(user.discordId || user.id);
+                await api.syncRestoreIfNeeded();
+              } catch {}
               refreshTelemetry();
             }}
           />

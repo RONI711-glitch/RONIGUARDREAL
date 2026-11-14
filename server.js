@@ -550,6 +550,42 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     this.save();
     return user;
   }
+  createSignedSessionToken(user) {
+    const payload = {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      discriminator: user.discriminator || "0",
+      avatar: user.avatar || null,
+      role: user.role || "user",
+      iat: Date.now()
+    };
+    const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const sig = crypto.createHmac("sha256", SERVER_HMAC_SECRET).update(encoded).digest("hex");
+    return `rgs1.${encoded}.${sig}`;
+  }
+  verifySignedSessionToken(token) {
+    if (!token || !token.startsWith("rgs1.")) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [, encoded, sig] = parts;
+    if (!encoded || !sig) return null;
+    const expectedSig = crypto.createHmac("sha256", SERVER_HMAC_SECRET).update(encoded).digest("hex");
+    if (sig.length !== expectedSig.length) return null;
+    try {
+      if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expectedSig, "hex"))) {
+        return null;
+      }
+      const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+      if (!parsed || !parsed.discordId || !parsed.username) return null;
+      if (parsed.iat && Date.now() - Number(parsed.iat) > 35 * 24 * 3600 * 1e3) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
   getUserBySessionToken(token) {
     if (!token) return null;
     let user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
@@ -564,6 +600,22 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         this.save();
       }
       return user;
+    }
+    const signedPayload = this.verifySignedSessionToken(token);
+    if (signedPayload) {
+      const restored = this.findOrCreateDiscordUser({
+        discordId: signedPayload.discordId,
+        username: signedPayload.username,
+        discriminator: signedPayload.discriminator,
+        avatar: signedPayload.avatar,
+        role: signedPayload.role
+      });
+      if (!restored.sessionTokens.includes(token)) {
+        restored.sessionTokens.push(token);
+        if (restored.sessionTokens.length > 5) restored.sessionTokens.shift();
+        this.save();
+      }
+      return restored;
     }
     if (this.state.owner.sessionTokens && this.state.owner.sessionTokens.includes(token)) {
       let ownerUser = this.state.users.find((u) => u.role === "admin");
@@ -3913,7 +3965,9 @@ You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!
     }
     const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
     const hasLicSetup = !!(binding && binding.apiKey && binding.roleId);
-    if (!hasLicSetup) {
+    const callerAccountPanels = commandName === "panelsetup" ? this.getAccountPanels(callerId, state, binding) : [];
+    const allowWithoutLic = commandName === "panelsetup" && (isManagerOrAdmin || callerAccountPanels.length > 0);
+    if (!hasLicSetup && !allowWithoutLic) {
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3924,7 +3978,7 @@ You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!
 
 This server has not linked an active RONIGUARD script license yet.
 
-\u274C **You cannot create panels or use bot features until \`/lic\` is set up.**
+\u274C **You cannot use bot management features until \`/lic\` is set up.**
 
 \u{1F449} **Run this command first to unlock full access:**
 \`/lic api_key:<YOUR_API_KEY> role:<@MANAGER_ROLE>\`
@@ -3936,14 +3990,15 @@ This server has not linked an active RONIGUARD script license yet.
       });
       return;
     }
-    if (!isManagerOrAdmin) {
+    if (!isManagerOrAdmin && !allowWithoutLic) {
+      const roleHint = binding?.roleId ? `the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions)` : "Administrator permissions";
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: 4,
           data: {
-            content: `\u26D4 **Access Denied**: You must have the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions) to run this command.`,
+            content: `\u26D4 **Access Denied**: You must have ${roleHint} to run this command.`,
             flags: 64
           }
         })
@@ -4456,6 +4511,7 @@ router.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "RONIGUARD",
+    version: "2026.11.14-v6",
     instanceId: INSTANCE_ID,
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
     botOnline: botInfo.isConnected,
@@ -4683,7 +4739,7 @@ router.get(["/auth/discord/callback", "/auth/callback", "/oauth/callback", "/dis
       discriminator: discordUser.discriminator,
       avatar: discordUser.avatar
     });
-    const sessionToken = generateRandomHex(32);
+    const sessionToken = db.createSignedSessionToken(user);
     user.sessionTokens.push(sessionToken);
     if (user.sessionTokens.length > 5) user.sessionTokens.shift();
     user.lastLoginAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -4748,7 +4804,7 @@ router.post("/auth/discord/demo-login", (req, res) => {
     discordId: discordId || "1549804529778692237",
     username: (username || "Discord Developer").trim()
   });
-  const sessionToken = generateRandomHex(32);
+  const sessionToken = db.createSignedSessionToken(user);
   user.sessionTokens.push(sessionToken);
   if (user.sessionTokens.length > 5) user.sessionTokens.shift();
   user.lastLoginAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -5030,6 +5086,88 @@ router.delete("/panels/:id", requireAuth, (req, res) => {
   db.logAudit("panel_update", `Deleted panel "${panelName}" (${id})`, req.ip, user.id);
   db.save();
   res.json({ success: true, message: `Panel "${panelName}" deleted` });
+});
+router.post("/sync/restore", requireAuth, (req, res) => {
+  const user = req.user;
+  const state = db.get();
+  const { panels = [], scripts = [] } = req.body || {};
+  let restoredPanels = 0;
+  let restoredScripts = 0;
+  if (Array.isArray(panels)) {
+    for (const p of panels.slice(0, 10)) {
+      if (!p || !p.id || !p.name) continue;
+      if (state.panels.some((existing) => existing.id === p.id)) continue;
+      state.panels.unshift({
+        id: String(p.id),
+        userId: user.id,
+        name: String(p.name).trim(),
+        description: String(p.description || "").trim(),
+        status: p.status === "archived" ? "archived" : "active",
+        protectionProfile: p.protectionProfile || "maximum",
+        whitelistEnabled: p.whitelistEnabled !== false,
+        keyAuthEnabled: p.keyAuthEnabled !== false,
+        hwidLockEnabled: p.hwidLockEnabled !== false,
+        maxHwidResets: Number(p.maxHwidResets) || 3,
+        scriptCount: Number(p.scriptCount) || 0,
+        createdAt: p.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      restoredPanels++;
+    }
+  }
+  if (Array.isArray(scripts)) {
+    for (const s of scripts.slice(0, 20)) {
+      if (!s || !s.id || !s.filename) continue;
+      if (state.scripts.some((existing) => existing.id === s.id)) continue;
+      const panelId = s.panelId || state.panels.find((p) => p.userId === user.id)?.id || "pnl_main_default";
+      const origFileId = s.originalFileId || "src_" + s.id;
+      const protectedFileId = s.protectedFileId || "build_" + s.id;
+      const sourceText = typeof s.sourceCode === "string" && s.sourceCode.trim() ? s.sourceCode : `-- [RONIGUARD] Restored Script: ${s.filename}
+print("[RONIGUARD] Script active!")`;
+      try {
+        fs2.writeFileSync(path3.join(SOURCES_DIR, `${origFileId}.lua`), sourceText, "utf-8");
+        const payload = s.isObfuscated !== false ? runRoniguardMax(sourceText, { profile: "maximum" }) : formatNonObfuscatedScript(sourceText, s.filename);
+        fs2.writeFileSync(path3.join(BUILDS_DIR, `${protectedFileId}.lua`), payload, "utf-8");
+        fs2.writeFileSync(path3.join(BUILDS_DIR, `${s.id}.lua`), payload, "utf-8");
+      } catch {
+      }
+      state.scripts.unshift({
+        id: String(s.id),
+        userId: user.id,
+        panelId,
+        filename: String(s.filename),
+        originalFilename: String(s.originalFilename || s.filename),
+        originalFileId: origFileId,
+        protectedFileId,
+        originalSize: Number(s.originalSize) || Buffer.byteLength(sourceText, "utf-8"),
+        protectedSize: Number(s.protectedSize) || Buffer.byteLength(sourceText, "utf-8"),
+        status: s.status || "ready",
+        apiKey: s.apiKey || "RONI-API-" + generateRandomHex(6).toUpperCase(),
+        apiKeyId: s.apiKeyId || "key_" + s.id,
+        isObfuscated: s.isObfuscated !== false,
+        trialEnabled: !!s.trialEnabled,
+        buildCount: Number(s.buildCount) || 1,
+        lastBuiltAt: s.lastBuiltAt || (/* @__PURE__ */ new Date()).toISOString(),
+        createdAt: s.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+      });
+      restoredScripts++;
+    }
+  }
+  if (restoredPanels > 0 || restoredScripts > 0) {
+    db.logAudit(
+      "panel_update",
+      `Auto-synced ${restoredPanels} panel(s) & ${restoredScripts} script(s) for @${user.username}`,
+      req.ip,
+      user.id
+    );
+    db.save();
+  }
+  res.json({
+    success: true,
+    restoredPanels,
+    restoredScripts,
+    panels: state.panels.filter((p) => p.userId === user.id)
+  });
 });
 router.get("/scripts", requireAuth, (req, res) => {
   const user = req.user;

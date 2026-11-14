@@ -56,6 +56,7 @@ router.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'RONIGUARD',
+    version: '2026.11.14-v6',
     instanceId: INSTANCE_ID,
     timestamp: new Date().toISOString(),
     botOnline: botInfo.isConnected,
@@ -324,7 +325,7 @@ router.get(['/auth/discord/callback', '/auth/callback', '/oauth/callback', '/dis
       avatar: discordUser.avatar,
     });
 
-    const sessionToken = generateRandomHex(32);
+    const sessionToken = db.createSignedSessionToken(user);
     user.sessionTokens.push(sessionToken);
     if (user.sessionTokens.length > 5) user.sessionTokens.shift();
     user.lastLoginAt = new Date().toISOString();
@@ -400,7 +401,7 @@ router.post('/auth/discord/demo-login', (req, res) => {
     username: (username || 'Discord Developer').trim(),
   });
 
-  const sessionToken = generateRandomHex(32);
+  const sessionToken = db.createSignedSessionToken(user);
   user.sessionTokens.push(sessionToken);
   if (user.sessionTokens.length > 5) user.sessionTokens.shift();
   user.lastLoginAt = new Date().toISOString();
@@ -739,6 +740,99 @@ router.delete('/panels/:id', requireAuth, (req, res) => {
   db.save();
 
   res.json({ success: true, message: `Panel "${panelName}" deleted` });
+});
+
+// Auto-restore user panels & scripts seamlessly after a server container restart/redeploy
+router.post('/sync/restore', requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const state = db.get();
+  const { panels = [], scripts = [] } = req.body || {};
+  let restoredPanels = 0;
+  let restoredScripts = 0;
+
+  if (Array.isArray(panels)) {
+    for (const p of panels.slice(0, 10)) {
+      if (!p || !p.id || !p.name) continue;
+      if (state.panels.some((existing) => existing.id === p.id)) continue;
+      state.panels.unshift({
+        id: String(p.id),
+        userId: user.id,
+        name: String(p.name).trim(),
+        description: String(p.description || '').trim(),
+        status: p.status === 'archived' ? 'archived' : 'active',
+        protectionProfile: p.protectionProfile || 'maximum',
+        whitelistEnabled: p.whitelistEnabled !== false,
+        keyAuthEnabled: p.keyAuthEnabled !== false,
+        hwidLockEnabled: p.hwidLockEnabled !== false,
+        maxHwidResets: Number(p.maxHwidResets) || 3,
+        scriptCount: Number(p.scriptCount) || 0,
+        createdAt: p.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      restoredPanels++;
+    }
+  }
+
+  if (Array.isArray(scripts)) {
+    for (const s of scripts.slice(0, 20)) {
+      if (!s || !s.id || !s.filename) continue;
+      if (state.scripts.some((existing) => existing.id === s.id)) continue;
+      const panelId = s.panelId || state.panels.find((p) => p.userId === user.id)?.id || 'pnl_main_default';
+      const origFileId = s.originalFileId || 'src_' + s.id;
+      const protectedFileId = s.protectedFileId || 'build_' + s.id;
+      const sourceText =
+        typeof s.sourceCode === 'string' && s.sourceCode.trim()
+          ? s.sourceCode
+          : `-- [RONIGUARD] Restored Script: ${s.filename}\nprint("[RONIGUARD] Script active!")`;
+      try {
+        fs.writeFileSync(path.join(SOURCES_DIR, `${origFileId}.lua`), sourceText, 'utf-8');
+        const payload =
+          s.isObfuscated !== false
+            ? runRoniguardMax(sourceText, { profile: 'maximum' })
+            : formatNonObfuscatedScript(sourceText, s.filename);
+        fs.writeFileSync(path.join(BUILDS_DIR, `${protectedFileId}.lua`), payload, 'utf-8');
+        fs.writeFileSync(path.join(BUILDS_DIR, `${s.id}.lua`), payload, 'utf-8');
+      } catch {}
+
+      state.scripts.unshift({
+        id: String(s.id),
+        userId: user.id,
+        panelId,
+        filename: String(s.filename),
+        originalFilename: String(s.originalFilename || s.filename),
+        originalFileId: origFileId,
+        protectedFileId,
+        originalSize: Number(s.originalSize) || Buffer.byteLength(sourceText, 'utf-8'),
+        protectedSize: Number(s.protectedSize) || Buffer.byteLength(sourceText, 'utf-8'),
+        status: s.status || 'ready',
+        apiKey: s.apiKey || 'RONI-API-' + generateRandomHex(6).toUpperCase(),
+        apiKeyId: s.apiKeyId || 'key_' + s.id,
+        isObfuscated: s.isObfuscated !== false,
+        trialEnabled: !!s.trialEnabled,
+        buildCount: Number(s.buildCount) || 1,
+        lastBuiltAt: s.lastBuiltAt || new Date().toISOString(),
+        createdAt: s.createdAt || new Date().toISOString(),
+      });
+      restoredScripts++;
+    }
+  }
+
+  if (restoredPanels > 0 || restoredScripts > 0) {
+    db.logAudit(
+      'panel_update',
+      `Auto-synced ${restoredPanels} panel(s) & ${restoredScripts} script(s) for @${user.username}`,
+      req.ip,
+      user.id
+    );
+    db.save();
+  }
+
+  res.json({
+    success: true,
+    restoredPanels,
+    restoredScripts,
+    panels: state.panels.filter((p) => p.userId === user.id),
+  });
 });
 
 // -------------------------------------------------------------

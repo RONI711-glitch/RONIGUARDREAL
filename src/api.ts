@@ -128,6 +128,43 @@ function saveLocalStore(state: LocalStoreState): void {
   } catch {}
 }
 
+let activeSyncDiscordId = 'default';
+
+export function setActiveSyncDiscordId(discordId?: string | null): void {
+  if (discordId) {
+    activeSyncDiscordId = String(discordId);
+  }
+}
+
+interface CloudSyncBackup {
+  panels: Panel[];
+  scripts: any[];
+  explicitlyEmpty?: boolean;
+}
+
+function readCloudBackup(): CloudSyncBackup {
+  if (typeof localStorage === 'undefined') return { panels: [], scripts: [] };
+  try {
+    const raw = localStorage.getItem(`roniguard_cloud_backup_${activeSyncDiscordId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        panels: Array.isArray(parsed.panels) ? parsed.panels : [],
+        scripts: Array.isArray(parsed.scripts) ? parsed.scripts : [],
+        explicitlyEmpty: !!parsed.explicitlyEmpty,
+      };
+    }
+  } catch {}
+  return { panels: [], scripts: [] };
+}
+
+function writeCloudBackup(next: CloudSyncBackup): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(`roniguard_cloud_backup_${activeSyncDiscordId}`, JSON.stringify(next));
+  } catch {}
+}
+
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<any> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -306,10 +343,27 @@ export const api = {
     sourceCode: string;
     obfuscationEnabled: boolean;
   }) {
-    return await fetchWithAuth('/api/scripts/process', {
+    const res = await fetchWithAuth('/api/scripts/process', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    const backup = readCloudBackup();
+    const cleanFilename = data.name.trim().endsWith('.lua') ? data.name.trim() : `${data.name.trim()}.lua`;
+    backup.scripts = [
+      {
+        id: res.scriptId,
+        panelId: data.panelId,
+        filename: cleanFilename,
+        originalFilename: cleanFilename,
+        apiKey: res.apiKey,
+        isObfuscated: data.obfuscationEnabled,
+        sourceCode: data.sourceCode,
+        createdAt: new Date().toISOString(),
+      },
+      ...backup.scripts.filter((s) => s.id !== res.scriptId),
+    ];
+    writeCloudBackup(backup);
+    return res;
   },
 
   async getJobStatus(jobId: string) {
@@ -432,39 +486,114 @@ export const api = {
     }
   },
 
+  // Sync backup helper (restores user panels & scripts seamlessly after a server restart)
+  async syncRestoreIfNeeded(): Promise<void> {
+    const backup = readCloudBackup();
+    if (backup.explicitlyEmpty || (backup.panels.length === 0 && backup.scripts.length === 0)) {
+      return;
+    }
+    try {
+      const serverPanels = await fetchWithAuth('/api/panels');
+      if (Array.isArray(serverPanels) && serverPanels.length === 0 && backup.panels.length > 0) {
+        await fetchWithAuth('/api/sync/restore', {
+          method: 'POST',
+          body: JSON.stringify({ panels: backup.panels, scripts: backup.scripts }),
+        });
+      }
+    } catch {}
+  },
+
   // Panels (always persisted on backend so Discord bot sees them immediately)
   async getPanels(): Promise<Panel[]> {
-    return await fetchWithAuth('/api/panels');
+    const panels: Panel[] = await fetchWithAuth('/api/panels');
+    const backup = readCloudBackup();
+    if (panels.length === 0 && !backup.explicitlyEmpty && backup.panels.length > 0) {
+      try {
+        const restored = await fetchWithAuth('/api/sync/restore', {
+          method: 'POST',
+          body: JSON.stringify({ panels: backup.panels, scripts: backup.scripts }),
+        });
+        if (Array.isArray(restored?.panels) && restored.panels.length > 0) {
+          return restored.panels;
+        }
+      } catch {}
+    }
+    if (panels.length > 0) {
+      writeCloudBackup({ ...backup, panels, explicitlyEmpty: false });
+    }
+    return panels;
   },
 
   async createPanel(data: Partial<Panel>): Promise<Panel> {
-    return await fetchWithAuth('/api/panels', {
+    const created: Panel = await fetchWithAuth('/api/panels', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    const backup = readCloudBackup();
+    writeCloudBackup({
+      ...backup,
+      panels: [created, ...backup.panels.filter((p) => p.id !== created.id)],
+      explicitlyEmpty: false,
+    });
+    return created;
   },
 
   async updatePanel(id: string, data: Partial<Panel>): Promise<Panel> {
-    return await fetchWithAuth(`/api/panels/${id}`, {
+    const updated: Panel = await fetchWithAuth(`/api/panels/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+    const backup = readCloudBackup();
+    writeCloudBackup({
+      ...backup,
+      panels: backup.panels.some((p) => p.id === id)
+        ? backup.panels.map((p) => (p.id === id ? updated : p))
+        : [updated, ...backup.panels],
+      explicitlyEmpty: false,
+    });
+    return updated;
   },
 
   async deletePanel(id: string): Promise<{ success: boolean; message: string }> {
-    return await fetchWithAuth(`/api/panels/${id}`, { method: 'DELETE' });
+    const res = await fetchWithAuth(`/api/panels/${id}`, { method: 'DELETE' });
+    const backup = readCloudBackup();
+    const nextPanels = backup.panels.filter((p) => p.id !== id);
+    writeCloudBackup({
+      ...backup,
+      panels: nextPanels,
+      explicitlyEmpty: nextPanels.length === 0,
+    });
+    return res;
   },
 
   // Scripts
   async getScripts(): Promise<ScriptItem[]> {
-    return await fetchWithAuth('/api/scripts');
+    const scripts: ScriptItem[] = await fetchWithAuth('/api/scripts');
+    if (scripts.length > 0) {
+      const backup = readCloudBackup();
+      const mergedScripts = scripts.map((s) => {
+        const prev = backup.scripts.find((b) => b.id === s.id);
+        return prev?.sourceCode ? { ...s, sourceCode: prev.sourceCode } : s;
+      });
+      writeCloudBackup({ ...backup, scripts: mergedScripts });
+    }
+    return scripts;
   },
 
   async uploadScript(filename: string, sourceCode: string, panelId?: string, notes?: string) {
-    return await fetchWithAuth('/api/scripts/upload', {
+    const res = await fetchWithAuth('/api/scripts/upload', {
       method: 'POST',
       body: JSON.stringify({ filename, sourceCode, panelId, notes }),
     });
+    if (res?.script?.id) {
+      const backup = readCloudBackup();
+      backup.scripts = [
+        { ...res.script, sourceCode },
+        ...backup.scripts.filter((s) => s.id !== res.script.id),
+      ];
+      writeCloudBackup(backup);
+    }
+    return res;
   },
 
   async getScriptSource(id: string): Promise<string> {
@@ -560,14 +689,13 @@ export const api = {
   },
 
   async deleteScript(id: string): Promise<{ success: boolean; message: string }> {
-    try {
-      return await fetchWithAuth(`/api/scripts/${id}`, { method: 'DELETE' });
-    } catch {
-      const store = loadLocalStore();
-      store.scripts = store.scripts.filter((s) => s.id !== id);
-      saveLocalStore(store);
-      return { success: true, message: 'Script removed' };
-    }
+    const res = await fetchWithAuth(`/api/scripts/${id}`, { method: 'DELETE' });
+    const backup = readCloudBackup();
+    writeCloudBackup({
+      ...backup,
+      scripts: backup.scripts.filter((s) => s.id !== id),
+    });
+    return res;
   },
 
   async toggleTrial(id: string, trialEnabled?: boolean): Promise<{ success: boolean; trialEnabled: boolean }> {

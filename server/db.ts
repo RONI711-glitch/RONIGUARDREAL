@@ -887,6 +887,59 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     return user;
   }
 
+  public createSignedSessionToken(user: UserRecord): string {
+    const payload = {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      discriminator: user.discriminator || '0',
+      avatar: user.avatar || null,
+      role: user.role || 'user',
+      iat: Date.now(),
+    };
+    const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const sig = crypto
+      .createHmac('sha256', SERVER_HMAC_SECRET)
+      .update(encoded)
+      .digest('hex');
+    return `rgs1.${encoded}.${sig}`;
+  }
+
+  public verifySignedSessionToken(token: string): {
+    id: string;
+    discordId: string;
+    username: string;
+    discriminator?: string;
+    avatar?: string | null;
+    role?: 'user' | 'admin';
+    iat: number;
+  } | null {
+    if (!token || !token.startsWith('rgs1.')) return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [, encoded, sig] = parts;
+    if (!encoded || !sig) return null;
+    const expectedSig = crypto
+      .createHmac('sha256', SERVER_HMAC_SECRET)
+      .update(encoded)
+      .digest('hex');
+    if (sig.length !== expectedSig.length) return null;
+    try {
+      if (!crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expectedSig, 'hex'))) {
+        return null;
+      }
+      const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+      if (!parsed || !parsed.discordId || !parsed.username) return null;
+      // 30-day session validity
+      if (parsed.iat && Date.now() - Number(parsed.iat) > 35 * 24 * 3600 * 1000) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
   public getUserBySessionToken(token: string): UserRecord | null {
     if (!token) return null;
     let user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
@@ -901,6 +954,24 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         this.save();
       }
       return user;
+    }
+
+    // Stateless HMAC token recovery: survive container restarts & updates with zero logouts!
+    const signedPayload = this.verifySignedSessionToken(token);
+    if (signedPayload) {
+      const restored = this.findOrCreateDiscordUser({
+        discordId: signedPayload.discordId,
+        username: signedPayload.username,
+        discriminator: signedPayload.discriminator,
+        avatar: signedPayload.avatar,
+        role: signedPayload.role,
+      });
+      if (!restored.sessionTokens.includes(token)) {
+        restored.sessionTokens.push(token);
+        if (restored.sessionTokens.length > 5) restored.sessionTokens.shift();
+        this.save();
+      }
+      return restored;
     }
 
     // Check owner fallback

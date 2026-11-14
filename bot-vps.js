@@ -543,6 +543,42 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
     this.save();
     return user;
   }
+  createSignedSessionToken(user) {
+    const payload = {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      discriminator: user.discriminator || "0",
+      avatar: user.avatar || null,
+      role: user.role || "user",
+      iat: Date.now()
+    };
+    const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const sig = crypto.createHmac("sha256", SERVER_HMAC_SECRET).update(encoded).digest("hex");
+    return `rgs1.${encoded}.${sig}`;
+  }
+  verifySignedSessionToken(token) {
+    if (!token || !token.startsWith("rgs1.")) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [, encoded, sig] = parts;
+    if (!encoded || !sig) return null;
+    const expectedSig = crypto.createHmac("sha256", SERVER_HMAC_SECRET).update(encoded).digest("hex");
+    if (sig.length !== expectedSig.length) return null;
+    try {
+      if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expectedSig, "hex"))) {
+        return null;
+      }
+      const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+      if (!parsed || !parsed.discordId || !parsed.username) return null;
+      if (parsed.iat && Date.now() - Number(parsed.iat) > 35 * 24 * 3600 * 1e3) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
   getUserBySessionToken(token) {
     if (!token) return null;
     let user = this.state.users.find((u) => u.sessionTokens && u.sessionTokens.includes(token));
@@ -557,6 +593,22 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         this.save();
       }
       return user;
+    }
+    const signedPayload = this.verifySignedSessionToken(token);
+    if (signedPayload) {
+      const restored = this.findOrCreateDiscordUser({
+        discordId: signedPayload.discordId,
+        username: signedPayload.username,
+        discriminator: signedPayload.discriminator,
+        avatar: signedPayload.avatar,
+        role: signedPayload.role
+      });
+      if (!restored.sessionTokens.includes(token)) {
+        restored.sessionTokens.push(token);
+        if (restored.sessionTokens.length > 5) restored.sessionTokens.shift();
+        this.save();
+      }
+      return restored;
     }
     if (this.state.owner.sessionTokens && this.state.owner.sessionTokens.includes(token)) {
       let ownerUser = this.state.users.find((u) => u.role === "admin");
@@ -2634,7 +2686,9 @@ You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!
     }
     const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
     const hasLicSetup = !!(binding && binding.apiKey && binding.roleId);
-    if (!hasLicSetup) {
+    const callerAccountPanels = commandName === "panelsetup" ? this.getAccountPanels(callerId, state, binding) : [];
+    const allowWithoutLic = commandName === "panelsetup" && (isManagerOrAdmin || callerAccountPanels.length > 0);
+    if (!hasLicSetup && !allowWithoutLic) {
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2645,7 +2699,7 @@ You can now click **\u{1F4DC} Script** on the panel anytime to view your loader!
 
 This server has not linked an active RONIGUARD script license yet.
 
-\u274C **You cannot create panels or use bot features until \`/lic\` is set up.**
+\u274C **You cannot use bot management features until \`/lic\` is set up.**
 
 \u{1F449} **Run this command first to unlock full access:**
 \`/lic api_key:<YOUR_API_KEY> role:<@MANAGER_ROLE>\`
@@ -2657,14 +2711,15 @@ This server has not linked an active RONIGUARD script license yet.
       });
       return;
     }
-    if (!isManagerOrAdmin) {
+    if (!isManagerOrAdmin && !allowWithoutLic) {
+      const roleHint = binding?.roleId ? `the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions)` : "Administrator permissions";
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: 4,
           data: {
-            content: `\u26D4 **Access Denied**: You must have the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions) to run this command.`,
+            content: `\u26D4 **Access Denied**: You must have ${roleHint} to run this command.`,
             flags: 64
           }
         })

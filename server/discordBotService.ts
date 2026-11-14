@@ -1610,19 +1610,22 @@ class DiscordBotService {
       return;
     }
 
-    // 1. Mandatory Guild License Check: Every server MUST first configure /lic
-    // Without /lic, no one (even administrators) can create panels or run management commands!
+    // 1. Mandatory Guild License Check: Require /lic for server members,
+    // while allowing server admins/owners running /panelsetup with website panels so updates never lock them out
     const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
     const hasLicSetup = !!(binding && binding.apiKey && binding.roleId);
+    const callerAccountPanels = commandName === 'panelsetup' ? this.getAccountPanels(callerId, state, binding) : [];
+    const allowWithoutLic =
+      commandName === 'panelsetup' && (isManagerOrAdmin || callerAccountPanels.length > 0);
 
-    if (!hasLicSetup) {
+    if (!hasLicSetup && !allowWithoutLic) {
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 4,
           data: {
-            content: `🔒 **License Activation Required!**\n\nThis server has not linked an active RONIGUARD script license yet.\n\n❌ **You cannot create panels or use bot features until \`/lic\` is set up.**\n\n👉 **Run this command first to unlock full access:**\n\`/lic api_key:<YOUR_API_KEY> role:<@MANAGER_ROLE>\`\n\n*(Get your script API key from your RONIGUARD website dashboard)*`,
+            content: `🔒 **License Activation Required!**\n\nThis server has not linked an active RONIGUARD script license yet.\n\n❌ **You cannot use bot management features until \`/lic\` is set up.**\n\n👉 **Run this command first to unlock full access:**\n\`/lic api_key:<YOUR_API_KEY> role:<@MANAGER_ROLE>\`\n\n*(Get your script API key from your RONIGUARD website dashboard)*`,
             flags: 64,
           },
         }),
@@ -1630,15 +1633,16 @@ class DiscordBotService {
       return;
     }
 
-    // 2. Role Clearance Check: Caller must have the configured manager role or Administrator permissions
-    if (!isManagerOrAdmin) {
+    // 2. Role Clearance Check: Caller must have the configured manager role, Administrator permissions, or own panels in /panelsetup
+    if (!isManagerOrAdmin && !allowWithoutLic) {
+      const roleHint = binding?.roleId ? `the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions)` : 'Administrator permissions';
       await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 4,
           data: {
-            content: `⛔ **Access Denied**: You must have the <@&${binding.roleId}> role configured via \`/lic\` (or Administrator permissions) to run this command.`,
+            content: `⛔ **Access Denied**: You must have ${roleHint} to run this command.`,
             flags: 64,
           },
         }),
