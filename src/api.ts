@@ -40,12 +40,10 @@ export const APP_BASE_URL =
 export const generateLocalId = () => Math.random().toString(36).substring(2, 9);
 
 export function setStoredToken(token: string): void {
-  backendOfflineMode = false;
   saveAuthToken(token);
 }
 
 export function clearStoredToken(): void {
-  backendOfflineMode = false;
   removeAuthToken();
 }
 
@@ -130,9 +128,6 @@ function saveLocalStore(state: LocalStoreState): void {
   } catch {}
 }
 
-// Hybrid live server + resilient client store
-let backendOfflineMode = false;
-
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<any> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -144,11 +139,6 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
     headers.set('Content-Type', 'application/json');
   }
 
-  // Skip network call if backend previously responded with a static 404/405 HTML page
-  if (backendOfflineMode) {
-    throw new Error('BACKEND_OFFLINE');
-  }
-
   try {
     const response = await fetch(endpoint, {
       ...options,
@@ -156,14 +146,12 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
       credentials: 'include',
     });
 
-    // Detect static server returning HTML 404/405 instead of JSON API
     const contentType = response.headers.get('content-type') || '';
     if (
       (response.status === 404 || response.status === 405) &&
       contentType.includes('text/html')
     ) {
-      backendOfflineMode = true;
-      throw new Error('BACKEND_OFFLINE');
+      throw new Error('Server endpoint unavailable. Please refresh and try again.');
     }
 
     if (response.status === 401 || response.status === 403) {
@@ -188,9 +176,8 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
 
     return response;
   } catch (err: any) {
-    if (err.message === 'BACKEND_OFFLINE' || err.name === 'TypeError') {
-      backendOfflineMode = true;
-      throw new Error('BACKEND_OFFLINE');
+    if (err.name === 'TypeError') {
+      throw new Error('Unable to reach server. Please check your connection and try again.');
     }
     throw err;
   }
@@ -319,47 +306,10 @@ export const api = {
     sourceCode: string;
     obfuscationEnabled: boolean;
   }) {
-    try {
-      return await fetchWithAuth('/api/scripts/process', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch {
-      // Local fallback simulation
-      const jobId = 'job_' + Math.random().toString(36).substring(2, 9);
-      const scriptId = 'scr_' + Math.random().toString(36).substring(2, 9);
-      const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase() + Math.random().toString(36).substring(2, 8).toUpperCase();
-      const apiKey = `RONI-API-${randomHex}`;
-
-      const store = loadLocalStore();
-      const newScript = {
-        id: scriptId,
-        panelId: data.panelId || store.panels[0]?.id || 'pnl_main',
-        filename: data.name.endsWith('.lua') ? data.name : `${data.name}.lua`,
-        originalFilename: data.name,
-        originalFileId: 'src_' + scriptId,
-        protectedFileId: 'build_' + scriptId,
-        originalSize: data.sourceCode.length,
-        protectedSize: data.sourceCode.length * 2,
-        status: (data.obfuscationEnabled ? 'obfuscated' : 'ready') as any,
-        apiKey,
-        apiKeyId: 'key_' + scriptId,
-        isObfuscated: data.obfuscationEnabled,
-        buildCount: 1,
-        lastBuiltAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-      };
-      store.scripts.unshift(newScript as any);
-      saveLocalStore(store);
-
-      return {
-        success: true,
-        jobId,
-        scriptId,
-        apiKey,
-        status: 'processing',
-      };
-    }
+    return await fetchWithAuth('/api/scripts/process', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   async getJobStatus(jobId: string) {
@@ -482,161 +432,39 @@ export const api = {
     }
   },
 
-  // Panels
+  // Panels (always persisted on backend so Discord bot sees them immediately)
   async getPanels(): Promise<Panel[]> {
-    try {
-      return await fetchWithAuth('/api/panels');
-    } catch {
-      return loadLocalStore().panels;
-    }
+    return await fetchWithAuth('/api/panels');
   },
 
   async createPanel(data: Partial<Panel>): Promise<Panel> {
-    try {
-      return await fetchWithAuth('/api/panels', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch {
-      const store = loadLocalStore();
-      const newPanel: Panel = {
-        id: 'pnl_' + Math.random().toString(36).slice(2, 8),
-        name: data.name || 'New Security Panel',
-        description: data.description || '',
-        status: data.status || 'active',
-        protectionProfile: data.protectionProfile || 'advanced',
-        whitelistEnabled: data.whitelistEnabled ?? true,
-        keyAuthEnabled: data.keyAuthEnabled ?? true,
-        hwidLockEnabled: data.hwidLockEnabled ?? true,
-        maxHwidResets: data.maxHwidResets ?? 3,
-        scriptCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      store.panels.unshift(newPanel);
-      saveLocalStore(store);
-      return newPanel;
-    }
+    return await fetchWithAuth('/api/panels', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   async updatePanel(id: string, data: Partial<Panel>): Promise<Panel> {
-    try {
-      return await fetchWithAuth(`/api/panels/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch {
-      const store = loadLocalStore();
-      const idx = store.panels.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        store.panels[idx] = { ...store.panels[idx], ...data, updatedAt: new Date().toISOString() };
-        saveLocalStore(store);
-        return store.panels[idx];
-      }
-      throw new Error('Panel not found');
-    }
+    return await fetchWithAuth(`/api/panels/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
   async deletePanel(id: string): Promise<{ success: boolean; message: string }> {
-    try {
-      return await fetchWithAuth(`/api/panels/${id}`, { method: 'DELETE' });
-    } catch {
-      const store = loadLocalStore();
-      store.panels = store.panels.filter((p) => p.id !== id);
-      saveLocalStore(store);
-      return { success: true, message: 'Panel removed' };
-    }
+    return await fetchWithAuth(`/api/panels/${id}`, { method: 'DELETE' });
   },
 
   // Scripts
   async getScripts(): Promise<ScriptItem[]> {
-    try {
-      return await fetchWithAuth('/api/scripts');
-    } catch {
-      return loadLocalStore().scripts;
-    }
+    return await fetchWithAuth('/api/scripts');
   },
 
   async uploadScript(filename: string, sourceCode: string, panelId?: string, notes?: string) {
-    try {
-      return await fetchWithAuth('/api/scripts/upload', {
-        method: 'POST',
-        body: JSON.stringify({ filename, sourceCode, panelId, notes }),
-      });
-    } catch {
-      const store = loadLocalStore();
-      const targetPanelId = panelId || store.panels[0]?.id || 'pnl_main';
-      const cleanName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const scriptId = 'scr_' + Math.random().toString(36).slice(2, 8);
-
-      // Execute client-side obfuscation
-      const buildResult = runClientObfuscation(sourceCode, {
-        profile: 'advanced',
-        engine: 'Vykus-VM-Obfuscator',
-        stringEncryption: true,
-        controlFlow: true,
-        constantVirtualization: true,
-        variableRenaming: true,
-        antiTamper: true,
-        watermarkCheck: true,
-        customWatermark: `${cleanName} · RONIGUARD`,
-        vykusMode: 'vm',
-        vykusLayers: 2,
-        securityWalls: true,
-      });
-
-      const newScript: ScriptItem & { sourceCode?: string; protectedCode?: string } = {
-        id: scriptId,
-        panelId: targetPanelId,
-        filename: cleanName,
-        originalFilename: cleanName,
-        originalFileId: 'orig_' + scriptId,
-        protectedFileId: 'bld_' + scriptId,
-        originalSize: buildResult.originalSize,
-        protectedSize: buildResult.outputSize,
-        status: 'obfuscated',
-        buildCount: 1,
-        lastBuiltAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        sourceCode,
-        protectedCode: buildResult.transformedCode,
-      };
-
-      store.scripts.unshift(newScript);
-
-      const buildItem: BuildHistoryItem = {
-        id: 'bld_' + scriptId,
-        scriptId,
-        panelId: targetPanelId,
-        filename: cleanName,
-        engine: 'Vykus-VM-Obfuscator',
-        profile: 'advanced',
-        options: {
-          stringEncryption: true,
-          controlFlow: true,
-          constantVirtualization: true,
-          variableRenaming: true,
-          antiTamper: true,
-          watermarkCheck: true,
-        },
-        status: 'success',
-        inputSize: buildResult.originalSize,
-        outputSize: buildResult.outputSize,
-        compressionRatio: buildResult.compressionRatio,
-        durationMs: buildResult.durationMs,
-        createdAt: new Date().toISOString(),
-      };
-      store.builds.unshift(buildItem);
-
-      saveLocalStore(store);
-
-      return {
-        success: true,
-        script: newScript,
-        build: buildItem,
-        transformedPreview: buildResult.transformedCode?.slice(0, 500),
-      };
-    }
+    return await fetchWithAuth('/api/scripts/upload', {
+      method: 'POST',
+      body: JSON.stringify({ filename, sourceCode, panelId, notes }),
+    });
   },
 
   async getScriptSource(id: string): Promise<string> {

@@ -308,8 +308,9 @@ class DiscordBotService {
           {
             type: 3, // STRING
             name: 'panel_id',
-            description: 'Optional: Panel ID (leave empty to use your active server/account panel)',
+            description: 'Optional: Pick a panel from your account (leave empty for active panel)',
             required: false,
+            autocomplete: true,
           },
           {
             type: 3, // STRING
@@ -361,15 +362,24 @@ class DiscordBotService {
           {
             type: 3, // STRING
             name: 'panel_id',
-            description: 'Optional: Panel ID (leave empty to use your active server/account panel)',
+            description: 'Optional: Pick a panel from your account (leave empty for active panel)',
             required: false,
+            autocomplete: true,
           },
         ],
       },
       {
         name: 'panelsetup',
-        description: 'Pick and deploy one of your website RONIGUARD panels into this channel',
-        options: [],
+        description: 'Pick one of your website RONIGUARD panels to deploy into this channel',
+        options: [
+          {
+            type: 3, // STRING
+            name: 'panel',
+            description: 'Select a panel created on your website account',
+            required: true,
+            autocomplete: true,
+          },
+        ],
       },
       {
         name: 'whitelistrole',
@@ -396,8 +406,9 @@ class DiscordBotService {
           {
             type: 3, // STRING
             name: 'panel_id',
-            description: 'Optional: Panel ID (leave empty to use your active server/account panel)',
+            description: 'Optional: Pick a panel from your account (leave empty for active panel)',
             required: false,
+            autocomplete: true,
           },
         ],
       },
@@ -969,6 +980,70 @@ class DiscordBotService {
     const callerId = caller.id || 'discord_user';
     const callerUsername = caller.username || 'Discord User';
     const state = db.get();
+
+    // -------------------------------------------------------------
+    // 0. AUTOCOMPLETE INTERACTIONS (Type 4: APPLICATION_COMMAND_AUTOCOMPLETE)
+    // -------------------------------------------------------------
+    if (type === 4) {
+      const commandName = data.name;
+      const focusedOpt = Array.isArray(data.options)
+        ? data.options.find((o: any) => o.focused) ||
+          data.options.flatMap((o: any) => o.options || []).find((o: any) => o.focused)
+        : null;
+      const query = String(focusedOpt?.value || '').trim().toLowerCase();
+      const optName = focusedOpt?.name || '';
+
+      if (commandName === 'panelsetup' || optName === 'panel' || optName === 'panel_id') {
+        const binding = guild_id ? state.botConfig.guildRoleBindings?.[guild_id] : null;
+        const accountPanels = this.getAccountPanels(callerId, state, binding);
+        const filtered = accountPanels
+          .filter((p) => {
+            if (!query) return true;
+            const nameMatch = (p.name || '').toLowerCase().includes(query);
+            const idMatch = (p.id || '').toLowerCase().includes(query);
+            const descMatch = (p.description || '').toLowerCase().includes(query);
+            return nameMatch || idMatch || descMatch;
+          })
+          .slice(0, 25);
+
+        const choices =
+          filtered.length > 0
+            ? filtered.map((p) => {
+                const scriptCount = state.scripts.filter((s) => s.panelId === p.id).length;
+                const rawName = (p.name || 'Untitled Panel').trim();
+                const label = `${rawName} (${scriptCount} script${scriptCount === 1 ? '' : 's'})`.slice(0, 100);
+                return { name: label, value: p.id };
+              })
+            : [
+                {
+                  name:
+                    accountPanels.length === 0
+                      ? 'No panels found — create one at https://roniguard.wasmer.app/panels'
+                      : 'No matching panel found on your account',
+                  value: '__no_panels__',
+                },
+              ];
+
+        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 8, // APPLICATION_COMMAND_AUTOCOMPLETE_RESULT
+            data: { choices },
+          }),
+        }).catch((err) => {
+          console.warn('[RONIGUARD-BOT] Autocomplete response error:', err);
+        });
+        return;
+      }
+
+      await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 8, data: { choices: [] } }),
+      }).catch(() => {});
+      return;
+    }
 
     // -------------------------------------------------------------
     // 1. BUTTON INTERACTIONS (Type 3: MESSAGE_COMPONENT)
@@ -1571,10 +1646,11 @@ class DiscordBotService {
       return;
     }
 
-    // 3B. /panelsetup COMMAND (Zero inputs — pick directly from panels created on your website account)
+    // 3B. /panelsetup COMMAND (Pick from panels created on your website account via autocomplete or buttons)
     if (commandName === 'panelsetup') {
-      // Look up all panels created on the user's logged-in Discord account
+      const selectedRaw = (args.panel || args.panel_id || '').trim();
       const accountPanels = this.getAccountPanels(callerId, state, binding);
+
       if (accountPanels.length === 0) {
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: 'POST',
@@ -1582,12 +1658,58 @@ class DiscordBotService {
           body: JSON.stringify({
             type: 4,
             data: {
-              content: `❌ **No Panels Found on Your Account**\n\nNo panels were found for <@${callerId}>.\n1. Open **https://roniguard.wasmer.app/panels** and sign in with Discord\n2. Click **Create Panel** and set its name & description (plus upload a script)\n3. Run \`/panelsetup\` again — your panels will appear right here to click!`,
+              content: `❌ **No Panels Found on Your Account**\n\nNo panels were found for <@${callerId}>.\n1. Open **https://roniguard.wasmer.app/panels** and sign in with Discord\n2. Click **Create Panel** and set its name & description (plus upload a script)\n3. Run \`/panelsetup\` again — your panels will appear in the picker!`,
               flags: 64,
             },
           }),
         });
         return;
+      }
+
+      if (selectedRaw && selectedRaw !== '__no_panels__') {
+        const lowerSel = selectedRaw.toLowerCase();
+        const targetPanel =
+          accountPanels.find(
+            (p) =>
+              p.id === selectedRaw ||
+              p.id.toLowerCase() === lowerSel ||
+              (p.name || '').trim().toLowerCase() === lowerSel
+          ) ||
+          state.panels.find((p) => p.id === selectedRaw || p.id.toLowerCase() === lowerSel);
+
+        if (targetPanel) {
+          const panelTitle = (targetPanel.name || 'RONIGUARD PANEL').trim();
+          const panelDescription = (
+            targetPanel.description || 'RONIGUARD Protected Script Control Panel'
+          ).trim();
+          targetPanel.updatedAt = new Date().toISOString();
+
+          if (guild_id && state.botConfig.guildRoleBindings?.[guild_id]) {
+            state.botConfig.guildRoleBindings[guild_id].panelId = targetPanel.id;
+          }
+          db.logAudit(
+            'panel_update',
+            `Panel "${panelTitle}" (${targetPanel.id}) deployed to Discord by @${callerUsername}`,
+            'DiscordBot',
+            callerId,
+            'info'
+          );
+          db.save();
+
+          try {
+            await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 4,
+                data: this.buildPanelMessageData(panelTitle, panelDescription, targetPanel.id),
+              }),
+            });
+          } catch (err) {
+            console.error('[RONIGUARD-BOT] Failed to deploy selected panel:', err);
+          }
+          return;
+        }
       }
 
       // Prune expired setups older than 15 minutes
