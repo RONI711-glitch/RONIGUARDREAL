@@ -313,7 +313,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onLogout, onShowToast 
                 <div className="flex justify-between items-center text-neutral-400">
                   <span>Host Endpoint:</span>
                   <span className="text-purple-300 font-mono text-[11px] font-semibold">
-                    https://roniguard-ucfw.onrender.com
+                    https://roniguard.wasmer.app
                   </span>
                 </div>
               </div>

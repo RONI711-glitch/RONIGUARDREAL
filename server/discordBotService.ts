@@ -100,7 +100,7 @@ class DiscordBotService {
         try {
           const port = process.env.PORT || 3000;
           fetch(`http://127.0.0.1:${port}/api/health`).catch(() => {});
-          fetch('https://roniguard-ucfw.onrender.com/api/health').catch(() => {});
+          fetch('https://roniguard.wasmer.app/api/health').catch(() => {});
         } catch {}
       }, 120000);
     }
@@ -112,7 +112,7 @@ class DiscordBotService {
       const userRes = await fetch('https://discord.com/api/v10/users/@me', {
         headers: {
           Authorization: `Bot ${this.token}`,
-          'User-Agent': 'DiscordBot (https://roniguard-ucfw.onrender.com, 4.2.0)',
+          'User-Agent': 'DiscordBot (https://roniguard.wasmer.app, 4.2.0)',
         },
         signal: AbortSignal.timeout(8000),
       });
@@ -127,7 +127,7 @@ class DiscordBotService {
             const retryRes = await fetch('https://discord.com/api/v10/users/@me', {
               headers: {
                 Authorization: `Bot ${fallback}`,
-                'User-Agent': 'DiscordBot (https://roniguard-ucfw.onrender.com, 4.2.0)',
+                'User-Agent': 'DiscordBot (https://roniguard.wasmer.app, 4.2.0)',
               },
               signal: AbortSignal.timeout(8000),
             });
@@ -991,10 +991,10 @@ class DiscordBotService {
         let buttonReply = '';
         if (hasAccess) {
           const keyParam = userKey ? userKey.key : (targetScript ? targetScript.apiKey : 'RONI-ACTIVE-KEY');
-          buttonReply = `✅ **You are Whitelisted!**\n\n📜 **YOUR PERSONAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "${keyParam}"\nloadstring(game:HttpGet("https://roniguard-ucfw.onrender.com/loader.lua?script=${scriptId}"))()\n\`\`\`\n*Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
+          buttonReply = `✅ **You are Whitelisted!**\n\n📜 **YOUR PERSONAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "${keyParam}"\nloadstring(game:HttpGet("https://roniguard.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\n*Copy and execute in your Luau executor (Roblox). Script ID: \`${scriptId}\`*`;
         } else if (targetScript && targetScript.trialEnabled === true) {
           // Trial Mode is strictly only displayed when explicitly enabled by owner
-          buttonReply = `🎁 **TRIAL MODE ACTIVE (Free Access)**\n\n📜 **TRIAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "trial"\nloadstring(game:HttpGet("https://roniguard-ucfw.onrender.com/loader.lua?script=${scriptId}"))()\n\`\`\`\n*Trial mode is enabled by the owner. Everyone can test this script!*`;
+          buttonReply = `🎁 **TRIAL MODE ACTIVE (Free Access)**\n\n📜 **TRIAL SCRIPT LOADER**\n\`\`\`lua\nScript_key = "trial"\nloadstring(game:HttpGet("https://roniguard.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\n*Trial mode is enabled by the owner. Everyone can test this script!*`;
         } else {
           // Trial is OFF (default) and user is not whitelisted: NEVER mention trial
           buttonReply = `⛔ **Access Denied: You are not whitelisted!**\nYou do not have access to this script on this panel.\nClick **🔑 Redeem Key** to enter your license key, or contact a server administrator.`;
@@ -1024,7 +1024,7 @@ class DiscordBotService {
         if (userKey) {
           buttonReply = `📊 **License Key Information**\n• **Owner**: <@${callerId}>\n• **Key**: \`${userKey.key}\`\n• **Status**: \`${userKey.status.toUpperCase()}\`\n• **Type**: \`${userKey.type}\`\n• **HWID Locked**: \`${userKey.hwidLocked ? 'Yes' : 'No'}\`\n• **Expires**: \`${userKey.expiresAt ? new Date(userKey.expiresAt).toLocaleDateString() : 'Never (Lifetime)'}\``;
         } else {
-          buttonReply = `⚠️ **No Active License Key Found**\nThere is no registered license key bound to <@${callerId}>.\n• Click **🔑 Redeem Key** to activate a key\n• Visit https://roniguard-ucfw.onrender.com to generate licenses.`;
+          buttonReply = `⚠️ **No Active License Key Found**\nThere is no registered license key bound to <@${callerId}>.\n• Click **🔑 Redeem Key** to activate a key\n• Visit https://roniguard.wasmer.app to generate licenses.`;
         }
 
         try {
@@ -1204,7 +1204,7 @@ class DiscordBotService {
         const script = state.scripts.find((s) => s.id === keyRec.scriptId) || state.scripts[0];
         const scriptId = script ? script.id : 'scr_main';
 
-        const successMessage = `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${callerId}>\n• **Whitelist**: Active (Lifetime)\n• **Script ID**: \`${scriptId}\`\n\n📜 **YOUR PERSONAL SCRIPT LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguard-ucfw.onrender.com/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now click **📜 Script** on the panel anytime to view your loader!`;
+        const successMessage = `🎉 **Key Redeemed Successfully!**\n• **Key**: \`${keyRec.key}\`\n• **Owner**: <@${callerId}>\n• **Whitelist**: Active (Lifetime)\n• **Script ID**: \`${scriptId}\`\n\n📜 **YOUR PERSONAL SCRIPT LOADER:**\n\`\`\`lua\nScript_key = "${keyRec.key}"\nloadstring(game:HttpGet("https://roniguard.wasmer.app/loader.lua?script=${scriptId}"))()\n\`\`\`\nYou can now click **📜 Script** on the panel anytime to view your loader!`;
 
         await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
           method: 'POST',
@@ -1419,7 +1419,7 @@ class DiscordBotService {
           body: JSON.stringify({
             type: 4,
             data: {
-              content: `❌ **Invalid Panel ID**: No panel exists with ID \`${panelId}\`.\n\nWithout a valid Panel ID created on the website dashboard (https://roniguard-ucfw.onrender.com/panels), the panel cannot be deployed. Please create your panel first on the dashboard, copy its real Panel ID (e.g. \`pnl_...\`), and try again.`,
+              content: `❌ **Invalid Panel ID**: No panel exists with ID \`${panelId}\`.\n\nWithout a valid Panel ID created on the website dashboard (https://roniguard.wasmer.app/panels), the panel cannot be deployed. Please create your panel first on the dashboard, copy its real Panel ID (e.g. \`pnl_...\`), and try again.`,
               flags: 64,
             },
           }),

@@ -36,7 +36,7 @@ export const APP_BASE_URL =
   !window.location.origin.includes('localhost') &&
   !window.location.origin.includes('run.app')
     ? window.location.origin
-    : 'https://roniguard-ucfw.onrender.com';
+    : 'https://roniguard.wasmer.app';
 export const generateLocalId = () => Math.random().toString(36).substring(2, 9);
 
 export function setStoredToken(token: string): void {
@@ -398,7 +398,7 @@ export const api = {
       return store.keys.map((k) => ({
         ...k,
         scriptName: store.scripts.find((s) => s.id === k.scriptId)?.filename || 'Lua Script',
-        loadstringUrl: `https://roniguard-ucfw.onrender.com/loader.lua?script=${k.scriptId || 'latest'}&key=${k.key}`,
+        loadstringUrl: `https://roniguard.wasmer.app/loader.lua?script=${k.scriptId || 'latest'}&key=${k.key}`,
       }));
     }
   },
@@ -419,7 +419,7 @@ export const api = {
       return {
         success: true,
         newKey: { key: `RONI-API-${rand}`, status: 'active' },
-        loadstringUrl: `https://roniguard-ucfw.onrender.com/loader.lua?key=RONI-API-${rand}`,
+        loadstringUrl: `https://roniguard.wasmer.app/loader.lua?key=RONI-API-${rand}`,
       };
     }
   },
@@ -1278,11 +1278,11 @@ export const api = {
   =============================================================
   RONIGUARD OFFICIAL LOADER
   Target Panel: ${panelId}
-  Host Domain: https://roniguard-ucfw.onrender.com
+  Host Domain: https://roniguard.wasmer.app
   =============================================================
 --]]
 local HttpService = game:GetService("HttpService")
-local url = "https://roniguard-ucfw.onrender.com/api/loader/raw/latest"
+local url = "https://roniguard.wasmer.app/api/loader/raw/latest"
 loadstring(game:HttpGet(url))()
 `.trim();
   },
