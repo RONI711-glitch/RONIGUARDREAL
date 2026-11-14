@@ -52,7 +52,7 @@ class DiscordBotService {
   private commandsHandled: number = 0;
   private pendingPanelSetups = new Map<
     string,
-    { setupId: string; callerId: string; title: string; description: string; guildId?: string; createdAt: number }
+    { setupId: string; callerId: string; guildId?: string; createdAt: number }
   >();
 
   public async start(providedToken?: string): Promise<boolean> {
@@ -368,46 +368,8 @@ class DiscordBotService {
       },
       {
         name: 'panelsetup',
-        description: 'Deploy an interactive RONIGUARD control panel by picking from your website panels',
-        options: [
-          {
-            type: 3, // STRING
-            name: 'name',
-            description: 'Title of the panel embed (e.g. RONIHUB PANEL)',
-            required: true,
-          },
-          {
-            type: 3, // STRING
-            name: 'description',
-            description: 'Description of the panel embed (e.g. THE BEST FREEMIUM EVER)',
-            required: true,
-          },
-        ],
-      },
-      {
-        name: 'panel',
-        description: 'Deploy or manage RONIGUARD interactive panels',
-        options: [
-          {
-            type: 1, // SUB_COMMAND
-            name: 'setup',
-            description: 'Deploy an interactive RONIGUARD control panel by picking from your website panels',
-            options: [
-              {
-                type: 3,
-                name: 'name',
-                description: 'Title of the panel embed (e.g. RONIHUB PANEL)',
-                required: true,
-              },
-              {
-                type: 3,
-                name: 'description',
-                description: 'Description of the panel embed (e.g. THE BEST FREEMIUM EVER)',
-                required: true,
-              },
-            ],
-          },
-        ],
+        description: 'Pick and deploy one of your website RONIGUARD panels into this channel',
+        options: [],
       },
       {
         name: 'whitelistrole',
@@ -957,9 +919,11 @@ class DiscordBotService {
   }
 
   private getAccountPanels(callerId: string, state: ReturnType<typeof db.get>, binding?: any) {
-    const userRec = state.users.find((u) => u.discordId === callerId);
-    if (userRec) {
-      const owned = state.panels.filter((p) => p.userId === userRec.id);
+    const matchingUserIds = new Set(
+      state.users.filter((u) => u.discordId === callerId).map((u) => u.id)
+    );
+    if (matchingUserIds.size > 0) {
+      const owned = state.panels.filter((p) => matchingUserIds.has(p.userId));
       if (owned.length > 0) return owned;
     }
 
@@ -1059,18 +1023,26 @@ class DiscordBotService {
           return;
         }
 
-        targetPanel.name = pending.title;
-        targetPanel.description = pending.description;
+        const panelTitle = (targetPanel.name || 'RONIGUARD PANEL').trim();
+        const panelDescription = (
+          targetPanel.description || 'RONIGUARD Protected Script Control Panel'
+        ).trim();
         targetPanel.updatedAt = new Date().toISOString();
 
         if (guild_id && state.botConfig.guildRoleBindings?.[guild_id]) {
           state.botConfig.guildRoleBindings[guild_id].panelId = targetPanel.id;
         }
-        db.logAudit('panel_update', `Panel "${pending.title}" (${targetPanel.id}) deployed to Discord by @${callerUsername}`, 'DiscordBot', callerId, 'info');
+        db.logAudit(
+          'panel_update',
+          `Panel "${panelTitle}" (${targetPanel.id}) deployed to Discord by @${callerUsername}`,
+          'DiscordBot',
+          callerId,
+          'info'
+        );
         db.save();
         this.pendingPanelSetups.delete(setupId);
 
-        const panelMessageData = this.buildPanelMessageData(pending.title, pending.description, targetPanel.id);
+        const panelMessageData = this.buildPanelMessageData(panelTitle, panelDescription, targetPanel.id);
         let postedToChannel = false;
         if (interaction.channel_id) {
           try {
@@ -1094,7 +1066,7 @@ class DiscordBotService {
               body: JSON.stringify({
                 type: 7,
                 data: {
-                  content: `✅ **Panel Deployed!** Selected **${targetPanel.name}** (\`${targetPanel.id}\`) — your interactive panel is live below.`,
+                  content: `✅ **Panel Deployed!** Selected **${panelTitle}** — your interactive panel is live below.`,
                   components: [],
                 },
               }),
@@ -1455,19 +1427,13 @@ class DiscordBotService {
     // -------------------------------------------------------------
     // 3. SLASH COMMANDS (Type 2: APPLICATION_COMMAND)
     // -------------------------------------------------------------
-    let commandName = data.name;
+    const commandName = data.name;
     const args: Record<string, string> = {};
     if (data.options) {
       for (const opt of data.options) {
-        if (opt.type === 1) {
-          // SUB_COMMAND (e.g. /panel setup)
-          if (commandName === 'panel' && opt.name === 'setup') {
-            commandName = 'panelsetup';
-          }
-          if (opt.options) {
-            for (const subOpt of opt.options) {
-              args[subOpt.name] = String(subOpt.value);
-            }
+        if (opt.type === 1 && opt.options) {
+          for (const subOpt of opt.options) {
+            args[subOpt.name] = String(subOpt.value);
           }
         } else {
           args[opt.name] = String(opt.value);
@@ -1605,86 +1571,8 @@ class DiscordBotService {
       return;
     }
 
-    // 3B. /panelsetup COMMAND
+    // 3B. /panelsetup COMMAND (Zero inputs — pick directly from panels created on your website account)
     if (commandName === 'panelsetup') {
-      // Must configure /lic first on this server before setting up panels
-      const isLicConfigured = guild_id ? !!state.botConfig?.guildRoleBindings?.[guild_id] : true;
-      if (!isLicConfigured && callerId !== '1549804529778692237' && callerId !== '728491028374829103') {
-        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 4,
-            data: {
-              content: '⛔ **License Setup Required**: You must first configure the bot using `/lic api_key:<key> role:<role>` before you can create or deploy panels! Once `/lic` is set up, you will have full access to create panels and manage the bot.',
-              flags: 64,
-            },
-          }),
-        });
-        return;
-      }
-
-      const title = (args.name || '').trim();
-      const description = (args.description || '').trim();
-      const explicitPanelId = this.extractPanelId(args.panel_id || '');
-
-      if (!title || !description) {
-        await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 4,
-            data: { content: '❌ **Error**: Missing required parameters. Usage: `/panelsetup name:<name> description:<description>`', flags: 64 },
-          }),
-        });
-        return;
-      }
-
-      if (explicitPanelId) {
-        const targetPanel = state.panels.find(
-          (p) => p.id === explicitPanelId || p.id.toLowerCase() === explicitPanelId.toLowerCase()
-        );
-
-        if (!targetPanel) {
-          await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 4,
-              data: {
-                content: `❌ **Invalid Panel ID**: No panel exists with ID \`${explicitPanelId}\`.\n\nJust run \`/panelsetup name:${title} description:${description}\` **without** a Panel ID to pick directly from the panels on your account!`,
-                flags: 64,
-              },
-            }),
-          });
-          return;
-        }
-
-        targetPanel.name = title;
-        targetPanel.description = description;
-        targetPanel.updatedAt = new Date().toISOString();
-
-        if (guild_id && state.botConfig.guildRoleBindings?.[guild_id]) {
-          state.botConfig.guildRoleBindings[guild_id].panelId = targetPanel.id;
-        }
-        db.logAudit('panel_update', `Panel "${title}" (${targetPanel.id}) deployed to Discord by @${callerUsername}`, 'DiscordBot', callerId, 'info');
-        db.save();
-
-        try {
-          await fetch(`https://discord.com/api/v10/interactions/${id}/${token}/callback`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 4,
-              data: this.buildPanelMessageData(title, description, targetPanel.id),
-            }),
-          });
-        } catch (err) {
-          console.error('[RONIGUARD-BOT] Failed to deploy panel setup:', err);
-        }
-        return;
-      }
-
       // Look up all panels created on the user's logged-in Discord account
       const accountPanels = this.getAccountPanels(callerId, state, binding);
       if (accountPanels.length === 0) {
@@ -1694,7 +1582,7 @@ class DiscordBotService {
           body: JSON.stringify({
             type: 4,
             data: {
-              content: `❌ **No Panels Found on Your Account**\n\nNo panels were found for <@${callerId}>.\n1. Open **https://roniguard.wasmer.app/panels** and sign in with Discord\n2. Click **Create Panel** (and upload a script if needed)\n3. Run \`/panelsetup\` again — your panels will show up right here to click!`,
+              content: `❌ **No Panels Found on Your Account**\n\nNo panels were found for <@${callerId}>.\n1. Open **https://roniguard.wasmer.app/panels** and sign in with Discord\n2. Click **Create Panel** and set its name & description (plus upload a script)\n3. Run \`/panelsetup\` again — your panels will appear right here to click!`,
               flags: 64,
             },
           }),
@@ -1714,8 +1602,6 @@ class DiscordBotService {
       this.pendingPanelSetups.set(setupId, {
         setupId,
         callerId,
-        title,
-        description,
         guildId: guild_id,
         createdAt: nowMs,
       });
@@ -1728,7 +1614,7 @@ class DiscordBotService {
           type: 1, // Action Row
           components: chunk.map((p) => {
             const scriptCount = state.scripts.filter((s) => s.panelId === p.id).length;
-            const rawName = (p.name || p.id).trim();
+            const rawName = (p.name || 'Untitled Panel').trim();
             const shortName = rawName.length > 48 ? rawName.slice(0, 45) + '...' : rawName;
             const label = `${shortName} (${scriptCount} script${scriptCount === 1 ? '' : 's'})`.slice(0, 80);
             return {
@@ -1745,7 +1631,9 @@ class DiscordBotService {
       const listSummary = panelsToShow
         .map((p) => {
           const scriptCount = state.scripts.filter((s) => s.panelId === p.id).length;
-          return `• **${p.name}** (\`${p.id}\`) — ${scriptCount} script(s)`;
+          const desc = (p.description || 'No description').trim();
+          const shortDesc = desc.length > 80 ? desc.slice(0, 77) + '...' : desc;
+          return `• **${p.name || 'Untitled Panel'}** (${scriptCount} script${scriptCount === 1 ? '' : 's'})\n  _${shortDesc}_`;
         })
         .join('\n');
 
@@ -1756,7 +1644,7 @@ class DiscordBotService {
           body: JSON.stringify({
             type: 4,
             data: {
-              content: `🎛️ **Choose which panel from your RONIGUARD account to deploy:**\n• **Title:** ${title}\n• **Description:** ${description}\n\n${listSummary}\n\n👇 **Click a panel button below to deploy it:**`,
+              content: `🎛️ **Select one of your website panels to deploy:**\n\n${listSummary}\n\n👇 **Click a panel button below — it will deploy with its exact website name & description:**`,
               components: rows,
               flags: 64,
             },

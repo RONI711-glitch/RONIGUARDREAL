@@ -304,9 +304,9 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({
                     Permanent User Licensing in Discord
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300/85 leading-relaxed">
-                    Run <code className="text-purple-300">/panelsetup</code> with a real Panel ID
-                    from your dashboard. Once activated, member licenses persist until removed by
-                    the owner.
+                    Run <code className="text-purple-300">/panelsetup</code> in Discord and click one
+                    of the panels from your dashboard account. Once activated, member licenses
+                    persist until removed by the owner.
                   </p>
                 </div>
 

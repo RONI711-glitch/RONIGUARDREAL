@@ -557,8 +557,8 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
         },
         {
           name: 'panelsetup',
-          description: 'Deploy interactive control panel for a website panel ID',
-          options: ['name: string', 'description: string', 'panel_id: string'],
+          description: 'Pick and deploy one of your website panels using its website name & description',
+          options: [],
           category: 'Panels',
           implementedInBot: true,
         },
