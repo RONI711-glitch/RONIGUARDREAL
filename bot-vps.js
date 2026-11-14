@@ -1,4 +1,5 @@
 // server/discordBotService.ts
+import path2 from "node:path";
 import WebSocket from "ws";
 
 // server/db.ts
@@ -297,11 +298,16 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
 }
 var Store = class {
   constructor() {
+    this.lastMtimeMs = 0;
     this.state = this.load();
   }
   load() {
     try {
       if (fs.existsSync(DB_FILE)) {
+        try {
+          this.lastMtimeMs = fs.statSync(DB_FILE).mtimeMs;
+        } catch {
+        }
         const data = fs.readFileSync(DB_FILE, "utf-8");
         const parsed = JSON.parse(data);
         parsed.users = parsed.users || [];
@@ -469,8 +475,23 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
       const tempFile = `${DB_FILE}.${Date.now()}.tmp`;
       fs.writeFileSync(tempFile, JSON.stringify(stateToSave, null, 2), "utf-8");
       fs.renameSync(tempFile, DB_FILE);
+      try {
+        this.lastMtimeMs = fs.statSync(DB_FILE).mtimeMs;
+      } catch {
+      }
     } catch (err) {
       console.error("Error saving state:", err);
+    }
+  }
+  reloadIfNewer() {
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        const currentMtime = fs.statSync(DB_FILE).mtimeMs;
+        if (currentMtime > this.lastMtimeMs) {
+          this.state = this.load();
+        }
+      }
+    } catch {
     }
   }
   save() {
@@ -1134,6 +1155,12 @@ var db = new Store();
 // server/discordBotService.ts
 var LATEST_ACTIVE_TOKEN2 = Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3", "base64").toString("utf8");
 var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN && !process.env.DISCORD_BOT_TOKEN.includes("GuSRGb") && !process.env.DISCORD_BOT_TOKEN.includes("GbPiDD") ? process.env.DISCORD_BOT_TOKEN : LATEST_ACTIVE_TOKEN2;
+function isProductionBotRuntime() {
+  if (process.env.ENABLE_DEV_DISCORD_BOT === "true") return true;
+  if (process.env.NODE_ENV === "production") return true;
+  const entry = path2.basename(process.argv[1] || "");
+  return entry === "server.js" || entry === "bot-vps.js" || entry === "botRunner.ts";
+}
 var DiscordBotService = class {
   constructor() {
     this.ws = null;
@@ -1162,6 +1189,10 @@ var DiscordBotService = class {
     this.commandsHandled = 0;
   }
   async start(providedToken) {
+    if (!isProductionBotRuntime() && !providedToken) {
+      this.lastStep = "skipped_in_dev_mode";
+      return false;
+    }
     if (this.isConnected() && !providedToken) {
       return true;
     }
@@ -1945,6 +1976,7 @@ var DiscordBotService = class {
   }
   async handleInteraction(interaction) {
     if (!this.token) return;
+    db.reloadIfNewer();
     const { id, token, data, type, guild_id } = interaction;
     if (!data) return;
     const caller = interaction.member?.user || interaction.user || {};

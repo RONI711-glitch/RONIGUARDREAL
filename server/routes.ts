@@ -25,17 +25,24 @@ import {
 import { discordBotService } from './discordBotService.ts';
 
 const router = Router();
+const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
+const isProdRuntime =
+  process.env.NODE_ENV === 'production' ||
+  path.basename(process.argv[1] || '') === 'server.js' ||
+  process.env.ENABLE_DEV_DISCORD_BOT === 'true';
 
-// Auto-start Discord Bot Gateway on API mount
-setTimeout(() => {
-  discordBotService.start().catch((err) => {
-    console.warn('[RONIGUARD] Discord Bot Gateway background start notice:', err);
-  });
-}, 500);
+// Auto-start Discord Bot Gateway on API mount (production only so dev preview never steals live Gateway interactions)
+if (isProdRuntime) {
+  setTimeout(() => {
+    discordBotService.start().catch((err) => {
+      console.warn('[RONIGUARD] Discord Bot Gateway background start notice:', err);
+    });
+  }, 500);
+}
 
 // 24/7 Keep-alive and health check endpoint
 router.get('/health', (_req, res) => {
-  if (!discordBotService.isConnected()) {
+  if (isProdRuntime && !discordBotService.isConnected()) {
     discordBotService.start().catch(() => {});
   }
   const botInfo = discordBotService.getStatus();
@@ -43,6 +50,7 @@ router.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'RONIGUARD',
+    instanceId: INSTANCE_ID,
     timestamp: new Date().toISOString(),
     botOnline: botInfo.isConnected || dbConnected,
     bot: botInfo,

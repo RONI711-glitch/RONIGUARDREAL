@@ -1,3 +1,4 @@
+import path from 'node:path';
 import WebSocket from 'ws';
 import { db } from './db.ts';
 import { executeBotCommand } from './discord.ts';
@@ -6,6 +7,13 @@ export const LATEST_ACTIVE_TOKEN = Buffer.from('TVRVME9UZ3dORFV5T1RjM09EWTVNakl6
 const VERIFIED_FALLBACK_TOKEN = (process.env.DISCORD_BOT_TOKEN && !process.env.DISCORD_BOT_TOKEN.includes('GuSRGb') && !process.env.DISCORD_BOT_TOKEN.includes('GbPiDD'))
   ? process.env.DISCORD_BOT_TOKEN
   : LATEST_ACTIVE_TOKEN;
+
+function isProductionBotRuntime(): boolean {
+  if (process.env.ENABLE_DEV_DISCORD_BOT === 'true') return true;
+  if (process.env.NODE_ENV === 'production') return true;
+  const entry = path.basename(process.argv[1] || '');
+  return entry === 'server.js' || entry === 'bot-vps.js' || entry === 'botRunner.ts';
+}
 
 class DiscordBotService {
   private ws: WebSocket | null = null;
@@ -34,6 +42,10 @@ class DiscordBotService {
   private commandsHandled: number = 0;
 
   public async start(providedToken?: string): Promise<boolean> {
+    if (!isProductionBotRuntime() && !providedToken) {
+      this.lastStep = 'skipped_in_dev_mode';
+      return false;
+    }
     if (this.isConnected() && !providedToken) {
       return true;
     }
@@ -876,6 +888,7 @@ class DiscordBotService {
 
   private async handleInteraction(interaction: any) {
     if (!this.token) return;
+    db.reloadIfNewer();
     const { id, token, data, type, guild_id } = interaction;
     if (!data) return;
 

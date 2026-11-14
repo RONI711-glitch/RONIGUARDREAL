@@ -605,6 +605,7 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
 
 class Store {
   private state: RoniguardState;
+  private lastMtimeMs: number = 0;
 
   constructor() {
     this.state = this.load();
@@ -613,6 +614,9 @@ class Store {
   private load(): RoniguardState {
     try {
       if (fs.existsSync(DB_FILE)) {
+        try {
+          this.lastMtimeMs = fs.statSync(DB_FILE).mtimeMs;
+        } catch {}
         const data = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(data);
         parsed.users = parsed.users || [];
@@ -800,9 +804,23 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
       const tempFile = `${DB_FILE}.${Date.now()}.tmp`;
       fs.writeFileSync(tempFile, JSON.stringify(stateToSave, null, 2), 'utf-8');
       fs.renameSync(tempFile, DB_FILE);
+      try {
+        this.lastMtimeMs = fs.statSync(DB_FILE).mtimeMs;
+      } catch {}
     } catch (err) {
       console.error('Error saving state:', err);
     }
+  }
+
+  public reloadIfNewer(): void {
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        const currentMtime = fs.statSync(DB_FILE).mtimeMs;
+        if (currentMtime > this.lastMtimeMs) {
+          this.state = this.load();
+        }
+      }
+    } catch {}
   }
 
   public save(): void {

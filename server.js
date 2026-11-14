@@ -1,12 +1,12 @@
 // server.ts
 import express from "express";
-import path3 from "node:path";
+import path4 from "node:path";
 import dotenv from "dotenv";
 
 // server/routes.ts
 import { Router } from "express";
 import fs2 from "node:fs";
-import path2 from "node:path";
+import path3 from "node:path";
 import crypto3 from "node:crypto";
 
 // server/db.ts
@@ -305,11 +305,16 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
 }
 var Store = class {
   constructor() {
+    this.lastMtimeMs = 0;
     this.state = this.load();
   }
   load() {
     try {
       if (fs.existsSync(DB_FILE)) {
+        try {
+          this.lastMtimeMs = fs.statSync(DB_FILE).mtimeMs;
+        } catch {
+        }
         const data = fs.readFileSync(DB_FILE, "utf-8");
         const parsed = JSON.parse(data);
         parsed.users = parsed.users || [];
@@ -477,8 +482,23 @@ print("[RONIGUARD] Successfully authenticated and running!")`;
       const tempFile = `${DB_FILE}.${Date.now()}.tmp`;
       fs.writeFileSync(tempFile, JSON.stringify(stateToSave, null, 2), "utf-8");
       fs.renameSync(tempFile, DB_FILE);
+      try {
+        this.lastMtimeMs = fs.statSync(DB_FILE).mtimeMs;
+      } catch {
+      }
     } catch (err) {
       console.error("Error saving state:", err);
+    }
+  }
+  reloadIfNewer() {
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        const currentMtime = fs.statSync(DB_FILE).mtimeMs;
+        if (currentMtime > this.lastMtimeMs) {
+          this.state = this.load();
+        }
+      }
+    } catch {
     }
   }
   save() {
@@ -2410,9 +2430,16 @@ When they click **\u{1F4DC} Script** on the panel, their loader will appear!`
 }
 
 // server/discordBotService.ts
+import path2 from "node:path";
 import WebSocket from "ws";
 var LATEST_ACTIVE_TOKEN2 = Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3", "base64").toString("utf8");
 var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN && !process.env.DISCORD_BOT_TOKEN.includes("GuSRGb") && !process.env.DISCORD_BOT_TOKEN.includes("GbPiDD") ? process.env.DISCORD_BOT_TOKEN : LATEST_ACTIVE_TOKEN2;
+function isProductionBotRuntime() {
+  if (process.env.ENABLE_DEV_DISCORD_BOT === "true") return true;
+  if (process.env.NODE_ENV === "production") return true;
+  const entry = path2.basename(process.argv[1] || "");
+  return entry === "server.js" || entry === "bot-vps.js" || entry === "botRunner.ts";
+}
 var DiscordBotService = class {
   constructor() {
     this.ws = null;
@@ -2441,6 +2468,10 @@ var DiscordBotService = class {
     this.commandsHandled = 0;
   }
   async start(providedToken) {
+    if (!isProductionBotRuntime() && !providedToken) {
+      this.lastStep = "skipped_in_dev_mode";
+      return false;
+    }
     if (this.isConnected() && !providedToken) {
       return true;
     }
@@ -3224,6 +3255,7 @@ var DiscordBotService = class {
   }
   async handleInteraction(interaction) {
     if (!this.token) return;
+    db.reloadIfNewer();
     const { id, token, data, type, guild_id } = interaction;
     if (!data) return;
     const caller = interaction.member?.user || interaction.user || {};
@@ -4207,13 +4239,17 @@ var discordBotService = new DiscordBotService();
 
 // server/routes.ts
 var router = Router();
-setTimeout(() => {
-  discordBotService.start().catch((err) => {
-    console.warn("[RONIGUARD] Discord Bot Gateway background start notice:", err);
-  });
-}, 500);
+var INSTANCE_ID = crypto3.randomBytes(4).toString("hex");
+var isProdRuntime = process.env.NODE_ENV === "production" || path3.basename(process.argv[1] || "") === "server.js" || process.env.ENABLE_DEV_DISCORD_BOT === "true";
+if (isProdRuntime) {
+  setTimeout(() => {
+    discordBotService.start().catch((err) => {
+      console.warn("[RONIGUARD] Discord Bot Gateway background start notice:", err);
+    });
+  }, 500);
+}
 router.get("/health", (_req, res) => {
-  if (!discordBotService.isConnected()) {
+  if (isProdRuntime && !discordBotService.isConnected()) {
     discordBotService.start().catch(() => {
     });
   }
@@ -4222,6 +4258,7 @@ router.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "RONIGUARD",
+    instanceId: INSTANCE_ID,
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
     botOnline: botInfo.isConnected || dbConnected,
     bot: botInfo
@@ -4811,7 +4848,7 @@ router.get("/scripts/:id", requireAuth, (req, res) => {
     return res.status(403).json({ error: "Forbidden: You do not own this script" });
   }
   let sourceCode = "";
-  const srcPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  const srcPath = path3.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (fs2.existsSync(srcPath)) {
     sourceCode = fs2.readFileSync(srcPath, "utf-8");
   }
@@ -4829,7 +4866,7 @@ router.get("/scripts/:id/source", requireAuth, (req, res) => {
   if (script.userId !== user.id && user.role !== "admin") {
     return res.status(403).json({ error: "Forbidden: You do not own this script" });
   }
-  const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  const origPath = path3.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (fs2.existsSync(origPath)) {
     const code = fs2.readFileSync(origPath, "utf-8");
     return res.json({ sourceCode: code, filename: script.filename });
@@ -4882,7 +4919,7 @@ router.post("/scripts/process", requireAuth, async (req, res) => {
   const scriptId = "scr_" + generateRandomHex(8);
   const origFileId = "src_" + generateRandomHex(12);
   const protectedFileId = "build_" + generateRandomHex(12);
-  fs2.writeFileSync(path2.join(SOURCES_DIR, `${origFileId}.lua`), code, "utf-8");
+  fs2.writeFileSync(path3.join(SOURCES_DIR, `${origFileId}.lua`), code, "utf-8");
   const randomHex = generateRandomHex(6).toUpperCase() + generateRandomHex(6).toUpperCase();
   const apiKey = `RONI-API-${randomHex}`;
   const apiKeyId = "key_" + generateRandomHex(8);
@@ -4925,8 +4962,8 @@ router.post("/scripts/process", requireAuth, async (req, res) => {
   state.keys.unshift(keyRecord);
   try {
     const initialPayload = obfuscationEnabled !== false ? runRoniguardMax(code, { profile: panel.protectionProfile || "maximum" }) : formatNonObfuscatedScript(code, scriptRecord.filename);
-    fs2.writeFileSync(path2.join(BUILDS_DIR, `${protectedFileId}.lua`), initialPayload, "utf-8");
-    fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptId}.lua`), initialPayload, "utf-8");
+    fs2.writeFileSync(path3.join(BUILDS_DIR, `${protectedFileId}.lua`), initialPayload, "utf-8");
+    fs2.writeFileSync(path3.join(BUILDS_DIR, `${scriptId}.lua`), initialPayload, "utf-8");
     scriptRecord.protectedSize = Buffer.byteLength(initialPayload, "utf-8");
   } catch (initErr) {
     console.warn("[RONIGUARD] Initial payload generation fallback notice:", initErr);
@@ -4979,8 +5016,8 @@ function runBackgroundJobStages(jobId, sourceCode, scriptRecord) {
         } else {
           finalOutput = formatNonObfuscatedScript(sourceCode, scriptRecord.filename);
         }
-        fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`), finalOutput, "utf-8");
-        fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.id}.lua`), finalOutput, "utf-8");
+        fs2.writeFileSync(path3.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`), finalOutput, "utf-8");
+        fs2.writeFileSync(path3.join(BUILDS_DIR, `${scriptRecord.id}.lua`), finalOutput, "utf-8");
         const state = db.get();
         const scr = state.scripts.find((s) => s.id === scriptRecord.id);
         if (scr) {
@@ -5036,7 +5073,7 @@ router.put("/scripts/:id", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Forbidden: You do not own this script" });
   }
   const { filename, sourceCode, newSourceCode, obfuscationEnabled, trialEnabled } = req.body;
-  if (filename) script.filename = path2.basename(filename);
+  if (filename) script.filename = path3.basename(filename);
   if (obfuscationEnabled !== void 0) script.isObfuscated = !!obfuscationEnabled;
   if (trialEnabled !== void 0) script.trialEnabled = !!trialEnabled;
   const codeToUpdate = (newSourceCode || sourceCode || "").trim();
@@ -5059,14 +5096,14 @@ router.put("/scripts/:id", requireAuth, async (req, res) => {
 ${codeToUpdate}`;
     }
     script.updateCount = (script.updateCount || 0) + 1;
-    const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+    const origPath = path3.join(SOURCES_DIR, `${script.originalFileId}.lua`);
     fs2.writeFileSync(origPath, codeToUpdate, "utf-8");
     script.originalSize = Buffer.byteLength(codeToUpdate, "utf-8");
     if (!script.protectedFileId) {
       script.protectedFileId = "build_" + generateRandomHex(12);
     }
-    fs2.writeFileSync(path2.join(BUILDS_DIR, `${script.protectedFileId}.lua`), output, "utf-8");
-    fs2.writeFileSync(path2.join(BUILDS_DIR, `${script.id}.lua`), output, "utf-8");
+    fs2.writeFileSync(path3.join(BUILDS_DIR, `${script.protectedFileId}.lua`), output, "utf-8");
+    fs2.writeFileSync(path3.join(BUILDS_DIR, `${script.id}.lua`), output, "utf-8");
     script.protectedSize = Buffer.byteLength(output, "utf-8");
     script.status = script.isObfuscated ? "obfuscated" : "ready";
     script.buildCount = (script.buildCount || 1) + 1;
@@ -5179,10 +5216,10 @@ router.delete("/scripts/:id", requireOwnerAuth, (req, res) => {
   const idx = state.scripts.findIndex((s) => s.id === id);
   if (idx === -1) return res.status(404).json({ error: "Script not found" });
   const script = state.scripts[idx];
-  const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  const origPath = path3.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (fs2.existsSync(origPath)) fs2.unlinkSync(origPath);
   if (script.protectedFileId) {
-    const buildPath = path2.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
+    const buildPath = path3.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
     if (fs2.existsSync(buildPath)) fs2.unlinkSync(buildPath);
   }
   state.scripts.splice(idx, 1);
@@ -5196,7 +5233,7 @@ router.get("/scripts/:id/download-protected", requireOwnerAuth, (req, res) => {
   if (!script || !script.protectedFileId) {
     return res.status(404).json({ error: "Protected output not found or not yet built" });
   }
-  const filePath = path2.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
+  const filePath = path3.join(BUILDS_DIR, `${script.protectedFileId}.lua`);
   if (!fs2.existsSync(filePath)) {
     return res.status(404).json({ error: "Protected file missing on disk" });
   }
@@ -5214,7 +5251,7 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
   const { scriptId, rawSource, options, panelId, filename: customFilename } = req.body;
   const state = db.get();
   let codeToObfuscate = "";
-  let filename = customFilename ? path2.basename(customFilename) : "adhoc_script.lua";
+  let filename = customFilename ? path3.basename(customFilename) : "adhoc_script.lua";
   let targetPanelId = panelId || state.panels[0]?.id || "pnl_main";
   let scriptRecord = null;
   if (scriptId) {
@@ -5222,7 +5259,7 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
     if (!scriptRecord) return res.status(404).json({ error: "Script not found" });
     filename = scriptRecord.filename;
     targetPanelId = scriptRecord.panelId;
-    const origPath = path2.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
+    const origPath = path3.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
     if (!fs2.existsSync(origPath)) {
       return res.status(404).json({ error: "Original source file missing on server" });
     }
@@ -5247,7 +5284,7 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
   let protectedFileId = null;
   if (result.success && result.transformedCode) {
     protectedFileId = "build_" + generateRandomHex(12);
-    const protectedPath = path2.join(BUILDS_DIR, `${protectedFileId}.lua`);
+    const protectedPath = path3.join(BUILDS_DIR, `${protectedFileId}.lua`);
     fs2.writeFileSync(protectedPath, result.transformedCode, "utf-8");
     if (scriptRecord) {
       scriptRecord.protectedFileId = protectedFileId;
@@ -5283,7 +5320,7 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   if (result.success && result.transformedCode) {
-    const buildDirectPath = path2.join(BUILDS_DIR, `${buildRecord.id}.lua`);
+    const buildDirectPath = path3.join(BUILDS_DIR, `${buildRecord.id}.lua`);
     fs2.writeFileSync(buildDirectPath, result.transformedCode, "utf-8");
   }
   state.builds.unshift(buildRecord);
@@ -5300,7 +5337,7 @@ router.post("/obfuscation/build", requireOwnerAuth, async (req, res) => {
 router.get("/source-recovery/list", requireOwnerAuth, (_req, res) => {
   const state = db.get();
   const recoveryList = state.scripts.map((s) => {
-    const origPath = path2.join(SOURCES_DIR, `${s.originalFileId}.lua`);
+    const origPath = path3.join(SOURCES_DIR, `${s.originalFileId}.lua`);
     const fileExists = fs2.existsSync(origPath);
     return {
       scriptId: s.id,
@@ -5335,7 +5372,7 @@ router.post("/source-recovery/verify-and-download/:scriptId", requireOwnerAuth, 
   if (!script) {
     return res.status(404).json({ error: "Script metadata not found" });
   }
-  const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  const origPath = path3.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (!fs2.existsSync(origPath)) {
     return res.status(404).json({ error: "Original source file not found on secure storage" });
   }
@@ -5355,7 +5392,7 @@ router.delete("/source-recovery/:scriptId", requireOwnerAuth, (req, res) => {
   const { scriptId } = req.params;
   const script = db.get().scripts.find((s) => s.id === scriptId);
   if (!script) return res.status(404).json({ error: "Script not found" });
-  const origPath = path2.join(SOURCES_DIR, `${script.originalFileId}.lua`);
+  const origPath = path3.join(SOURCES_DIR, `${script.originalFileId}.lua`);
   if (fs2.existsSync(origPath)) {
     fs2.unlinkSync(origPath);
   }
@@ -6055,16 +6092,16 @@ function resolveScriptContentAndMeta(id, licenseKeyInput) {
     if (res) return res;
   }
   if (buildRecord) {
-    const bPath = path2.join(BUILDS_DIR, `${buildRecord.id}.lua`);
+    const bPath = path3.join(BUILDS_DIR, `${buildRecord.id}.lua`);
     if (fs2.existsSync(bPath)) {
       return { content: fs2.readFileSync(bPath, "utf-8"), filename: buildRecord.filename, scriptRecord, buildRecord };
     }
   }
-  const directBuildPath = path2.join(BUILDS_DIR, `${cleanId}.lua`);
+  const directBuildPath = path3.join(BUILDS_DIR, `${cleanId}.lua`);
   if (fs2.existsSync(directBuildPath)) {
     return { content: fs2.readFileSync(directBuildPath, "utf-8"), filename: scriptRecord?.filename || `${cleanId}.lua`, scriptRecord, buildRecord };
   }
-  const directSourcePath = path2.join(SOURCES_DIR, `${cleanId}.lua`);
+  const directSourcePath = path3.join(SOURCES_DIR, `${cleanId}.lua`);
   if (fs2.existsSync(directSourcePath)) {
     return { content: fs2.readFileSync(directSourcePath, "utf-8"), filename: `${cleanId}.lua`, scriptRecord, buildRecord };
   }
@@ -6072,22 +6109,22 @@ function resolveScriptContentAndMeta(id, licenseKeyInput) {
 }
 function resolveFromScriptRecord(scriptRecord) {
   if (scriptRecord?.protectedFileId) {
-    const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`);
+    const pPath = path3.join(BUILDS_DIR, `${scriptRecord.protectedFileId}.lua`);
     if (fs2.existsSync(pPath)) {
       return { content: fs2.readFileSync(pPath, "utf-8"), filename: scriptRecord.filename, scriptRecord };
     }
   }
-  const directBuild = path2.join(BUILDS_DIR, `${scriptRecord.id}.lua`);
+  const directBuild = path3.join(BUILDS_DIR, `${scriptRecord.id}.lua`);
   if (fs2.existsSync(directBuild)) {
     return { content: fs2.readFileSync(directBuild, "utf-8"), filename: scriptRecord.filename, scriptRecord };
   }
   if (scriptRecord?.originalFileId) {
-    const oPath = path2.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
+    const oPath = path3.join(SOURCES_DIR, `${scriptRecord.originalFileId}.lua`);
     if (fs2.existsSync(oPath)) {
       const srcCode = fs2.readFileSync(oPath, "utf-8");
       const prepared = runRoniguardMax(srcCode, { profile: "maximum" });
       try {
-        fs2.writeFileSync(path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || scriptRecord.id}.lua`), prepared, "utf-8");
+        fs2.writeFileSync(path3.join(BUILDS_DIR, `${scriptRecord.protectedFileId || scriptRecord.id}.lua`), prepared, "utf-8");
       } catch {
       }
       return { content: prepared, filename: scriptRecord.filename, scriptRecord };
@@ -6101,7 +6138,7 @@ end
 print("[RONIGUARD] Script payload authenticated and running!")`;
   const sampleLua = runRoniguardMax(sampleRaw, { profile: "maximum" });
   try {
-    const pPath = path2.join(BUILDS_DIR, `${scriptRecord.protectedFileId || "bld_" + scriptRecord.id}.lua`);
+    const pPath = path3.join(BUILDS_DIR, `${scriptRecord.protectedFileId || "bld_" + scriptRecord.id}.lua`);
     fs2.writeFileSync(pPath, sampleLua, "utf-8");
     return { content: sampleLua, filename: scriptRecord.filename, scriptRecord };
   } catch {
@@ -7084,7 +7121,7 @@ process.on("unhandledRejection", (reason) => {
 });
 var app = express();
 app.disable("x-powered-by");
-var isBundledProd = process.env.NODE_ENV === "production" || path3.basename(process.argv[1] || "") === "server.js";
+var isBundledProd = process.env.NODE_ENV === "production" || path4.basename(process.argv[1] || "") === "server.js";
 var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : isBundledProd ? 8080 : 3e3;
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -7173,7 +7210,7 @@ oauthLoginPaths.forEach((p) => {
   });
 });
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === "production" || path3.basename(process.argv[1] || "") === "server.js";
+  const isProduction = process.env.NODE_ENV === "production" || path4.basename(process.argv[1] || "") === "server.js";
   if (!isProduction) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -7186,10 +7223,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path3.resolve(process.cwd(), "dist");
+    const distPath = path4.resolve(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
-      res.sendFile(path3.join(distPath, "index.html"));
+      res.sendFile(path4.join(distPath, "index.html"));
     });
   }
   discordBotService.start().catch((err) => {
