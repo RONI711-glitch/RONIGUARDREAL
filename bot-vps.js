@@ -1155,7 +1155,11 @@ var db = new Store();
 // server/discordBotService.ts
 var LATEST_ACTIVE_TOKEN2 = Buffer.from("TVRVME9UZ3dORFV5T1RjM09EWTVNakl6TncuRzhjUEhULmtVcHNUNXZobHdlN2RWMTQzYndPcDl4SGpjbzNmREZnc3NiUUd3", "base64").toString("utf8");
 var VERIFIED_FALLBACK_TOKEN = process.env.DISCORD_BOT_TOKEN && !process.env.DISCORD_BOT_TOKEN.includes("GuSRGb") && !process.env.DISCORD_BOT_TOKEN.includes("GbPiDD") ? process.env.DISCORD_BOT_TOKEN : LATEST_ACTIVE_TOKEN2;
+function isLegacyRenderHost() {
+  return process.env.RENDER === "true" || Boolean(process.env.RENDER_SERVICE_ID) || Boolean(process.env.RENDER_EXTERNAL_URL) || Boolean(process.env.RENDER_EXTERNAL_HOSTNAME);
+}
 function isProductionBotRuntime() {
+  if (isLegacyRenderHost() && process.env.ALLOW_RENDER_BOT !== "true") return false;
   if (process.env.ENABLE_DEV_DISCORD_BOT === "true") return true;
   if (process.env.NODE_ENV === "production") return true;
   const entry = path2.basename(process.argv[1] || "");
@@ -1189,6 +1193,10 @@ var DiscordBotService = class {
     this.commandsHandled = 0;
   }
   async start(providedToken) {
+    if (isLegacyRenderHost() && process.env.ALLOW_RENDER_BOT !== "true") {
+      this.lastStep = "skipped_on_legacy_render";
+      return false;
+    }
     if (!isProductionBotRuntime() && !providedToken) {
       this.lastStep = "skipped_in_dev_mode";
       return false;

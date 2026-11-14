@@ -26,10 +26,17 @@ import { discordBotService } from './discordBotService.ts';
 
 const router = Router();
 const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
+const isLegacyRenderHost =
+  process.env.RENDER === 'true' ||
+  Boolean(process.env.RENDER_SERVICE_ID) ||
+  Boolean(process.env.RENDER_EXTERNAL_URL) ||
+  Boolean(process.env.RENDER_EXTERNAL_HOSTNAME);
+
 const isProdRuntime =
-  process.env.NODE_ENV === 'production' ||
-  path.basename(process.argv[1] || '') === 'server.js' ||
-  process.env.ENABLE_DEV_DISCORD_BOT === 'true';
+  (!isLegacyRenderHost || process.env.ALLOW_RENDER_BOT === 'true') &&
+  (process.env.NODE_ENV === 'production' ||
+    path.basename(process.argv[1] || '') === 'server.js' ||
+    process.env.ENABLE_DEV_DISCORD_BOT === 'true');
 
 // Auto-start Discord Bot Gateway on API mount (production only so dev preview never steals live Gateway interactions)
 if (isProdRuntime) {
@@ -46,13 +53,12 @@ router.get('/health', (_req, res) => {
     discordBotService.start().catch(() => {});
   }
   const botInfo = discordBotService.getStatus();
-  const dbConnected = db.get().botConfig.isConnected;
   res.json({
     status: 'ok',
     service: 'RONIGUARD',
     instanceId: INSTANCE_ID,
     timestamp: new Date().toISOString(),
-    botOnline: botInfo.isConnected || dbConnected,
+    botOnline: botInfo.isConnected,
     bot: botInfo,
   });
 });
